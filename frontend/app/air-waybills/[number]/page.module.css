@@ -1,0 +1,157 @@
+.loadingPage {
+  align-items: center;
+  background: #f3f6fa;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.workspace {
+  padding: 26px 28px 36px;
+}
+
+.backLink {
+  align-items: center;
+  color: var(--accent-strong);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 800;
+  gap: 8px;
+  margin-bottom: 22px;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+.header h2 {
+  font-size: 30px;
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  margin-bottom: 18px;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.panel h3 {
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+
+.valueRow {
+  align-items: start;
+  border-top: 1px solid #eef2f6;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 160px minmax(0, 1fr);
+  min-height: 40px;
+  padding: 10px 0;
+}
+
+.valueRow:first-of-type {
+  border-top: 0;
+}
+
+.valueRow span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.valueRow strong {
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.destinations {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.destination {
+  border: 1px solid #eef2f6;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.destination > div:first-child {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.destination > div:first-child strong {
+  color: var(--text);
+}
+
+.destination > div:first-child span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.muted,
+.empty {
+  color: var(--muted);
+}
+
+.empty {
+  align-items: center;
+  background: #ffffff;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  min-height: 180px;
+  padding: 24px;
+}
+
+@media (max-width: 920px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace {
+    padding: 20px 14px 28px;
+  }
+
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .valueRow {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+}

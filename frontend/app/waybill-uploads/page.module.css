@@ -1,0 +1,517 @@
+.loadingPage {
+  align-items: center;
+  background: #f3f6fa;
+  color: var(--muted);
+  display: flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.workspace {
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 28px;
+}
+
+.workspaceHeader,
+.listHeader,
+.formFooter {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.workspaceHeader h2,
+.listHeader h3 {
+  color: var(--text);
+  margin: 0;
+}
+
+.workspaceHeader h2 {
+  font-size: 28px;
+}
+
+.listHeader h3 {
+  font-size: 20px;
+}
+
+.accountTag {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  max-width: 320px;
+  overflow: hidden;
+  padding: 9px 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploadWindow,
+.uploadList {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.uploadWindow {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.windowTitle {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.windowTitle svg {
+  color: var(--accent-strong);
+}
+
+.windowTitle strong,
+.windowTitle span {
+  display: block;
+}
+
+.windowTitle strong {
+  color: var(--text);
+}
+
+.windowTitle span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.formGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.field,
+.radioGroup {
+  border: 0;
+  color: #344054;
+  display: grid;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.field input,
+.field select {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  min-height: 42px;
+  padding: 0 11px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: 0;
+}
+
+.radioGroup {
+  align-content: start;
+}
+
+.radioGroup legend {
+  margin-bottom: 8px;
+}
+
+.radioGroup label {
+  align-items: center;
+  color: var(--text);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 8px;
+  margin-right: 14px;
+}
+
+.fileGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fileDrop {
+  border: 1px dashed #b8c2d0;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  min-height: 164px;
+  padding: 18px;
+}
+
+.fileDrop:hover {
+  border-color: var(--accent);
+}
+
+.fileDrop svg {
+  color: var(--accent-strong);
+}
+
+.fileDrop strong {
+  color: var(--text);
+}
+
+.fileDrop span,
+.fileDrop small {
+  font-size: 13px;
+}
+
+.fileDrop small {
+  color: #667085;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fileDrop input {
+  max-width: 100%;
+}
+
+.formFooter {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.formFooter button,
+.listHeader button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.formFooter button {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #ffffff;
+}
+
+.listHeader button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: #344054;
+}
+
+.formFooter button:disabled,
+.listHeader button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.notice {
+  border-radius: 8px;
+  flex: 1;
+  font-weight: 800;
+  padding: 11px 12px;
+}
+
+.notice[data-tone="success"] {
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+  color: #047857;
+}
+
+.notice[data-tone="error"] {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+}
+
+.uploadList {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.filterBar {
+  align-items: end;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.15fr 1fr 1fr 1.25fr auto;
+  padding: 12px;
+}
+
+.filterField {
+  color: #344054;
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 7px;
+}
+
+.filterField input,
+.filterField select {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.filterField input:focus,
+.filterField select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: 0;
+}
+
+.filterActions {
+  display: flex;
+  gap: 8px;
+}
+
+.filterActions button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.filterActions button:first-child {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  border-collapse: collapse;
+  min-width: 1160px;
+  width: 100%;
+}
+
+.tableWrap th,
+.tableWrap td {
+  border-bottom: 1px solid var(--border);
+  color: #344054;
+  font-size: 13px;
+  padding: 12px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tableWrap th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.statusPill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 9px;
+}
+
+.statusPill[data-status="pending_review"] {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.statusPill[data-status="pending"] {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.statusPill[data-status="approved"] {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.statusPill[data-status="success"] {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.statusPill[data-status="rejected"] {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.statusPill[data-status="failed"] {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.reviewActions {
+  display: flex;
+  gap: 6px;
+}
+
+.reviewActions button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.reviewActions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.reviewActions .dangerButton {
+  color: #be123c;
+}
+
+.reviewActions .dangerButton:hover:not(:disabled) {
+  border-color: #fb7185;
+  color: #be123c;
+}
+
+.reviewActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.detailRow td {
+  background: #f8fafc;
+  white-space: normal;
+}
+
+.detailPanel {
+  display: grid;
+  gap: 14px;
+  padding: 6px 0;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.detailGrid div,
+.errorBlock,
+.fileLinks {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.detailGrid span,
+.errorBlock span,
+.fileLinks > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.detailGrid strong,
+.errorBlock p,
+.fileLinks p {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fileLinks a {
+  align-items: center;
+  color: var(--accent-strong);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 7px;
+  text-decoration: none;
+}
+
+.fileLinks a:hover {
+  text-decoration: underline;
+}
+
+.emptyState {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 120px;
+}
+
+@media (max-width: 920px) {
+  .formGrid,
+  .fileGrid,
+  .filterBar,
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace {
+    padding: 18px 14px;
+  }
+
+  .workspaceHeader,
+  .listHeader,
+  .formFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .accountTag {
+    max-width: none;
+  }
+}

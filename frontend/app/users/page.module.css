@@ -1,0 +1,135 @@
+.loadingPage {
+  align-items: center;
+  background: #f3f6fa;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.workspace {
+  padding: 26px 28px 36px;
+}
+
+.header {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.header p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+.header h2 {
+  font-size: 28px;
+  margin: 0;
+}
+
+.form,
+.resetPanel {
+  align-items: end;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.2fr 1fr 1fr auto;
+  margin-bottom: 18px;
+  padding: 14px;
+}
+
+.form h3 {
+  align-self: center;
+  font-size: 16px;
+  margin: 0;
+}
+
+.form input,
+.resetPanel input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 40px;
+  padding: 0 11px;
+}
+
+.form button,
+.resetPanel button,
+.actions button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.form button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.resetPanel {
+  grid-template-columns: 1fr 1fr auto auto;
+}
+
+.tableWrap {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  min-width: 860px;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table th {
+  background: #f8fafc;
+  color: #344054;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.forbidden {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #9a3412;
+  padding: 14px;
+}
+
+@media (max-width: 920px) {
+  .workspace {
+    padding: 20px 14px 28px;
+  }
+
+  .form,
+  .resetPanel {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+}
+
