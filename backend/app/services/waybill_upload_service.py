@@ -30,6 +30,10 @@ from app.services.alline_waybill_uploader import (
     AllineWaybillUploadError,
     AllineWaybillUploader,
 )
+from app.services.pre_alert_validator import (
+    PreAlertValidationError,
+    validate_pre_alert_excel,
+)
 from app.services.request_context import get_request_ip, get_request_user_agent
 
 
@@ -173,6 +177,7 @@ class WaybillUploadService:
             max_bytes=PRE_ALERT_MAX_BYTES,
             required=True,
         )
+        self._validate_pre_alert_file(pre_alert[0])
 
         upload = self.uploads.create(
             user_id=target_user.id,
@@ -491,6 +496,15 @@ class WaybillUploadService:
             if secret:
                 cleaned = cleaned.replace(secret, "[redacted]")
         return cleaned[:1000]
+
+    def _validate_pre_alert_file(self, file_payload: dict) -> None:
+        try:
+            validate_pre_alert_excel(
+                filename=file_payload["original_filename"],
+                content=file_payload["content"],
+            )
+        except PreAlertValidationError as exc:
+            raise WaybillUploadValidationError(str(exc)) from exc
 
     def _resolve_target_user(self, actor: User, target_user_id: UUID | None) -> User:
         if target_user_id is None:

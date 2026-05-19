@@ -50,7 +50,7 @@ export default function UsersPage() {
       setUsers(response.items);
     } catch (error) {
       if (isUnauthorizedError(error)) {
-        router.replace("/login");
+        router.replace("/");
         return;
       }
       addMessage("用户列表加载失败", error instanceof Error ? error.message : "请求失败");
@@ -69,7 +69,7 @@ export default function UsersPage() {
         setAuthError(
           error instanceof Error ? error.message : "无法加载账号信息"
         );
-        router.replace("/login");
+        router.replace("/");
       } finally {
         setIsLoading(false);
       }
@@ -125,9 +125,9 @@ export default function UsersPage() {
   if (authError || !currentUser) {
     return (
       <main className={styles.loadingPage}>
-        <p>账号信息加载失败，正在跳转登录页...</p>
-        <button onClick={() => router.replace("/login")} type="button">
-          返回登录
+        <p>Account session unavailable. Redirecting to the public EPIX page...</p>
+        <button onClick={() => router.replace("/")} type="button">
+          Return home
         </button>
       </main>
     );
@@ -145,7 +145,7 @@ export default function UsersPage() {
       }}
       onLogout={async () => {
         await logout();
-        router.replace("/login");
+        router.replace("/");
       }}
       unreadCount={unreadCount}
       user={currentUser}

@@ -26,6 +26,36 @@ type JsonRequestInit = RequestInit & {
   timeoutMessage?: string;
 };
 
+function parseErrorDetail(rawDetail: string) {
+  if (!rawDetail) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(rawDetail) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+    if (Array.isArray(parsed.detail)) {
+      return parsed.detail
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+          if (item && typeof item === "object" && "msg" in item) {
+            return String((item as { msg: unknown }).msg);
+          }
+          return JSON.stringify(item);
+        })
+        .join("; ");
+    }
+  } catch {
+    return rawDetail;
+  }
+
+  return rawDetail;
+}
+
 function getApiBaseUrl() {
   const configured =
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ??
@@ -97,7 +127,10 @@ async function requestJson<T>(path: string, init?: JsonRequestInit): Promise<T> 
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Request failed with ${response.status}${detail ? `: ${detail}` : ""}`);
+    const parsedDetail = parseErrorDetail(detail);
+    throw new Error(
+      `Request failed with ${response.status}${parsedDetail ? `: ${parsedDetail}` : ""}`
+    );
   }
 
   return response.json() as Promise<T>;

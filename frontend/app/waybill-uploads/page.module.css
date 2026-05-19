@@ -249,6 +249,104 @@
   color: #be123c;
 }
 
+.dialogBackdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 60;
+}
+
+.errorDialog {
+  background: #ffffff;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+  display: grid;
+  gap: 16px;
+  max-width: 620px;
+  padding: 18px;
+  width: min(100%, 620px);
+}
+
+.dialogHeader {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr auto;
+}
+
+.dialogHeader h3 {
+  color: var(--text);
+  font-size: 20px;
+  margin: 0;
+}
+
+.dialogIcon {
+  align-items: center;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  color: #be123c;
+  display: inline-flex;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.dialogClose {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #667085;
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.dialogClose:hover {
+  border-color: #fb7185;
+  color: #be123c;
+}
+
+.dialogMessage {
+  background: #fff7f8;
+  border: 1px solid #ffe4e6;
+  border-radius: 8px;
+  color: #9f1239;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.7;
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
+.dialogFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dialogFooter button {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
 .uploadList {
   display: grid;
   gap: 14px;

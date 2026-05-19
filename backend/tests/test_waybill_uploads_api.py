@@ -1,5 +1,7 @@
 import pytest
 
+from io import BytesIO
+
 from app.db.models import AuditLog, WaybillUserBinding
 from app.repositories.waybill_user_binding_repository import normalize_waybill_number
 from app.services.alline_waybill_uploader import AllineWaybillUploadError
@@ -33,8 +35,9 @@ def pre_alert_files(
     pdf_name: str = "awb.pdf",
     excel_name: str = "pre-alert.xlsx",
     pdf_content: bytes = b"%PDF-1.4\ncontent",
-    excel_content: bytes = b"excel-content",
+    excel_content: bytes | None = None,
 ):
+    excel_content = excel_content or pre_alert_workbook_bytes()
     return [
         ("airWaybillDocuments", (pdf_name, pdf_content, "application/pdf")),
         (
@@ -59,6 +62,38 @@ def pre_alert_data(**overrides):
     }
     data.update(overrides)
     return data
+
+
+def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    headers = [f"Column {index}" for index in range(1, 22)]
+    headers[9] = "Name"
+    headers[11] = "Address"
+    headers[18] = "GoodsDescription"
+    headers[20] = "Value"
+    sheet.append(headers)
+    for row_payload in rows or [
+        {
+            "name": "Jane Doe",
+            "address": "1 Test Street",
+            "goods": "Cotton shirt",
+            "value": 12.5,
+        }
+    ]:
+        row = [""] * 21
+        row[9] = row_payload.get("name", "")
+        row[11] = row_payload.get("address", "")
+        row[18] = row_payload.get("goods", "")
+        row[20] = row_payload.get("value", "")
+        sheet.append(row)
+
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
 
 
 def test_user_uploads_pre_alert_and_admin_can_review(client, db_session):
@@ -167,6 +202,77 @@ def test_pre_alert_upload_validates_numbers_and_files(client, db_session):
     )
     assert invalid_pdf.status_code == 400
     assert "must be a PDF" in invalid_pdf.text
+
+
+def test_pre_alert_upload_rejects_banned_goods_description(client, db_session):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "goods": "Portable vacuum cleaner",
+                        "value": 12.5,
+                    }
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "Pre Alert validation failed" in response.text
+    assert "GoodsDescription row 2" in response.text
+    assert "Vacuum cleaner" in response.text
+    assert FakeAllineWaybillUploader.calls == []
+
+
+def test_pre_alert_upload_rejects_same_recipient_address_over_150_eur(
+    client,
+    db_session,
+):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "goods": "Cotton shirt",
+                        "value": 100,
+                    },
+                    {
+                        "name": " jane   doe ",
+                        "address": "1 test street",
+                        "goods": "Book",
+                        "value": "50.01",
+                    },
+                    {
+                        "name": "Jane Doe",
+                        "address": "2 Test Street",
+                        "goods": "Shoes",
+                        "value": 149,
+                    },
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "同一收件人/地址" in response.text
+    assert "150 EUR" in response.text
+    assert "rows 2, 3" in response.text
+    assert FakeAllineWaybillUploader.calls == []
 
 
 def test_pre_alert_upload_records_platform_submission_failure(

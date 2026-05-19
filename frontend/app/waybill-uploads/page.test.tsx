@@ -167,6 +167,33 @@ describe("WaybillUploadsPage", () => {
     expect(await screen.findByText("Upload completed for 784-84063276")).toBeInTheDocument();
   });
 
+  it("shows backend Excel validation errors in a dialog", async () => {
+    apiMock.uploadPreAlertFile.mockRejectedValueOnce(
+      new Error(
+        "Request failed with 400: Pre Alert validation failed: S列 GoodsDescription row 2 contains prohibited term(s): Vacuum cleaner; 同一收件人/地址的 U列申报金额超过 150 EUR: Jane Doe / 1 Test Street totals 150.01 EUR from rows 2, 3"
+      )
+    );
+
+    render(<WaybillUploadsPage />);
+
+    expect(await screen.findByRole("heading", { name: "Upload Pre Alert" })).toBeInTheDocument();
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: "Upload Pre Alert" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Excel 校验未通过" })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/GoodsDescription row 2/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Vacuum cleaner/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/同一收件人\/地址/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "我知道了" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("shows all uploaded records and review actions for admins", async () => {
     apiMock.getCurrentUser.mockResolvedValueOnce({ user: adminUser });
     apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
@@ -316,18 +343,19 @@ describe("WaybillUploadsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload Pre Alert" }));
 
     expect(
-      await screen.findByText("Air Waybill Gross Weight (KG) must be a number")
-    ).toBeInTheDocument();
+      (await screen.findAllByText("Air Waybill Gross Weight (KG) must be a number"))
+        .length
+    ).toBeGreaterThan(0);
     expect(apiMock.uploadPreAlertFile).not.toHaveBeenCalled();
   });
 
-  it("redirects unauthenticated users to login", async () => {
+  it("redirects unauthenticated users to the public landing page", async () => {
     apiMock.getCurrentUser.mockRejectedValueOnce(new Error("Request failed with 401"));
 
     render(<WaybillUploadsPage />);
 
     await waitFor(() => {
-      expect(routerMock.replace).toHaveBeenCalledWith("/login");
+      expect(routerMock.replace).toHaveBeenCalledWith("/");
     });
   });
 });

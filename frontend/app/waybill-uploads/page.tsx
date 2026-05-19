@@ -3,6 +3,7 @@
 import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   Download,
@@ -122,6 +123,20 @@ function fileKindLabel(kind: string) {
   return kind;
 }
 
+function cleanUploadErrorMessage(error: unknown) {
+  const fallback = "Upload failed";
+  const rawMessage = error instanceof Error ? error.message : fallback;
+  const requestMatch = rawMessage.match(/^Request failed with \d+:\s*([\s\S]*)$/);
+  const message = requestMatch?.[1] || rawMessage || fallback;
+  return message.replace(/;\s+/g, "\n");
+}
+
+function uploadErrorTitle(message: string) {
+  return message.includes("Pre Alert validation failed")
+    ? "Excel 校验未通过"
+    : "上传失败";
+}
+
 export default function WaybillUploadsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -139,6 +154,10 @@ export default function WaybillUploadsPage() {
   const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [uploadErrorDialog, setUploadErrorDialog] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   const isAdmin = currentUser?.role === "admin";
 
@@ -179,7 +198,7 @@ export default function WaybillUploadsPage() {
       setUploads(response.items);
     } catch (error) {
       if (isUnauthorizedError(error)) {
-        router.replace("/login");
+        router.replace("/");
         return;
       }
       setNotice({
@@ -209,7 +228,7 @@ export default function WaybillUploadsPage() {
           error instanceof Error ? error.message : "无法加载账号信息"
         );
         setAuthState("ready");
-        router.replace("/login");
+        router.replace("/");
       }
     }
 
@@ -263,7 +282,12 @@ export default function WaybillUploadsPage() {
 
       const validationMessage = validateForm();
       if (validationMessage || !preAlertFile) {
-        setNotice({ tone: "error", text: validationMessage ?? "Upload file is required" });
+        const message = validationMessage ?? "Upload file is required";
+        setNotice({ tone: "error", text: message });
+        setUploadErrorDialog({
+          title: "上传信息不完整",
+          message
+        });
         return;
       }
 
@@ -298,12 +322,17 @@ export default function WaybillUploadsPage() {
         await refreshUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
-          router.replace("/login");
+          router.replace("/");
           return;
         }
+        const message = cleanUploadErrorMessage(error);
         setNotice({
           tone: "error",
-          text: error instanceof Error ? error.message : "Upload failed"
+          text: message
+        });
+        setUploadErrorDialog({
+          title: uploadErrorTitle(message),
+          message
         });
       } finally {
         setIsSubmitting(false);
@@ -375,7 +404,7 @@ export default function WaybillUploadsPage() {
         await refreshUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
-          router.replace("/login");
+          router.replace("/");
           return;
         }
         setNotice({
@@ -410,7 +439,7 @@ export default function WaybillUploadsPage() {
         await refreshUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
-          router.replace("/login");
+          router.replace("/");
           return;
         }
         setNotice({
@@ -426,7 +455,7 @@ export default function WaybillUploadsPage() {
 
   const handleLogout = useCallback(async () => {
     await logout();
-    router.replace("/login");
+    router.replace("/");
   }, [router]);
 
   if (authState === "loading") {
@@ -436,9 +465,9 @@ export default function WaybillUploadsPage() {
   if (authError || !currentUser) {
     return (
       <main className={styles.loadingPage}>
-        <p>账号信息加载失败，正在跳转登录页...</p>
-        <button onClick={() => router.replace("/login")} type="button">
-          返回登录
+        <p>Account session unavailable. Redirecting to the public EPIX page...</p>
+        <button onClick={() => router.replace("/")} type="button">
+          Return home
         </button>
       </main>
     );
@@ -628,6 +657,41 @@ export default function WaybillUploadsPage() {
             </button>
           </div>
         </form>
+
+        {uploadErrorDialog && (
+          <div className={styles.dialogBackdrop} role="presentation">
+            <section
+              aria-labelledby="upload-error-title"
+              aria-modal="true"
+              className={styles.errorDialog}
+              role="dialog"
+            >
+              <div className={styles.dialogHeader}>
+                <span className={styles.dialogIcon}>
+                  <AlertTriangle aria-hidden="true" size={22} />
+                </span>
+                <div>
+                  <p className={styles.eyebrow}>Upload validation</p>
+                  <h3 id="upload-error-title">{uploadErrorDialog.title}</h3>
+                </div>
+                <button
+                  aria-label="Close upload error"
+                  className={styles.dialogClose}
+                  onClick={() => setUploadErrorDialog(null)}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={18} />
+                </button>
+              </div>
+              <p className={styles.dialogMessage}>{uploadErrorDialog.message}</p>
+              <div className={styles.dialogFooter}>
+                <button onClick={() => setUploadErrorDialog(null)} type="button">
+                  我知道了
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         <section className={styles.uploadList}>
           <div className={styles.listHeader}>

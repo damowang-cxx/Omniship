@@ -86,4 +86,14 @@ describe("UsersPage", () => {
       });
     });
   });
+
+  it("redirects unauthenticated users to the public landing page", async () => {
+    apiMock.getCurrentUser.mockRejectedValueOnce(new Error("Request failed with 401"));
+
+    render(<UsersPage />);
+
+    await waitFor(() => {
+      expect(routerMock.replace).toHaveBeenCalledWith("/");
+    });
+  });
 });

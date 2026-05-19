@@ -66,7 +66,7 @@ export default function AirWaybillDetailPage() {
         if (isUnauthorizedError(error)) {
           setAuthError("登录状态已失效");
           setAuthState("ready");
-          router.replace("/login");
+          router.replace("/");
           return;
         }
         if (!userLoaded) {
@@ -74,7 +74,7 @@ export default function AirWaybillDetailPage() {
             error instanceof Error ? error.message : "无法加载账号信息"
           );
           setAuthState("ready");
-          router.replace("/login");
+          router.replace("/");
           return;
         }
         setLoadState("error");
@@ -90,7 +90,7 @@ export default function AirWaybillDetailPage() {
 
   const handleLogout = useCallback(async () => {
     await logout();
-    router.replace("/login");
+    router.replace("/");
   }, [router]);
 
   const openInfoCenter = useCallback(() => {
@@ -105,9 +105,9 @@ export default function AirWaybillDetailPage() {
   if (authError || !currentUser) {
     return (
       <main className={styles.loadingPage}>
-        <p>账号信息加载失败，正在跳转登录页...</p>
-        <button onClick={() => router.replace("/login")} type="button">
-          返回登录
+        <p>Account session unavailable. Redirecting to the public EPIX page...</p>
+        <button onClick={() => router.replace("/")} type="button">
+          Return home
         </button>
       </main>
     );

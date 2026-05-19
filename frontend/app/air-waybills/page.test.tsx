@@ -194,13 +194,13 @@ describe("AirWaybillsPage", () => {
     expect(screen.queryByText("WB-01")).not.toBeInTheDocument();
   });
 
-  it("redirects unauthenticated users to login", async () => {
+  it("redirects unauthenticated users to the public landing page", async () => {
     apiMock.getCurrentUser.mockRejectedValueOnce(new Error("Request failed with 401"));
 
     render(<AirWaybillsPage />);
 
     await waitFor(() => {
-      expect(routerMock.replace).toHaveBeenCalledWith("/login");
+      expect(routerMock.replace).toHaveBeenCalledWith("/");
     });
   });
 });
