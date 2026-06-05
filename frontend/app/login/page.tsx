@@ -17,7 +17,7 @@ export default function LoginPage() {
     async function redirectIfLoggedIn() {
       try {
         await getCurrentUser();
-        router.replace("/air-waybills");
+        router.replace("/waybill-uploads");
       } catch {
         // Stay on login page when there is no active session.
       }
@@ -33,7 +33,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.replace("/air-waybills");
+      router.replace("/waybill-uploads");
     } catch {
       setErrorMessage("邮箱或密码不正确，或账号已被禁用。");
     } finally {

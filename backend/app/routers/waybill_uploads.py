@@ -11,8 +11,6 @@ from app.schemas.waybill_upload import (
     WaybillPreAlertUploadResponse,
     WaybillUploadDeleteResponse,
     WaybillUploadListResponse,
-    WaybillUploadRequest,
-    WaybillUploadResponse,
     WaybillUploadStatusUpdateRequest,
     WaybillUploadItem,
 )
@@ -29,10 +27,6 @@ router = APIRouter(prefix="/api/v1/waybill-uploads", tags=["waybill-uploads"])
 @router.get("", response_model=WaybillUploadListResponse)
 def list_waybill_uploads(
     user_id: UUID | None = Query(default=None, alias="userId"),
-    platform_submission_status: str | None = Query(
-        default=None,
-        alias="platformSubmissionStatus",
-    ),
     upload_status: str | None = Query(default=None, alias="status"),
     query: str | None = Query(default=None, alias="q"),
     db: Session = Depends(get_db),
@@ -42,7 +36,6 @@ def list_waybill_uploads(
         return WaybillUploadService(db).list_uploads(
             current_user,
             user_id=user_id,
-            platform_submission_status=platform_submission_status,
             status=upload_status,
             query=query,
         )
@@ -50,26 +43,11 @@ def list_waybill_uploads(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("", response_model=WaybillUploadResponse, status_code=status.HTTP_201_CREATED)
-def upload_waybill_numbers(
-    payload: WaybillUploadRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> WaybillUploadResponse:
-    return WaybillUploadService(db).bind_numbers(
-        actor=current_user,
-        numbers=payload.numbers,
-        request=request,
-    )
-
-
 async def _create_pre_alert_upload(
     *,
     request: Request,
     db: Session,
     current_user: User,
-    platform: str,
     shipment_type: str,
     air_waybill_number: str,
     gross_weight_kg: str,
@@ -83,7 +61,6 @@ async def _create_pre_alert_upload(
         return await WaybillUploadService(db).create_pre_alert_upload(
             actor=current_user,
             request=request,
-            platform=platform,
             shipment_type=shipment_type,
             air_waybill_number=air_waybill_number,
             gross_weight_kg=gross_weight_kg,
@@ -106,7 +83,6 @@ async def _create_pre_alert_upload(
 )
 async def upload_pre_alert_file(
     request: Request,
-    platform: str = Form(...),
     shipment_type: str = Form(..., alias="shipmentType"),
     air_waybill_number: str = Form(..., alias="airWaybillNumber"),
     gross_weight_kg: str = Form(..., alias="grossWeightKg"),
@@ -122,7 +98,6 @@ async def upload_pre_alert_file(
         request=request,
         db=db,
         current_user=current_user,
-        platform=platform,
         shipment_type=shipment_type,
         air_waybill_number=air_waybill_number,
         gross_weight_kg=gross_weight_kg,
@@ -141,7 +116,6 @@ async def upload_pre_alert_file(
 )
 async def upload_pre_alert(
     request: Request,
-    platform: str = Form(...),
     shipment_type: str = Form(..., alias="shipmentType"),
     air_waybill_number: str = Form(..., alias="airWaybillNumber"),
     gross_weight_kg: str = Form(..., alias="grossWeightKg"),
@@ -157,7 +131,6 @@ async def upload_pre_alert(
         request=request,
         db=db,
         current_user=current_user,
-        platform=platform,
         shipment_type=shipment_type,
         air_waybill_number=air_waybill_number,
         gross_weight_kg=gross_weight_kg,
@@ -186,27 +159,6 @@ def update_waybill_upload_status(
         )
     except WaybillUploadValidationError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-
-@router.post("/{upload_id}/manual-submit", response_model=WaybillUploadItem)
-def manual_submit_waybill_upload(
-    upload_id: UUID,
-    request: Request,
-    force: bool = Query(default=False),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> WaybillUploadItem:
-    try:
-        return WaybillUploadService(db).manual_submit(
-            actor=current_user,
-            upload_id=upload_id,
-            force=force,
-            request=request,
-        )
-    except WaybillUploadPermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except WaybillUploadValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/{upload_id}/files/{file_id}/download")

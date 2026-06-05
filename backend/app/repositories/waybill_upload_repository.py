@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -5,7 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import WaybillUpload, WaybillUploadFile
-from app.repositories.waybill_user_binding_repository import normalize_waybill_number
+
+
+def normalize_waybill_number(number: str) -> str:
+    return re.sub(r"[-\s]", "", number.strip().lower())
 
 
 class WaybillUploadRepository:
@@ -21,54 +25,28 @@ class WaybillUploadRepository:
         )
         return self.db.execute(statement).unique().scalar_one_or_none()
 
-    def get_successful_by_normalized_number(self, number: str) -> WaybillUpload | None:
-        normalized = normalize_waybill_number(number)
-        statement = (
-            select(WaybillUpload)
-            .where(
-                WaybillUpload.normalized_air_waybill_number == normalized,
-                WaybillUpload.platform_submission_status == "success",
-            )
-            .order_by(WaybillUpload.created_at.desc(), WaybillUpload.id.desc())
-            .limit(1)
-        )
-        return self.db.execute(statement).scalar_one_or_none()
-
     def list_for_user(
         self,
         user_id: UUID,
         *,
-        platform_submission_status: str | None = None,
         status: str | None = None,
         query: str | None = None,
     ) -> list[WaybillUpload]:
-        return self.list(
-            user_id=user_id,
-            platform_submission_status=platform_submission_status,
-            status=status,
-            query=query,
-        )
+        return self.list(user_id=user_id, status=status, query=query)
 
     def list_all(
         self,
         *,
         user_id: UUID | None = None,
-        platform_submission_status: str | None = None,
         status: str | None = None,
         query: str | None = None,
     ) -> list[WaybillUpload]:
-        return self.list(
-            user_id=user_id,
-            platform_submission_status=platform_submission_status,
-            status=status,
-            query=query,
-        )
+        return self.list(user_id=user_id, status=status, query=query)
 
     def list(
         self,
         *,
         user_id: UUID | None = None,
-        platform_submission_status: str | None = None,
         status: str | None = None,
         query: str | None = None,
     ) -> list[WaybillUpload]:
@@ -78,10 +56,6 @@ class WaybillUploadRepository:
         )
         if user_id is not None:
             statement = statement.where(WaybillUpload.user_id == user_id)
-        if platform_submission_status:
-            statement = statement.where(
-                WaybillUpload.platform_submission_status == platform_submission_status
-            )
         if status:
             statement = statement.where(WaybillUpload.status == status)
         if query:
@@ -103,7 +77,6 @@ class WaybillUploadRepository:
         *,
         user_id: UUID,
         uploaded_by_user_id: UUID,
-        platform: str,
         shipment_type: str,
         air_waybill_number: str,
         gross_weight_kg,
@@ -113,7 +86,6 @@ class WaybillUploadRepository:
         upload = WaybillUpload(
             user_id=user_id,
             uploaded_by_user_id=uploaded_by_user_id,
-            platform=platform,
             shipment_type=shipment_type,
             air_waybill_number=air_waybill_number,
             normalized_air_waybill_number=normalize_waybill_number(
@@ -162,23 +134,6 @@ class WaybillUploadRepository:
         upload.status = status
         upload.reviewed_by_user_id = reviewed_by_user_id
         upload.reviewed_at = datetime.now(timezone.utc)
-        self.db.flush()
-        return upload
-
-    def update_platform_submission(
-        self,
-        *,
-        upload: WaybillUpload,
-        status: str,
-        error_message: str | None = None,
-        method: str = "automated",
-    ) -> WaybillUpload:
-        upload.platform_submission_status = status
-        upload.platform_submission_method = method
-        upload.platform_submission_error = error_message
-        upload.platform_submitted_at = (
-            datetime.now(timezone.utc) if status == "success" else None
-        )
         self.db.flush()
         return upload
 

@@ -1,10 +1,6 @@
 import type {
-  AirWaybillDetailResponse,
-  AirWaybillLatestResponse,
   AppUser,
   AuthUserResponse,
-  ScrapeRunSummary,
-  ScrapeStatusResponse,
   UserCreateRequest,
   UserListResponse,
   WaybillUploadItem,
@@ -13,13 +9,12 @@ import type {
   WaybillPreAlertUploadPayload,
   WaybillPreAlertUploadResponse,
   WaybillUploadListResponse,
-  WaybillUploadStatus,
-  WaybillUploadResponse
+  WaybillUploadStatus
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const AUTH_REQUEST_TIMEOUT_MS = 5_000;
-const PLATFORM_UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
 
 type JsonRequestInit = RequestInit & {
   timeoutMs?: number;
@@ -136,46 +131,6 @@ async function requestJson<T>(path: string, init?: JsonRequestInit): Promise<T> 
   return response.json() as Promise<T>;
 }
 
-export function getLatestAirWaybills(): Promise<AirWaybillLatestResponse> {
-  return requestJson<AirWaybillLatestResponse>("/api/v1/air-waybills/latest");
-}
-
-export function getScrapeStatus(): Promise<ScrapeStatusResponse> {
-  return requestJson<ScrapeStatusResponse>("/api/v1/air-waybills/scrape-status");
-}
-
-export function triggerAirWaybillScrape(): Promise<ScrapeRunSummary> {
-  return requestJson<ScrapeRunSummary>("/api/v1/air-waybills/scrape", {
-    method: "POST"
-  });
-}
-
-export function triggerAirWaybillRefresh(): Promise<ScrapeRunSummary> {
-  return requestJson<ScrapeRunSummary>("/api/v1/air-waybills/refresh", {
-    method: "POST"
-  });
-}
-
-export function triggerAirWaybillFullRefresh(): Promise<ScrapeRunSummary> {
-  return requestJson<ScrapeRunSummary>("/api/v1/air-waybills/full-refresh", {
-    method: "POST"
-  });
-}
-
-export function getAirWaybillScrapeRun(
-  runId: string
-): Promise<ScrapeRunSummary> {
-  return requestJson<ScrapeRunSummary>(`/api/v1/air-waybills/scrape-runs/${runId}`);
-}
-
-export function getAirWaybillDetail(
-  number: string
-): Promise<AirWaybillDetailResponse> {
-  return requestJson<AirWaybillDetailResponse>(
-    `/api/v1/air-waybills/${encodeURIComponent(number)}`
-  );
-}
-
 export function login(email: string, password: string): Promise<AuthUserResponse> {
   return requestJson<AuthUserResponse>("/api/v1/auth/login", {
     method: "POST",
@@ -228,24 +183,12 @@ export function resetUserPassword(
   });
 }
 
-export function uploadWaybillNumbers(
-  numbers: string[]
-): Promise<WaybillUploadResponse> {
-  return requestJson<WaybillUploadResponse>("/api/v1/waybill-uploads", {
-    method: "POST",
-    body: JSON.stringify({ numbers })
-  });
-}
-
 export function listWaybillUploads(
   filters?: WaybillUploadFilters
 ): Promise<WaybillUploadListResponse> {
   const params = new URLSearchParams();
   if (filters?.userId) {
     params.set("userId", filters.userId);
-  }
-  if (filters?.platformSubmissionStatus) {
-    params.set("platformSubmissionStatus", filters.platformSubmissionStatus);
   }
   if (filters?.status) {
     params.set("status", filters.status);
@@ -264,7 +207,6 @@ export function uploadPreAlertFile(
   payload: WaybillPreAlertUploadPayload
 ): Promise<WaybillPreAlertUploadResponse> {
   const formData = new FormData();
-  formData.append("platform", payload.platform);
   formData.append("shipmentType", payload.shipmentType);
   formData.append("airWaybillNumber", payload.airWaybillNumber);
   formData.append("grossWeightKg", payload.grossWeightKg);
@@ -283,9 +225,9 @@ export function uploadPreAlertFile(
   return requestJson<WaybillPreAlertUploadResponse>("/api/v1/waybill-uploads/file", {
     method: "POST",
     body: formData,
-    timeoutMs: PLATFORM_UPLOAD_REQUEST_TIMEOUT_MS,
+    timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
     timeoutMessage:
-      "ALLINE upload is taking longer than expected. Please keep the backend running and check the upload list for the platform submission status."
+      "Upload is taking longer than expected. Please keep the backend running and check the upload list."
   });
 }
 
@@ -309,18 +251,6 @@ export function deleteWaybillUpload(
     `/api/v1/waybill-uploads/${uploadId}`,
     {
       method: "DELETE"
-    }
-  );
-}
-
-export function manualSubmitWaybillUpload(
-  uploadId: string,
-  force = false
-): Promise<WaybillUploadItem> {
-  return requestJson<WaybillUploadItem>(
-    `/api/v1/waybill-uploads/${uploadId}/manual-submit${force ? "?force=true" : ""}`,
-    {
-      method: "POST"
     }
   );
 }

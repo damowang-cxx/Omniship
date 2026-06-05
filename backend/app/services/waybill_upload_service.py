@@ -14,9 +14,8 @@ from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import User, WaybillUpload, WaybillUploadFile
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.user_repository import UserRepository
-from app.repositories.waybill_upload_repository import WaybillUploadRepository
-from app.repositories.waybill_user_binding_repository import (
-    WaybillUserBindingRepository,
+from app.repositories.waybill_upload_repository import (
+    WaybillUploadRepository,
     normalize_waybill_number,
 )
 from app.schemas.waybill_upload import (
@@ -24,11 +23,6 @@ from app.schemas.waybill_upload import (
     WaybillUploadDeleteResponse,
     WaybillUploadItem,
     WaybillUploadListResponse,
-    WaybillUploadResponse,
-)
-from app.services.alline_waybill_uploader import (
-    AllineWaybillUploadError,
-    AllineWaybillUploader,
 )
 from app.services.pre_alert_validator import (
     PreAlertValidationError,
@@ -38,9 +32,7 @@ from app.services.request_context import get_request_ip, get_request_user_agent
 
 
 SHIPMENT_TYPES = {"Air", "Road", "Train"}
-UPLOAD_PLATFORMS = {"ALLINE"}
 UPLOAD_STATUSES = {"pending_review", "approved", "rejected"}
-PLATFORM_SUBMISSION_STATUSES = {"pending", "success", "failed"}
 PDF_MAX_BYTES = 10 * 1024 * 1024
 PRE_ALERT_MAX_BYTES = 20 * 1024 * 1024
 PDF_EXTENSIONS = {".pdf"}
@@ -61,7 +53,6 @@ class WaybillUploadService:
     def __init__(self, db: Session, settings: Settings | None = None):
         self.db = db
         self.settings = settings or get_settings()
-        self.bindings = WaybillUserBindingRepository(db)
         self.uploads = WaybillUploadRepository(db)
         self.users = UserRepository(db)
         self.audit_logs = AuditLogRepository(db)
@@ -71,29 +62,21 @@ class WaybillUploadService:
         actor: User,
         *,
         user_id: UUID | None = None,
-        platform_submission_status: str | None = None,
         status: str | None = None,
         query: str | None = None,
     ) -> WaybillUploadListResponse:
-        if (
-            platform_submission_status
-            and platform_submission_status not in PLATFORM_SUBMISSION_STATUSES
-        ):
-            raise WaybillUploadValidationError("Platform submission status is invalid")
         if status and status not in UPLOAD_STATUSES:
             raise WaybillUploadValidationError("Upload status is invalid")
 
         uploads = (
             self.uploads.list_all(
                 user_id=user_id,
-                platform_submission_status=platform_submission_status,
                 status=status,
                 query=query,
             )
             if actor.role == "admin"
             else self.uploads.list_for_user(
                 actor.id,
-                platform_submission_status=platform_submission_status,
                 status=status,
                 query=query,
             )
@@ -102,44 +85,11 @@ class WaybillUploadService:
             items=[WaybillUploadItem.model_validate(upload) for upload in uploads]
         )
 
-    def bind_numbers(
-        self,
-        *,
-        actor: User,
-        numbers: list[str],
-        request: Request,
-    ) -> WaybillUploadResponse:
-        created, skipped_count = self.bindings.create_many(
-            user_id=actor.id,
-            numbers=numbers,
-            created_by_user_id=actor.id,
-            source="upload",
-        )
-        self.audit_logs.create(
-            "upload_waybill_numbers",
-            actor_user_id=actor.id,
-            target_type="waybill_user_binding",
-            target_id=str(actor.id),
-            ip_address=get_request_ip(request),
-            user_agent=get_request_user_agent(request),
-            metadata={
-                "boundCount": len(created),
-                "skippedCount": skipped_count,
-            },
-        )
-        self.db.commit()
-        return WaybillUploadResponse(
-            bound_count=len(created),
-            skipped_count=skipped_count,
-            numbers=[binding.number for binding in created],
-        )
-
     async def create_pre_alert_upload(
         self,
         *,
         actor: User,
         request: Request,
-        platform: str,
         shipment_type: str,
         air_waybill_number: str,
         gross_weight_kg: str,
@@ -150,12 +100,8 @@ class WaybillUploadService:
         target_user_id: UUID | None = None,
     ) -> WaybillPreAlertUploadResponse:
         target_user = self._resolve_target_user(actor, target_user_id)
-        platform = self._validate_platform(platform)
         shipment_type = self._validate_shipment_type(shipment_type)
-        air_waybill_number = self._validate_air_waybill_number(
-            air_waybill_number,
-            target_user,
-        )
+        air_waybill_number = self._validate_air_waybill_number(air_waybill_number)
         gross_weight = self._parse_positive_decimal(
             gross_weight_kg,
             "Air Waybill Gross Weight (KG)",
@@ -182,7 +128,6 @@ class WaybillUploadService:
         upload = self.uploads.create(
             user_id=target_user.id,
             uploaded_by_user_id=actor.id,
-            platform=platform,
             shipment_type=shipment_type,
             air_waybill_number=air_waybill_number,
             gross_weight_kg=gross_weight,
@@ -215,7 +160,6 @@ class WaybillUploadService:
                 metadata={
                     "airWaybillNumber": air_waybill_number,
                     "boundUserId": str(target_user.id),
-                    "platform": platform,
                     "shipmentType": shipment_type,
                 },
             )
@@ -226,8 +170,10 @@ class WaybillUploadService:
                 Path(saved_file["storage_path"]).unlink(missing_ok=True)
             raise
 
-        final_upload = await self._submit_to_platform(upload.id, request)
-        return self._build_pre_alert_response(final_upload)
+        refreshed_upload = self.uploads.get_by_id(upload.id)
+        if refreshed_upload is None:
+            raise WaybillUploadValidationError("Waybill upload not found")
+        return self._build_pre_alert_response(refreshed_upload)
 
     def update_status(
         self,
@@ -284,13 +230,6 @@ class WaybillUploadService:
             raise WaybillUploadPermissionError("Cannot delete another user's upload")
 
         file_paths = [file.storage_path for file in upload.files]
-        removed_binding_count = 0
-        if upload.platform_submission_status == "success":
-            removed_binding_count = self.bindings.delete_for_user_number_source(
-                user_id=upload.user_id,
-                number=upload.air_waybill_number,
-                source="pre_alert_upload",
-            )
 
         self.audit_logs.create(
             "delete_waybill_upload",
@@ -300,10 +239,8 @@ class WaybillUploadService:
             ip_address=get_request_ip(request),
             user_agent=get_request_user_agent(request),
             metadata={
-                "platform": upload.platform,
                 "airWaybillNumber": upload.air_waybill_number,
                 "boundUserId": str(upload.user_id),
-                "removedBinding": bool(removed_binding_count),
                 "localOnly": True,
             },
         )
@@ -313,64 +250,7 @@ class WaybillUploadService:
         return WaybillUploadDeleteResponse(
             status="deleted",
             upload_id=upload_id,
-            removed_binding=bool(removed_binding_count),
         )
-
-    def manual_submit(
-        self,
-        *,
-        actor: User,
-        upload_id: UUID,
-        force: bool,
-        request: Request,
-    ) -> WaybillUploadItem:
-        if actor.role != "admin":
-            raise WaybillUploadPermissionError("Admin permission required")
-
-        upload = self.uploads.get_by_id(upload_id)
-        if upload is None:
-            raise WaybillUploadValidationError("Waybill upload not found")
-        if upload.platform_submission_status == "success" and not force:
-            raise WaybillUploadValidationError(
-                "Upload already succeeded; force=true is required"
-            )
-
-        existing_binding = self.bindings.get_any_binding(upload.air_waybill_number)
-        if existing_binding is not None and existing_binding.user_id != upload.user_id:
-            raise WaybillUploadValidationError(
-                "This Air Waybill Number is already bound to another user"
-            )
-
-        upload = self.uploads.update_platform_submission(
-            upload=upload,
-            status="success",
-            method="manual",
-        )
-        self.bindings.create_many(
-            user_id=upload.user_id,
-            numbers=[upload.air_waybill_number],
-            created_by_user_id=actor.id,
-            source="pre_alert_upload",
-        )
-        self.audit_logs.create(
-            "manual_platform_upload_success",
-            actor_user_id=actor.id,
-            target_type="waybill_upload",
-            target_id=str(upload.id),
-            ip_address=get_request_ip(request),
-            user_agent=get_request_user_agent(request),
-            metadata={
-                "platform": upload.platform,
-                "airWaybillNumber": upload.air_waybill_number,
-                "boundUserId": str(upload.user_id),
-                "force": force,
-            },
-        )
-        self.db.commit()
-        refreshed_upload = self.uploads.get_by_id(upload.id)
-        if refreshed_upload is None:
-            raise WaybillUploadValidationError("Waybill upload not found")
-        return WaybillUploadItem.model_validate(refreshed_upload)
 
     def get_download_file(
         self,
@@ -409,93 +289,16 @@ class WaybillUploadService:
         self.db.commit()
         return file
 
-    async def _submit_to_platform(
-        self,
-        upload_id: UUID,
-        request: Request,
-    ) -> WaybillUpload:
-        upload = self.uploads.get_by_id(upload_id)
-        if upload is None:
-            raise WaybillUploadValidationError("Waybill upload not found")
-
-        if upload.platform != "ALLINE":
-            raise WaybillUploadValidationError("Platform is invalid")
-
-        try:
-            await AllineWaybillUploader(self.settings).submit_upload(upload)
-            upload = self.uploads.update_platform_submission(
-                upload=upload,
-                status="success",
-                method="automated",
-            )
-            self.bindings.create_many(
-                user_id=upload.user_id,
-                numbers=[upload.air_waybill_number],
-                created_by_user_id=upload.uploaded_by_user_id,
-                source="pre_alert_upload",
-            )
-            self.audit_logs.create(
-                "platform_upload_success",
-                actor_user_id=upload.uploaded_by_user_id,
-                target_type="waybill_upload",
-                target_id=str(upload.id),
-                ip_address=get_request_ip(request),
-                user_agent=get_request_user_agent(request),
-                metadata={
-                    "platform": upload.platform,
-                    "airWaybillNumber": upload.air_waybill_number,
-                },
-            )
-        except AllineWaybillUploadError as exc:
-            error_message = self._sanitize_platform_error(str(exc))
-            upload = self.uploads.update_platform_submission(
-                upload=upload,
-                status="failed",
-                error_message=error_message,
-                method="automated",
-            )
-            self.audit_logs.create(
-                "platform_upload_failed",
-                actor_user_id=upload.uploaded_by_user_id,
-                target_type="waybill_upload",
-                target_id=str(upload.id),
-                ip_address=get_request_ip(request),
-                user_agent=get_request_user_agent(request),
-                metadata={
-                    "platform": upload.platform,
-                    "airWaybillNumber": upload.air_waybill_number,
-                    "error": error_message,
-                },
-            )
-
-        self.db.commit()
-        refreshed_upload = self.uploads.get_by_id(upload_id)
-        if refreshed_upload is None:
-            raise WaybillUploadValidationError("Waybill upload not found")
-        return refreshed_upload
-
     def _build_pre_alert_response(
         self,
         upload: WaybillUpload,
     ) -> WaybillPreAlertUploadResponse:
         return WaybillPreAlertUploadResponse(
             upload_id=upload.id,
-            platform=upload.platform,
             air_waybill_number=upload.air_waybill_number,
             status=upload.status,
-            platform_submission_status=upload.platform_submission_status,
-            platform_submission_method=upload.platform_submission_method,
-            platform_submission_error=upload.platform_submission_error,
-            platform_submitted_at=upload.platform_submitted_at,
             bound_user_id=upload.user_id,
         )
-
-    def _sanitize_platform_error(self, message: str) -> str:
-        cleaned = message
-        for secret in [self.settings.omniship_password, self.settings.omniship_username]:
-            if secret:
-                cleaned = cleaned.replace(secret, "[redacted]")
-        return cleaned[:1000]
 
     def _validate_pre_alert_file(self, file_payload: dict) -> None:
         try:
@@ -519,34 +322,18 @@ class WaybillUploadService:
             raise WaybillUploadValidationError("Target user is disabled")
         return user
 
-    def _validate_platform(self, value: str) -> str:
-        platform = value.strip().upper()
-        if platform not in UPLOAD_PLATFORMS:
-            raise WaybillUploadValidationError("Platform is invalid")
-        return platform
-
     def _validate_shipment_type(self, value: str) -> str:
         shipment_type = value.strip()
         if shipment_type not in SHIPMENT_TYPES:
             raise WaybillUploadValidationError("Shipment Type is invalid")
         return shipment_type
 
-    def _validate_air_waybill_number(self, value: str, target_user: User) -> str:
+    def _validate_air_waybill_number(self, value: str) -> str:
         number = value.strip()
         if not number:
             raise WaybillUploadValidationError("Air Waybill Number is required")
         if not normalize_waybill_number(number):
             raise WaybillUploadValidationError("Air Waybill Number is invalid")
-        if self.uploads.get_successful_by_normalized_number(number) is not None:
-            raise WaybillUploadValidationError(
-                "This Air Waybill Number has already been uploaded"
-            )
-
-        existing_binding = self.bindings.get_any_binding(number)
-        if existing_binding is not None and existing_binding.user_id != target_user.id:
-            raise WaybillUploadValidationError(
-                "This Air Waybill Number is already bound to another user"
-            )
         return number
 
     def _parse_positive_decimal(self, value: str, label: str) -> Decimal:

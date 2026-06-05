@@ -43,7 +43,7 @@ describe("LandingPage", () => {
     });
   });
 
-  it("redirects logged-in users to Waybills", async () => {
+  it("redirects logged-in users to uploads", async () => {
     apiMock.getCurrentUser.mockResolvedValueOnce({
       user: {
         id: "admin-id",
@@ -57,7 +57,7 @@ describe("LandingPage", () => {
     render(<LandingPage />);
 
     await waitFor(() => {
-      expect(routerMock.replace).toHaveBeenCalledWith("/air-waybills");
+      expect(routerMock.replace).toHaveBeenCalledWith("/waybill-uploads");
     });
   });
 });

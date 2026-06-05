@@ -1,78 +1,3 @@
-export type ScrapeRunStatus = "running" | "success" | "failed";
-
-export interface ScrapeRunSummary {
-  runId: string;
-  status: ScrapeRunStatus;
-  mode?: "full" | "incremental" | string;
-  rowCount: number;
-  totalCount?: number;
-  processedCount?: number;
-  insertedCount?: number;
-  updatedCount?: number;
-  skippedCount?: number;
-  detailFailedCount?: number;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  errorMessage?: string | null;
-}
-
-export interface AirWaybillItem {
-  number: string;
-  status?: string | null;
-  weightKgRaw?: string | null;
-  receivedRaw?: string | null;
-  parcelsRaw?: string | null;
-  inWarehouseRaw?: string | null;
-  releasedRaw?: string | null;
-  outboundRaw?: string | null;
-  actionsRaw?: string | null;
-  actionHref?: string | null;
-}
-
-export interface AirWaybillLatestResponse {
-  latestRun: ScrapeRunSummary | null;
-  items: AirWaybillItem[];
-}
-
-export interface ScrapeStatusResponse {
-  latestRun: ScrapeRunSummary | null;
-}
-
-export interface AirWaybillDetailItem {
-  waybillNumber: string;
-  waybillStatus?: string | null;
-  uploadedOnRaw?: string | null;
-  dateReceivedRaw?: string | null;
-  airlineRaw?: string | null;
-  incomingFlightRaw?: string | null;
-  arrivedRaw?: string | null;
-  groundHandlerRaw?: string | null;
-  brokerRaw?: string | null;
-  unitsRaw?: string | null;
-  unitsInboundRaw?: string | null;
-  unitsOutboundRaw?: string | null;
-  preAlertWeightRaw?: string | null;
-  grossWeightRaw?: string | null;
-  oddSizedRaw?: string | null;
-  scrapedAt?: string | null;
-}
-
-export interface AirWaybillDestinationItem {
-  name: string;
-  country?: string | null;
-  unitsReceivedRaw?: string | null;
-  unitsOutboundRaw?: string | null;
-  totalWeightRaw?: string | null;
-  releasedRaw?: string | null;
-  sortOrder: number;
-}
-
-export interface AirWaybillDetailResponse {
-  summary: AirWaybillItem;
-  detail: AirWaybillDetailItem | null;
-  destinations: AirWaybillDestinationItem[];
-}
-
 export type UserRole = "admin" | "user";
 export type UserStatus = "active" | "disabled";
 
@@ -101,20 +26,10 @@ export interface UserCreateRequest {
   password: string;
 }
 
-export interface WaybillUploadResponse {
-  boundCount: number;
-  skippedCount: number;
-  numbers: string[];
-}
-
 export type ShipmentType = "Air" | "Road" | "Train";
-export type UploadPlatform = "ALLINE";
-export type PlatformSubmissionStatus = "pending" | "success" | "failed";
-export type PlatformSubmissionMethod = "automated" | "manual";
 export type WaybillUploadStatus = "pending_review" | "approved" | "rejected";
 
 export interface WaybillPreAlertUploadPayload {
-  platform: UploadPlatform;
   shipmentType: ShipmentType;
   airWaybillNumber: string;
   grossWeightKg: string;
@@ -127,13 +42,8 @@ export interface WaybillPreAlertUploadPayload {
 
 export interface WaybillPreAlertUploadResponse {
   uploadId: string;
-  platform: UploadPlatform;
   airWaybillNumber: string;
   status: WaybillUploadStatus;
-  platformSubmissionStatus: PlatformSubmissionStatus;
-  platformSubmissionMethod: PlatformSubmissionMethod;
-  platformSubmissionError?: string | null;
-  platformSubmittedAt?: string | null;
   boundUserId: string;
 }
 
@@ -157,17 +67,12 @@ export interface WaybillUploadItem {
   id: string;
   userId: string;
   uploadedByUserId?: string | null;
-  platform: UploadPlatform;
   shipmentType: ShipmentType;
   airWaybillNumber: string;
   grossWeightKg: string;
   pieces: number;
   arrivalFlightNumber?: string | null;
   status: WaybillUploadStatus;
-  platformSubmissionStatus: PlatformSubmissionStatus;
-  platformSubmissionMethod: PlatformSubmissionMethod;
-  platformSubmissionError?: string | null;
-  platformSubmittedAt?: string | null;
   reviewedByUserId?: string | null;
   reviewedAt?: string | null;
   createdAt: string;
@@ -182,7 +87,6 @@ export interface WaybillUploadListResponse {
 
 export interface WaybillUploadFilters {
   userId?: string;
-  platformSubmissionStatus?: PlatformSubmissionStatus | "";
   status?: WaybillUploadStatus | "";
   q?: string;
 }
@@ -190,5 +94,4 @@ export interface WaybillUploadFilters {
 export interface WaybillUploadDeleteResponse {
   status: "deleted";
   uploadId: string;
-  removedBinding: boolean;
 }

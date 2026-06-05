@@ -11,13 +11,13 @@ const BACKEND_API_BASE_URL = (
 const DEFAULT_PROXY_TIMEOUT_MS = Number(
   process.env.FRONTEND_API_PROXY_TIMEOUT_MS ?? 30_000
 );
-const PLATFORM_UPLOAD_PROXY_TIMEOUT_MS = Number(
-  process.env.FRONTEND_PLATFORM_UPLOAD_PROXY_TIMEOUT_MS ?? 10 * 60 * 1000
+const UPLOAD_PROXY_TIMEOUT_MS = Number(
+  process.env.FRONTEND_UPLOAD_PROXY_TIMEOUT_MS ?? 60_000
 );
 
 function getProxyTimeoutMs(path: string[], method: string) {
   if (method === "POST" && path.join("/") === "waybill-uploads/file") {
-    return PLATFORM_UPLOAD_PROXY_TIMEOUT_MS;
+    return UPLOAD_PROXY_TIMEOUT_MS;
   }
   return DEFAULT_PROXY_TIMEOUT_MS;
 }

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Check,
-  CheckCircle2,
   Download,
   Eye,
   FileSpreadsheet,
@@ -23,15 +22,12 @@ import {
   listUsers,
   listWaybillUploads,
   logout,
-  manualSubmitWaybillUpload,
   updateWaybillUploadStatus,
   uploadPreAlertFile
 } from "@/lib/api";
 import type {
   AppUser,
-  PlatformSubmissionStatus,
   ShipmentType,
-  UploadPlatform,
   WaybillUploadFilters,
   WaybillUploadItem,
   WaybillUploadStatus
@@ -43,7 +39,6 @@ const EXCEL_MAX_BYTES = 20 * 1024 * 1024;
 const EXCEL_EXTENSIONS = [".xls", ".xlsx"];
 
 const initialForm = {
-  platform: "ALLINE" as UploadPlatform,
   shipmentType: "Air" as ShipmentType,
   airWaybillNumber: "",
   grossWeightKg: "",
@@ -54,12 +49,10 @@ const initialForm = {
 
 const initialFilters: {
   userId: string;
-  platformSubmissionStatus: PlatformSubmissionStatus | "";
   status: WaybillUploadStatus | "";
   q: string;
 } = {
   userId: "",
-  platformSubmissionStatus: "",
   status: "",
   q: ""
 };
@@ -99,20 +92,6 @@ function statusLabel(status: WaybillUploadStatus) {
   return labels[status] ?? status;
 }
 
-function platformSubmissionLabel(
-  upload: Pick<WaybillUploadItem, "platformSubmissionStatus" | "platformSubmissionMethod">
-) {
-  if (upload.platformSubmissionStatus === "success" && upload.platformSubmissionMethod === "manual") {
-    return "Manually submitted";
-  }
-  const labels: Record<PlatformSubmissionStatus, string> = {
-    pending: "Pending",
-    success: "Submitted",
-    failed: "Failed"
-  };
-  return labels[upload.platformSubmissionStatus] ?? upload.platformSubmissionStatus;
-}
-
 function fileKindLabel(kind: string) {
   if (kind === "air_waybill_document") {
     return "Air Waybill Document";
@@ -150,7 +129,6 @@ export default function WaybillUploadsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingUploads, setIsLoadingUploads] = useState(false);
   const [deletingUploadId, setDeletingUploadId] = useState<string | null>(null);
-  const [manualSubmittingUploadId, setManualSubmittingUploadId] = useState<string | null>(null);
   const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -167,9 +145,6 @@ export default function WaybillUploadsPage() {
       filterValues: typeof initialFilters = filters
     ): WaybillUploadFilters => {
       const requestFilters: WaybillUploadFilters = {};
-      if (filterValues.platformSubmissionStatus) {
-        requestFilters.platformSubmissionStatus = filterValues.platformSubmissionStatus;
-      }
       if (filterValues.status) {
         requestFilters.status = filterValues.status;
       }
@@ -294,7 +269,6 @@ export default function WaybillUploadsPage() {
       setIsSubmitting(true);
       try {
         const response = await uploadPreAlertFile({
-          platform: form.platform,
           shipmentType: form.shipmentType,
           airWaybillNumber: form.airWaybillNumber.trim(),
           grossWeightKg: form.grossWeightKg.trim(),
@@ -305,13 +279,8 @@ export default function WaybillUploadsPage() {
           preAlertFile
         });
         setNotice({
-          tone: response.platformSubmissionStatus === "success" ? "success" : "error",
-          text:
-            response.platformSubmissionStatus === "success"
-              ? `Upload completed for ${response.airWaybillNumber}`
-              : `Local upload saved, but ALLINE submission failed: ${
-                  response.platformSubmissionError ?? "Unknown platform error"
-                }`
+          tone: "success",
+          text: `Upload saved for ${response.airWaybillNumber}`
         });
         setForm((current) => ({
           ...initialForm,
@@ -375,53 +344,10 @@ export default function WaybillUploadsPage() {
     await refreshUploads(currentUser, initialFilters);
   }, [currentUser, refreshUploads]);
 
-  const handleManualSubmit = useCallback(
-    async (upload: WaybillUploadItem) => {
-      let force = false;
-      if (upload.platformSubmissionStatus === "success") {
-        force = window.confirm(
-          "This upload is already submitted. Mark it as manually submitted and bind locally anyway?"
-        );
-        if (!force) {
-          return;
-        }
-      } else {
-        const confirmed = window.confirm(
-          `Confirm ${upload.airWaybillNumber} has been manually uploaded in ALLINE and bind it to ${upload.user?.email ?? "the upload owner"}?`
-        );
-        if (!confirmed) {
-          return;
-        }
-      }
-
-      setManualSubmittingUploadId(upload.id);
-      try {
-        const response = await manualSubmitWaybillUpload(upload.id, force);
-        setNotice({
-          tone: "success",
-          text: `${response.airWaybillNumber} marked as ${platformSubmissionLabel(response)}`
-        });
-        await refreshUploads();
-      } catch (error) {
-        if (isUnauthorizedError(error)) {
-          router.replace("/");
-          return;
-        }
-        setNotice({
-          tone: "error",
-          text: error instanceof Error ? error.message : "Unable to confirm manual upload"
-        });
-      } finally {
-        setManualSubmittingUploadId(null);
-      }
-    },
-    [refreshUploads, router]
-  );
-
   const handleDelete = useCallback(
     async (upload: WaybillUploadItem) => {
       const confirmed = window.confirm(
-        `Delete local upload record for ${upload.airWaybillNumber}? This will not delete anything in ALLINE.`
+        `Delete upload record for ${upload.airWaybillNumber}?`
       );
       if (!confirmed) {
         return;
@@ -429,12 +355,10 @@ export default function WaybillUploadsPage() {
 
       setDeletingUploadId(upload.id);
       try {
-        const response = await deleteWaybillUpload(upload.id);
+        await deleteWaybillUpload(upload.id);
         setNotice({
           tone: "success",
-          text: response.removedBinding
-            ? `Local upload and local Waybill binding deleted for ${upload.airWaybillNumber}`
-            : `Local upload deleted for ${upload.airWaybillNumber}`
+          text: `Upload deleted for ${upload.airWaybillNumber}`
         });
         await refreshUploads();
       } catch (error) {
@@ -505,21 +429,6 @@ export default function WaybillUploadsPage() {
           </div>
 
           <div className={styles.formGrid}>
-            <fieldset className={styles.radioGroup}>
-              <legend>Platform</legend>
-              {(["ALLINE"] as UploadPlatform[]).map((option) => (
-                <label key={option}>
-                  <input
-                    checked={form.platform === option}
-                    name="platform"
-                    onChange={() => setForm((current) => ({ ...current, platform: option }))}
-                    type="radio"
-                  />
-                  {option}
-                </label>
-              ))}
-            </fieldset>
-
             <fieldset className={styles.radioGroup}>
               <legend>Shipment Type</legend>
               {(["Air", "Road", "Train"] as ShipmentType[]).map((option) => (
@@ -724,24 +633,6 @@ export default function WaybillUploadsPage() {
                 </select>
               </label>
               <label className={styles.filterField}>
-                Platform Upload
-                <select
-                  aria-label="Filter Platform Upload"
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      platformSubmissionStatus: event.target.value as PlatformSubmissionStatus | ""
-                    }))
-                  }
-                  value={filters.platformSubmissionStatus}
-                >
-                  <option value="">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="success">Submitted</option>
-                  <option value="failed">Failed</option>
-                </select>
-              </label>
-              <label className={styles.filterField}>
                 Review Status
                 <select
                   aria-label="Filter Review Status"
@@ -787,8 +678,6 @@ export default function WaybillUploadsPage() {
                 <thead>
                   <tr>
                     <th>Number</th>
-                    <th>Platform</th>
-                    <th>Platform Upload</th>
                     <th>Type</th>
                     <th>Owner</th>
                     <th>Weight</th>
@@ -805,16 +694,6 @@ export default function WaybillUploadsPage() {
                     <Fragment key={upload.id}>
                       <tr>
                         <td>{upload.airWaybillNumber}</td>
-                        <td>{upload.platform}</td>
-                        <td>
-                          <span
-                            className={styles.statusPill}
-                            data-status={upload.platformSubmissionStatus}
-                            title={upload.platformSubmissionError ?? undefined}
-                          >
-                            {platformSubmissionLabel(upload)}
-                          </span>
-                        </td>
                         <td>{upload.shipmentType}</td>
                         <td>{upload.user?.email ?? "-"}</td>
                         <td>{upload.grossWeightKg}</td>
@@ -858,14 +737,6 @@ export default function WaybillUploadsPage() {
                                 >
                                   <X aria-hidden="true" size={15} />
                                 </button>
-                                <button
-                                  aria-label={`Manually submit ${upload.airWaybillNumber}`}
-                                  disabled={manualSubmittingUploadId === upload.id}
-                                  onClick={() => handleManualSubmit(upload)}
-                                  type="button"
-                                >
-                                  <CheckCircle2 aria-hidden="true" size={15} />
-                                </button>
                               </>
                             )}
                             <button
@@ -882,7 +753,7 @@ export default function WaybillUploadsPage() {
                       </tr>
                       {expandedUploadId === upload.id && (
                         <tr className={styles.detailRow}>
-                          <td colSpan={12}>
+                          <td colSpan={10}>
                             <div className={styles.detailPanel}>
                               <div className={styles.detailGrid}>
                                 <div>
@@ -890,25 +761,10 @@ export default function WaybillUploadsPage() {
                                   <strong>{upload.user?.email ?? upload.userId}</strong>
                                 </div>
                                 <div>
-                                  <span>Platform Method</span>
-                                  <strong>{upload.platformSubmissionMethod}</strong>
-                                </div>
-                                <div>
-                                  <span>Platform Submitted</span>
-                                  <strong>{formatDateTime(upload.platformSubmittedAt)}</strong>
-                                </div>
-                                <div>
                                   <span>Uploaded At</span>
                                   <strong>{formatDateTime(upload.createdAt)}</strong>
                                 </div>
                               </div>
-
-                              {upload.platformSubmissionError && (
-                                <div className={styles.errorBlock}>
-                                  <span>Failure reason</span>
-                                  <p>{upload.platformSubmissionError}</p>
-                                </div>
-                              )}
 
                               <div className={styles.fileLinks}>
                                 <span>Attachments</span>

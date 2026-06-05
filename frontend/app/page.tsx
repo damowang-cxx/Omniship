@@ -50,7 +50,7 @@ export default function LandingPage() {
     async function redirectIfLoggedIn() {
       try {
         await getCurrentUser();
-        router.replace("/air-waybills");
+        router.replace("/waybill-uploads");
       } catch {
         // Public visitors stay on the EPIX landing page.
       }

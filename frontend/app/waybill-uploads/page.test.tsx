@@ -19,7 +19,6 @@ const apiMock = vi.hoisted(() => ({
   listUsers: vi.fn(),
   listWaybillUploads: vi.fn(),
   logout: vi.fn(),
-  manualSubmitWaybillUpload: vi.fn(),
   updateWaybillUploadStatus: vi.fn(),
   uploadPreAlertFile: vi.fn()
 }));
@@ -52,17 +51,12 @@ const uploadItem = {
   id: "upload-id",
   userId: "user-id",
   uploadedByUserId: "user-id",
-  platform: "ALLINE",
   shipmentType: "Air",
   airWaybillNumber: "784-84063276",
   grossWeightKg: "12.500",
   pieces: 8,
   arrivalFlightNumber: "EK0147",
   status: "pending_review",
-  platformSubmissionStatus: "success",
-  platformSubmissionMethod: "automated",
-  platformSubmissionError: null,
-  platformSubmittedAt: "2026-05-11T10:00:08Z",
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
   user: {
@@ -120,13 +114,8 @@ describe("WaybillUploadsPage", () => {
     apiMock.listUsers.mockResolvedValue({ items: [adminUser, regularUser] });
     apiMock.uploadPreAlertFile.mockResolvedValue({
       uploadId: "upload-id",
-      platform: "ALLINE",
       airWaybillNumber: "784-84063276",
       status: "pending_review",
-      platformSubmissionStatus: "success",
-      platformSubmissionMethod: "automated",
-      platformSubmissionError: null,
-      platformSubmittedAt: "2026-05-11T10:00:08Z",
       boundUserId: "user-id"
     });
     apiMock.updateWaybillUploadStatus.mockResolvedValue({
@@ -135,12 +124,7 @@ describe("WaybillUploadsPage", () => {
     });
     apiMock.deleteWaybillUpload.mockResolvedValue({
       status: "deleted",
-      uploadId: "upload-id",
-      removedBinding: true
-    });
-    apiMock.manualSubmitWaybillUpload.mockResolvedValue({
-      ...uploadItem,
-      platformSubmissionMethod: "manual"
+      uploadId: "upload-id"
     });
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
@@ -149,7 +133,6 @@ describe("WaybillUploadsPage", () => {
     render(<WaybillUploadsPage />);
 
     expect(await screen.findByRole("heading", { name: "Upload Pre Alert" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "ALLINE" })).toBeChecked();
     fillRequiredFields();
     fireEvent.click(screen.getByRole("button", { name: "Upload Pre Alert" }));
 
@@ -157,14 +140,13 @@ describe("WaybillUploadsPage", () => {
       expect(apiMock.uploadPreAlertFile).toHaveBeenCalledTimes(1);
     });
     expect(apiMock.uploadPreAlertFile.mock.calls[0][0]).toMatchObject({
-      platform: "ALLINE",
       shipmentType: "Air",
       airWaybillNumber: "784-84063276",
       grossWeightKg: "12.5",
       pieces: "8",
       arrivalFlightNumber: "EK0147"
     });
-    expect(await screen.findByText("Upload completed for 784-84063276")).toBeInTheDocument();
+    expect(await screen.findByText("Upload saved for 784-84063276")).toBeInTheDocument();
   });
 
   it("shows backend Excel validation errors in a dialog", async () => {
@@ -222,9 +204,6 @@ describe("WaybillUploadsPage", () => {
     fireEvent.change(screen.getByLabelText("Filter User"), {
       target: { value: "user-id" }
     });
-    fireEvent.change(screen.getByLabelText("Filter Platform Upload"), {
-      target: { value: "success" }
-    });
     fireEvent.change(screen.getByLabelText("Filter Review Status"), {
       target: { value: "pending_review" }
     });
@@ -236,7 +215,6 @@ describe("WaybillUploadsPage", () => {
     await waitFor(() => {
       expect(apiMock.listWaybillUploads).toHaveBeenLastCalledWith({
         userId: "user-id",
-        platformSubmissionStatus: "success",
         status: "pending_review",
         q: "78484063276"
       });
@@ -260,55 +238,7 @@ describe("WaybillUploadsPage", () => {
     );
   });
 
-  it("lets admins manually confirm failed uploads", async () => {
-    const failedUpload = {
-      ...uploadItem,
-      platformSubmissionStatus: "failed",
-      platformSubmissionMethod: "automated",
-      platformSubmissionError: "Upload records button not found"
-    };
-    apiMock.getCurrentUser.mockResolvedValueOnce({ user: adminUser });
-    apiMock.listWaybillUploads.mockResolvedValue({ items: [failedUpload] });
-
-    render(<WaybillUploadsPage />);
-
-    expect(await screen.findByText("Failed")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Manually submit 784-84063276" }));
-
-    await waitFor(() => {
-      expect(apiMock.manualSubmitWaybillUpload).toHaveBeenCalledWith("upload-id", false);
-    });
-  });
-
-  it("asks for force before manually confirming successful uploads", async () => {
-    apiMock.getCurrentUser.mockResolvedValueOnce({ user: adminUser });
-    apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
-
-    render(<WaybillUploadsPage />);
-
-    expect(await screen.findByText("Submitted")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Manually submit 784-84063276" }));
-
-    await waitFor(() => {
-      expect(window.confirm).toHaveBeenCalledWith(
-        "This upload is already submitted. Mark it as manually submitted and bind locally anyway?"
-      );
-      expect(apiMock.manualSubmitWaybillUpload).toHaveBeenCalledWith("upload-id", true);
-    });
-  });
-
-  it("does not show manual confirmation to regular users", async () => {
-    apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
-
-    render(<WaybillUploadsPage />);
-
-    expect(await screen.findByText("784-84063276")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Manually submit 784-84063276" })
-    ).not.toBeInTheDocument();
-  });
-
-  it("deletes a local upload record", async () => {
+  it("deletes an upload record", async () => {
     apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
 
     render(<WaybillUploadsPage />);
@@ -324,9 +254,7 @@ describe("WaybillUploadsPage", () => {
       expect(apiMock.deleteWaybillUpload).toHaveBeenCalledWith("upload-id");
     });
     expect(
-      await screen.findByText(
-        "Local upload and local Waybill binding deleted for 784-84063276"
-      )
+      await screen.findByText("Upload deleted for 784-84063276")
     ).toBeInTheDocument();
   });
 
