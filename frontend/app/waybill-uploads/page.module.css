@@ -360,7 +360,7 @@
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 1.15fr 1fr 1fr 1.25fr auto;
+  grid-template-columns: 1.15fr 1fr 1.25fr auto;
   padding: 12px;
 }
 
@@ -419,7 +419,7 @@
 
 .tableWrap table {
   border-collapse: collapse;
-  min-width: 1160px;
+  min-width: 1260px;
   width: 100%;
 }
 

@@ -44,11 +44,10 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
 
     workbook = Workbook()
     sheet = workbook.active
-    headers = [f"Column {index}" for index in range(1, 22)]
-    headers[9] = "Name"
-    headers[11] = "Address"
-    headers[18] = "GoodsDescription"
-    headers[20] = "Value"
+    headers = [f"Column {index}" for index in range(1, 24)]
+    headers[11] = "name"
+    headers[12] = "thoroughfare"
+    headers[22] = "price"
     sheet.append(headers)
     for row_payload in rows or [
         {
@@ -58,11 +57,11 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
             "value": 12.5,
         }
     ]:
-        row = [""] * 21
-        row[9] = row_payload.get("name", "")
-        row[11] = row_payload.get("address", "")
+        row = [""] * 23
+        row[11] = row_payload.get("name", "")
+        row[12] = row_payload.get("address", "")
         row[18] = row_payload.get("goods", "")
-        row[20] = row_payload.get("value", "")
+        row[22] = row_payload.get("value", "")
         sheet.append(row)
 
     output = BytesIO()
@@ -135,8 +134,8 @@ def test_pre_alert_upload_allows_duplicate_number(client, db_session):
     )
     assert first_response.status_code == 201
 
-    # The same (normalized) number can be uploaded again now that the ALLINE
-    # de-duplication/binding rules have been removed.
+    # The same normalized number can be uploaded again because local uploads
+    # no longer use external-platform de-duplication or binding rules.
     duplicate_response = client.post(
         "/api/v1/waybill-uploads/file",
         data=pre_alert_data(airWaybillNumber="78484063276"),
@@ -173,7 +172,10 @@ def test_pre_alert_upload_validates_weight_and_pdf(client, db_session):
     assert "must be a PDF" in invalid_pdf.text
 
 
-def test_pre_alert_upload_rejects_banned_goods_description(client, db_session):
+def test_pre_alert_upload_no_longer_rejects_old_banned_goods_column(
+    client,
+    db_session,
+):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -194,10 +196,46 @@ def test_pre_alert_upload_rejects_banned_goods_description(client, db_session):
         ),
     )
 
-    assert response.status_code == 400
-    assert "Pre Alert validation failed" in response.text
-    assert "GoodsDescription row 2" in response.text
-    assert "Vacuum cleaner" in response.text
+    assert response.status_code == 201
+
+
+def test_pre_alert_upload_allows_same_recipient_address_at_150_eur(
+    client,
+    db_session,
+):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "goods": "Cotton shirt",
+                        "value": 100,
+                    },
+                    {
+                        "name": " jane   doe ",
+                        "address": "1 test street",
+                        "goods": "Book",
+                        "value": "50.00",
+                    },
+                    {
+                        "name": "Jane Doe",
+                        "address": "2 Test Street",
+                        "goods": "Shoes",
+                        "value": 149,
+                    },
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 201
 
 
 def test_pre_alert_upload_rejects_same_recipient_address_over_150_eur(
@@ -237,9 +275,98 @@ def test_pre_alert_upload_rejects_same_recipient_address_over_150_eur(
     )
 
     assert response.status_code == 400
-    assert "同一收件人/地址" in response.text
+    assert "同一收件人/地址的 W 列申报金额超过 150 EUR" in response.text
     assert "150 EUR" in response.text
     assert "rows 2, 3" in response.text
+
+
+def test_pre_alert_upload_rejects_invalid_w_amount(client, db_session):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "value": "not-a-number",
+                    }
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "L/M/W row 2 amount is not a valid number" in response.text
+
+
+def test_pre_alert_upload_rejects_amount_without_name_or_address(
+    client,
+    db_session,
+):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [{"name": "", "address": "1 Test Street", "value": 12.5}]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "recipient name and address are required" in response.text
+
+
+def test_non_admin_cannot_upload_for_target_user(client, db_session):
+    user = create_test_user(db_session, email="user@example.com", username="User")
+    target_user = create_test_user(
+        db_session,
+        email="target@example.com",
+        username="Target",
+    )
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(targetUserId=str(target_user.id)),
+        files=pre_alert_files(),
+    )
+
+    assert response.status_code == 403
+    assert "Only admins can upload for another user" in response.text
+    assert user.email == "user@example.com"
+
+
+def test_admin_can_upload_for_target_user(client, db_session):
+    create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    target_user = create_test_user(
+        db_session,
+        email="target@example.com",
+        username="Target",
+    )
+    assert login(client, email="admin@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(targetUserId=str(target_user.id)),
+        files=pre_alert_files(),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["boundUserId"] == str(target_user.id)
 
 
 def test_user_can_delete_local_upload(client, db_session):

@@ -4,7 +4,6 @@ import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  Check,
   Download,
   Eye,
   FileSpreadsheet,
@@ -15,23 +14,16 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
-  getWaybillUploadFileDownloadUrl,
-  getCurrentUser,
-  isUnauthorizedError,
   deleteWaybillUpload,
+  getCurrentUser,
+  getWaybillUploadFileDownloadUrl,
+  isUnauthorizedError,
   listUsers,
   listWaybillUploads,
   logout,
-  updateWaybillUploadStatus,
   uploadPreAlertFile
 } from "@/lib/api";
-import type {
-  AppUser,
-  ShipmentType,
-  WaybillUploadFilters,
-  WaybillUploadItem,
-  WaybillUploadStatus
-} from "@/lib/types";
+import type { AppUser, ShipmentType, WaybillUploadItem } from "@/lib/types";
 import styles from "./page.module.css";
 
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
@@ -45,16 +37,6 @@ const initialForm = {
   pieces: "",
   arrivalFlightNumber: "",
   targetUserId: ""
-};
-
-const initialFilters: {
-  userId: string;
-  status: WaybillUploadStatus | "";
-  q: string;
-} = {
-  userId: "",
-  status: "",
-  q: ""
 };
 
 function hasExtension(file: File, extensions: string[]) {
@@ -83,8 +65,8 @@ function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
-function statusLabel(status: WaybillUploadStatus) {
-  const labels: Record<WaybillUploadStatus, string> = {
+function statusLabel(status: WaybillUploadItem["status"]) {
+  const labels: Record<WaybillUploadItem["status"], string> = {
     pending_review: "Pending review",
     approved: "Approved",
     rejected: "Rejected"
@@ -112,8 +94,8 @@ function cleanUploadErrorMessage(error: unknown) {
 
 function uploadErrorTitle(message: string) {
   return message.includes("Pre Alert validation failed")
-    ? "Excel 校验未通过"
-    : "上传失败";
+    ? "Excel validation failed"
+    : "Upload failed";
 }
 
 export default function WaybillUploadsPage() {
@@ -130,7 +112,6 @@ export default function WaybillUploadsPage() {
   const [isLoadingUploads, setIsLoadingUploads] = useState(false);
   const [deletingUploadId, setDeletingUploadId] = useState<string | null>(null);
   const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
-  const [filters, setFilters] = useState(initialFilters);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [uploadErrorDialog, setUploadErrorDialog] = useState<{
     title: string;
@@ -139,37 +120,14 @@ export default function WaybillUploadsPage() {
 
   const isAdmin = currentUser?.role === "admin";
 
-  const buildUploadFilters = useCallback(
-    (
-      actor: AppUser,
-      filterValues: typeof initialFilters = filters
-    ): WaybillUploadFilters => {
-      const requestFilters: WaybillUploadFilters = {};
-      if (filterValues.status) {
-        requestFilters.status = filterValues.status;
-      }
-      if (filterValues.q.trim()) {
-        requestFilters.q = filterValues.q.trim();
-      }
-      if (actor.role === "admin" && filterValues.userId) {
-        requestFilters.userId = filterValues.userId;
-      }
-      return requestFilters;
-    },
-    [filters]
-  );
-
-  const refreshUploads = useCallback(async (
-    actorOverride?: AppUser | null,
-    filterOverride?: typeof initialFilters
-  ) => {
+  const refreshOwnUploads = useCallback(async (actorOverride?: AppUser | null) => {
     const actor = actorOverride ?? currentUser;
-    if (!actor) {
+    if (!actor || actor.role === "admin") {
       return;
     }
     setIsLoadingUploads(true);
     try {
-      const response = await listWaybillUploads(buildUploadFilters(actor, filterOverride));
+      const response = await listWaybillUploads({});
       setUploads(response.items);
     } catch (error) {
       if (isUnauthorizedError(error)) {
@@ -183,7 +141,7 @@ export default function WaybillUploadsPage() {
     } finally {
       setIsLoadingUploads(false);
     }
-  }, [buildUploadFilters, currentUser, router]);
+  }, [currentUser, router]);
 
   useEffect(() => {
     async function loadCurrentUser() {
@@ -191,19 +149,26 @@ export default function WaybillUploadsPage() {
         const response = await getCurrentUser();
         setCurrentUser(response.user);
         setForm((current) => ({ ...current, targetUserId: response.user.id }));
-        setAuthState("ready");
-        const uploadsResponse = await listWaybillUploads({});
-        setUploads(uploadsResponse.items);
+
         if (response.user.role === "admin") {
           const usersResponse = await listUsers();
-          setUsers(usersResponse.items.filter((user) => user.status === "active"));
+          const activeUsers = usersResponse.items.filter((user) => user.status === "active");
+          setUsers(activeUsers);
+          setForm((current) => ({
+            ...current,
+            targetUserId: activeUsers[0]?.id ?? response.user.id
+          }));
+        } else {
+          const uploadsResponse = await listWaybillUploads({});
+          setUploads(uploadsResponse.items);
         }
       } catch (error) {
         setAuthError(
-          error instanceof Error ? error.message : "无法加载账号信息"
+          error instanceof Error ? error.message : "Unable to load account information"
         );
-        setAuthState("ready");
         router.replace("/");
+      } finally {
+        setAuthState("ready");
       }
     }
 
@@ -260,7 +225,7 @@ export default function WaybillUploadsPage() {
         const message = validationMessage ?? "Upload file is required";
         setNotice({ tone: "error", text: message });
         setUploadErrorDialog({
-          title: "上传信息不完整",
+          title: "Upload information is incomplete",
           message
         });
         return;
@@ -288,7 +253,7 @@ export default function WaybillUploadsPage() {
         }));
         setAirWaybillDocuments([]);
         setPreAlertFile(null);
-        await refreshUploads();
+        await refreshOwnUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
           router.replace("/");
@@ -313,36 +278,11 @@ export default function WaybillUploadsPage() {
       form,
       isAdmin,
       preAlertFile,
-      refreshUploads,
+      refreshOwnUploads,
       router,
       validateForm
     ]
   );
-
-  const handleReview = useCallback(
-    async (uploadId: string, status: WaybillUploadStatus) => {
-      try {
-        await updateWaybillUploadStatus(uploadId, status);
-        setNotice({ tone: "success", text: `Upload marked as ${statusLabel(status)}` });
-        await refreshUploads();
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          text: error instanceof Error ? error.message : "Unable to update upload"
-        });
-      }
-    },
-    [refreshUploads]
-  );
-
-  const handleApplyFilters = useCallback(async () => {
-    await refreshUploads();
-  }, [refreshUploads]);
-
-  const handleResetFilters = useCallback(async () => {
-    setFilters(initialFilters);
-    await refreshUploads(currentUser, initialFilters);
-  }, [currentUser, refreshUploads]);
 
   const handleDelete = useCallback(
     async (upload: WaybillUploadItem) => {
@@ -360,7 +300,7 @@ export default function WaybillUploadsPage() {
           tone: "success",
           text: `Upload deleted for ${upload.airWaybillNumber}`
         });
-        await refreshUploads();
+        await refreshOwnUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
           router.replace("/");
@@ -374,7 +314,7 @@ export default function WaybillUploadsPage() {
         setDeletingUploadId(null);
       }
     },
-    [refreshUploads, router]
+    [refreshOwnUploads, router]
   );
 
   const handleLogout = useCallback(async () => {
@@ -383,7 +323,7 @@ export default function WaybillUploadsPage() {
   }, [router]);
 
   if (authState === "loading") {
-    return <main className={styles.loadingPage}>正在加载账号信息...</main>;
+    return <main className={styles.loadingPage}>Loading account information...</main>;
   }
 
   if (authError || !currentUser) {
@@ -415,7 +355,7 @@ export default function WaybillUploadsPage() {
             <h2>Upload Pre Alert</h2>
           </div>
           <span className={styles.accountTag}>
-            {isAdmin ? "Admin review enabled" : currentUser.email}
+            {isAdmin ? "Admin upload mode" : currentUser.email}
           </span>
         </div>
 
@@ -595,210 +535,146 @@ export default function WaybillUploadsPage() {
               <p className={styles.dialogMessage}>{uploadErrorDialog.message}</p>
               <div className={styles.dialogFooter}>
                 <button onClick={() => setUploadErrorDialog(null)} type="button">
-                  我知道了
+                  I understand
                 </button>
               </div>
             </section>
           </div>
         )}
 
-        <section className={styles.uploadList}>
-          <div className={styles.listHeader}>
-            <div>
-              <p className={styles.eyebrow}>{isAdmin ? "Review queue" : "My uploads"}</p>
-              <h3>{isAdmin ? "All Pre Alerts" : "Uploaded Waybills"}</h3>
-            </div>
-            <button disabled={isLoadingUploads} onClick={() => void refreshUploads()} type="button">
-              Refresh
-            </button>
-          </div>
-
-          {isAdmin && (
-            <div className={styles.filterBar}>
-              <label className={styles.filterField}>
-                User
-                <select
-                  aria-label="Filter User"
-                  onChange={(event) =>
-                    setFilters((current) => ({ ...current, userId: event.target.value }))
-                  }
-                  value={filters.userId}
-                >
-                  <option value="">All users</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.filterField}>
-                Review Status
-                <select
-                  aria-label="Filter Review Status"
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      status: event.target.value as WaybillUploadStatus | ""
-                    }))
-                  }
-                  value={filters.status}
-                >
-                  <option value="">All</option>
-                  <option value="pending_review">Pending review</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </label>
-              <label className={styles.filterField}>
-                Number
-                <input
-                  aria-label="Filter Number"
-                  onChange={(event) =>
-                    setFilters((current) => ({ ...current, q: event.target.value }))
-                  }
-                  placeholder="784-84063276"
-                  value={filters.q}
-                />
-              </label>
-              <div className={styles.filterActions}>
-                <button disabled={isLoadingUploads} onClick={handleApplyFilters} type="button">
-                  Apply
-                </button>
-                <button disabled={isLoadingUploads} onClick={handleResetFilters} type="button">
-                  Reset
-                </button>
+        {isAdmin ? (
+          <section className={styles.uploadList}>
+            <div className={styles.listHeader}>
+              <div>
+                <p className={styles.eyebrow}>Admin queue</p>
+                <h3>Manage submitted waybills</h3>
               </div>
+              <button onClick={() => router.push("/waybill-upload-management")} type="button">
+                Open management
+              </button>
             </div>
-          )}
+            <div className={styles.emptyState}>
+              Admin review, downloads, filters, and deletion are handled on the management page.
+            </div>
+          </section>
+        ) : (
+          <section className={styles.uploadList}>
+            <div className={styles.listHeader}>
+              <div>
+                <p className={styles.eyebrow}>My uploads</p>
+                <h3>Uploaded Waybills</h3>
+              </div>
+              <button disabled={isLoadingUploads} onClick={() => void refreshOwnUploads()} type="button">
+                Refresh
+              </button>
+            </div>
 
-          {uploads.length ? (
-            <div className={styles.tableWrap}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Number</th>
-                    <th>Type</th>
-                    <th>Owner</th>
-                    <th>Weight</th>
-                    <th>Pieces</th>
-                    <th>Flight</th>
-                    <th>Status</th>
-                    <th>Files</th>
-                    <th>Uploaded</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {uploads.map((upload) => (
-                    <Fragment key={upload.id}>
-                      <tr>
-                        <td>{upload.airWaybillNumber}</td>
-                        <td>{upload.shipmentType}</td>
-                        <td>{upload.user?.email ?? "-"}</td>
-                        <td>{upload.grossWeightKg}</td>
-                        <td>{upload.pieces}</td>
-                        <td>{upload.arrivalFlightNumber || "-"}</td>
-                        <td>
-                          <span className={styles.statusPill} data-status={upload.status}>
-                            {statusLabel(upload.status)}
-                          </span>
-                        </td>
-                        <td>{upload.files.length}</td>
-                        <td>{formatDateTime(upload.createdAt)}</td>
-                        <td>
-                          <div className={styles.reviewActions}>
-                            <button
-                              aria-label={`Details ${upload.airWaybillNumber}`}
-                              onClick={() =>
-                                setExpandedUploadId((current) =>
-                                  current === upload.id ? null : upload.id
-                                )
-                              }
-                              type="button"
-                            >
-                              <Eye aria-hidden="true" size={15} />
-                            </button>
-                            {isAdmin && (
-                              <>
-                                <button
-                                  aria-label={`Approve ${upload.airWaybillNumber}`}
-                                  disabled={upload.status === "approved"}
-                                  onClick={() => handleReview(upload.id, "approved")}
-                                  type="button"
-                                >
-                                  <Check aria-hidden="true" size={15} />
-                                </button>
-                                <button
-                                  aria-label={`Reject ${upload.airWaybillNumber}`}
-                                  disabled={upload.status === "rejected"}
-                                  onClick={() => handleReview(upload.id, "rejected")}
-                                  type="button"
-                                >
-                                  <X aria-hidden="true" size={15} />
-                                </button>
-                              </>
-                            )}
-                            <button
-                              aria-label={`Delete local upload ${upload.airWaybillNumber}`}
-                              className={styles.dangerButton}
-                              disabled={deletingUploadId === upload.id}
-                              onClick={() => handleDelete(upload)}
-                              type="button"
-                            >
-                              <Trash2 aria-hidden="true" size={15} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedUploadId === upload.id && (
-                        <tr className={styles.detailRow}>
-                          <td colSpan={10}>
-                            <div className={styles.detailPanel}>
-                              <div className={styles.detailGrid}>
-                                <div>
-                                  <span>Owner</span>
-                                  <strong>{upload.user?.email ?? upload.userId}</strong>
-                                </div>
-                                <div>
-                                  <span>Uploaded At</span>
-                                  <strong>{formatDateTime(upload.createdAt)}</strong>
-                                </div>
-                              </div>
-
-                              <div className={styles.fileLinks}>
-                                <span>Attachments</span>
-                                {upload.files.length ? (
-                                  upload.files.map((file) => (
-                                    <a
-                                      href={getWaybillUploadFileDownloadUrl(upload.id, file.id)}
-                                      key={file.id}
-                                      rel="noreferrer"
-                                      target="_blank"
-                                    >
-                                      <Download aria-hidden="true" size={14} />
-                                      {fileKindLabel(file.fileKind)}: {file.originalFilename}
-                                    </a>
-                                  ))
-                                ) : (
-                                  <p>No attachments</p>
-                                )}
-                              </div>
+            {uploads.length ? (
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Number</th>
+                      <th>Type</th>
+                      <th>Weight</th>
+                      <th>Pieces</th>
+                      <th>Flight</th>
+                      <th>Status</th>
+                      <th>Files</th>
+                      <th>Uploaded</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uploads.map((upload) => (
+                      <Fragment key={upload.id}>
+                        <tr>
+                          <td>{upload.airWaybillNumber}</td>
+                          <td>{upload.shipmentType}</td>
+                          <td>{upload.grossWeightKg}</td>
+                          <td>{upload.pieces}</td>
+                          <td>{upload.arrivalFlightNumber || "-"}</td>
+                          <td>
+                            <span className={styles.statusPill} data-status={upload.status}>
+                              {statusLabel(upload.status)}
+                            </span>
+                          </td>
+                          <td>{upload.files.length}</td>
+                          <td>{formatDateTime(upload.createdAt)}</td>
+                          <td>
+                            <div className={styles.reviewActions}>
+                              <button
+                                aria-label={`Details ${upload.airWaybillNumber}`}
+                                onClick={() =>
+                                  setExpandedUploadId((current) =>
+                                    current === upload.id ? null : upload.id
+                                  )
+                                }
+                                type="button"
+                              >
+                                <Eye aria-hidden="true" size={15} />
+                              </button>
+                              <button
+                                aria-label={`Delete local upload ${upload.airWaybillNumber}`}
+                                className={styles.dangerButton}
+                                disabled={deletingUploadId === upload.id}
+                                onClick={() => handleDelete(upload)}
+                                type="button"
+                              >
+                                <Trash2 aria-hidden="true" size={15} />
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className={styles.emptyState}>
-              {isLoadingUploads ? "Loading uploads..." : "No uploads yet"}
-            </div>
-          )}
-        </section>
+                        {expandedUploadId === upload.id && (
+                          <tr className={styles.detailRow}>
+                            <td colSpan={9}>
+                              <div className={styles.detailPanel}>
+                                <div className={styles.detailGrid}>
+                                  <div>
+                                    <span>Owner</span>
+                                    <strong>{currentUser.email}</strong>
+                                  </div>
+                                  <div>
+                                    <span>Uploaded At</span>
+                                    <strong>{formatDateTime(upload.createdAt)}</strong>
+                                  </div>
+                                </div>
+
+                                <div className={styles.fileLinks}>
+                                  <span>Attachments</span>
+                                  {upload.files.length ? (
+                                    upload.files.map((file) => (
+                                      <a
+                                        href={getWaybillUploadFileDownloadUrl(upload.id, file.id)}
+                                        key={file.id}
+                                        rel="noreferrer"
+                                        target="_blank"
+                                      >
+                                        <Download aria-hidden="true" size={14} />
+                                        {fileKindLabel(file.fileKind)}: {file.originalFilename}
+                                      </a>
+                                    ))
+                                  ) : (
+                                    <p>No attachments</p>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className={styles.emptyState}>
+                {isLoadingUploads ? "Loading uploads..." : "No uploads yet"}
+              </div>
+            )}
+          </section>
+        )}
       </section>
     </AppShell>
   );

@@ -19,7 +19,11 @@ class WaybillUploadRepository:
     def get_by_id(self, upload_id: UUID) -> WaybillUpload | None:
         statement = (
             select(WaybillUpload)
-            .options(joinedload(WaybillUpload.files), joinedload(WaybillUpload.user))
+            .options(
+                joinedload(WaybillUpload.files),
+                joinedload(WaybillUpload.user),
+                joinedload(WaybillUpload.uploaded_by),
+            )
             .where(WaybillUpload.id == upload_id)
             .limit(1)
         )
@@ -52,7 +56,11 @@ class WaybillUploadRepository:
     ) -> list[WaybillUpload]:
         statement = (
             select(WaybillUpload)
-            .options(joinedload(WaybillUpload.files), joinedload(WaybillUpload.user))
+            .options(
+                joinedload(WaybillUpload.files),
+                joinedload(WaybillUpload.user),
+                joinedload(WaybillUpload.uploaded_by),
+            )
         )
         if user_id is not None:
             statement = statement.where(WaybillUpload.user_id == user_id)

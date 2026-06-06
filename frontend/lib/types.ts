@@ -78,6 +78,7 @@ export interface WaybillUploadItem {
   createdAt: string;
   updatedAt: string;
   user?: WaybillUploadUserItem | null;
+  uploadedBy?: WaybillUploadUserItem | null;
   files: WaybillUploadFileItem[];
 }
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, UploadCloud, Users } from "lucide-react";
+import { ClipboardList, LogOut, UploadCloud, Users } from "lucide-react";
 import type { AppUser } from "@/lib/types";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
@@ -16,7 +16,7 @@ export function AppShell({
   children
 }: {
   user: AppUser;
-  active: "uploads" | "users";
+  active: "uploads" | "upload-management" | "users";
   messages: AppMessage[];
   unreadCount: number;
   isInfoOpen: boolean;
@@ -30,7 +30,7 @@ export function AppShell({
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
-        <h1>Omniship</h1>
+        <h1>EPIX</h1>
         <div className={styles.topActions}>
           {isAdmin && (
             <InfoCenter
@@ -43,7 +43,7 @@ export function AppShell({
           )}
           <button className={styles.logoutButton} onClick={onLogout} type="button">
             <LogOut aria-hidden="true" size={18} />
-            退出
+            Logout
           </button>
         </div>
       </header>
@@ -53,15 +53,15 @@ export function AppShell({
           <div className={styles.userCard}>
             <div className={styles.avatar}>{user.username.slice(0, 2).toUpperCase()}</div>
             <div>
-              <span>用户名</span>
+              <span>Account</span>
               <strong>{user.username}</strong>
               <small>{user.email}</small>
-              <small>{isAdmin ? "管理员" : "普通用户"}</small>
+              <small>{isAdmin ? "Admin" : "User"}</small>
             </div>
           </div>
 
-          <nav className={styles.nav} aria-label="主导航">
-            <p>导航</p>
+          <nav className={styles.nav} aria-label="Primary navigation">
+            <p>Navigation</p>
             <Link
               aria-current={active === "uploads" ? "page" : undefined}
               className={styles.navItem}
@@ -71,6 +71,17 @@ export function AppShell({
               <UploadCloud aria-hidden="true" size={18} />
               <span>Uploads</span>
             </Link>
+            {isAdmin && (
+              <Link
+                aria-current={active === "upload-management" ? "page" : undefined}
+                className={styles.navItem}
+                data-active={active === "upload-management"}
+                href="/waybill-upload-management"
+              >
+                <ClipboardList aria-hidden="true" size={18} />
+                <span>Waybill Management</span>
+              </Link>
+            )}
             {isAdmin && (
               <Link
                 aria-current={active === "users" ? "page" : undefined}

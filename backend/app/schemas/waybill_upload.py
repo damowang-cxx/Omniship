@@ -49,6 +49,7 @@ class WaybillUploadItem(BaseModel):
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     user: WaybillUploadUserItem | None = None
+    uploaded_by: WaybillUploadUserItem | None = Field(default=None, alias="uploadedBy")
     files: list[WaybillUploadFileItem] = []
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

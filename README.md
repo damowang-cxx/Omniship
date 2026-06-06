@@ -1,27 +1,27 @@
-# Waybill Pre Alert 上传管理系统
+# Waybill Pre Alert Upload Management
 
-本项目是一个内部后台系统：用户登录后上传 Pre Alert（PDF Air Waybill 文件 + Excel Customer Pre Alert 文件），数据校验后入库保存；管理员可以查看、下载、审核（通过/拒绝）和删除上传记录。后续将逐步加入人工订单状态维护与邮件发送流程。
+Internal EPIX back-office system for submitting Air Waybill Pre Alert data. Users upload a PDF Air Waybill document and an Excel Customer Pre Alert file; the backend validates the files, stores the upload locally, and lets admins review submitted waybills.
 
-## 目录结构
+## Project Structure
 
 ```text
 .
 ├── backend/            # FastAPI + SQLAlchemy + Alembic
-├── frontend/           # Next.js 内部后台
-├── docker-compose.yml  # 本地 PostgreSQL，可选
-├── .env.example        # 环境变量模板
+├── frontend/           # Next.js public landing page + internal dashboard
+├── docker-compose.yml  # Optional local PostgreSQL
+├── .env.example        # Environment template
 └── README.md
 ```
 
-## 环境变量
+## Environment
 
-复制模板并填写真实配置：
+Copy the template and fill in local values:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-关键变量：
+Important variables:
 
 ```env
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/omniship_poc
@@ -34,23 +34,11 @@ AUTH_COOKIE_NAME=integrer_session
 UPLOAD_STORAGE_DIR=backend/storage/uploads
 ```
 
-`.env` 已在 `.gitignore` 中排除。前端只读取 `NEXT_PUBLIC_API_BASE_URL`。上传文件默认保存到 `backend/storage/uploads`，该目录已从版本库排除。
+`.env` and `backend/storage/` are ignored by git. Credentials and uploaded files must not be committed.
 
-## Windows 10 本地启动
+## Local Development
 
-准备：
-
-- Python 3.12+
-- Node.js 20+
-- PostgreSQL 14+，或 Docker Desktop
-
-启动 PostgreSQL，可选：
-
-```powershell
-docker compose up -d postgres
-```
-
-后端：
+Backend:
 
 ```powershell
 python -m venv .venv
@@ -62,7 +50,7 @@ python -m app.cli create-admin
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-前端：
+Frontend:
 
 ```powershell
 cd frontend
@@ -70,16 +58,71 @@ npm install
 npm run dev
 ```
 
-访问 [http://localhost:3000/](http://localhost:3000/) 查看落地页；登录成功后进入 `/waybill-uploads`。未登录访问受保护页面会跳转到 `/login`。
+Open [http://localhost:3000/](http://localhost:3000/). Unauthenticated users see the public EPIX landing page. Login is available at `/login`; successful login redirects to `/waybill-uploads`.
 
-## Ubuntu 24.04 部署准备
+## Pages And Permissions
+
+- `/` is the public EPIX landing page.
+- `/login` is the only public login entry.
+- `/waybill-uploads` lets admins and users upload Pre Alert data.
+- `/waybill-upload-management` is admin-only and shows all submitted waybills.
+- `/users` is admin-only account management.
+- Regular users can upload and view only their own upload records.
+- Admins can upload for a selected Target User, review all submissions, download attachments, approve/reject records, and delete local records.
+
+## Upload Rules
+
+Upload form fields:
+
+- `Shipment Type`: `Air`, `Road`, or `Train`
+- `Target User`: admin-only; regular users are always bound to their own account
+- `Air Waybill Number`
+- `Air Waybill Gross Weight (KG)`
+- `Air Waybill Pieces`
+- `Arrival Flight Number`, optional
+- `Air Waybill Document(s)`: PDF only, each file under 10 MB
+- `Upload Pre Alert File`: `.xls` or `.xlsx`, under 20 MB
+
+Excel validation uses the new Pre Alert template:
+
+- Row 1 is treated as headers; validation starts at row 2.
+- L column (`name`) is the recipient.
+- M column (`thoroughfare`) is the address.
+- W column (`price`) is the declared amount.
+- For the same recipient and address, the total declared amount must not exceed `150 EUR`.
+- A non-empty W value must be numeric.
+- If W has an amount, L and M are required.
+- Other business validation rules are intentionally not active yet.
+
+Successful uploads are stored with status `pending_review`. Admins can later mark them `approved` or `rejected`.
+
+## API
+
+- `GET /health`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/users`, admin only
+- `POST /api/v1/users`, admin only
+- `PATCH /api/v1/users/{userId}`, admin only
+- `POST /api/v1/users/{userId}/reset-password`, admin only
+- `GET /api/v1/waybill-uploads`
+- `POST /api/v1/waybill-uploads/file`
+- `POST /api/v1/waybill-uploads/pre-alert`
+- `PATCH /api/v1/waybill-uploads/{uploadId}/status`, admin only
+- `GET /api/v1/waybill-uploads/{uploadId}/files/{fileId}/download`
+- `DELETE /api/v1/waybill-uploads/{uploadId}`
+
+## Ubuntu 24.04 Deployment Notes
+
+Install runtime dependencies:
 
 ```bash
 sudo apt update
 sudo apt install -y python3.12 python3.12-venv python3-pip postgresql postgresql-contrib
 ```
 
-PostgreSQL 初始化示例：
+Initialize PostgreSQL:
 
 ```bash
 sudo -u postgres psql
@@ -89,7 +132,7 @@ GRANT ALL PRIVILEGES ON DATABASE omniship_poc TO omniship_user;
 \q
 ```
 
-后端：
+Backend:
 
 ```bash
 python3.12 -m venv .venv
@@ -101,7 +144,7 @@ python -m app.cli create-admin
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-前端：
+Frontend:
 
 ```bash
 cd frontend
@@ -110,63 +153,29 @@ npm run build
 npm run start -- --host 0.0.0.0 --port 3000
 ```
 
-生产环境建议设置 `AUTH_COOKIE_SECURE=true`。
+Set `AUTH_COOKIE_SECURE=true` when serving over HTTPS in production.
 
-## 账号与权限
+## Tests
 
-- 第一个管理员使用 CLI 创建：`python -m app.cli create-admin`
-- 管理员可以创建普通账号、启用/禁用账号、重置密码，并查看、下载、审核和删除全部上传记录。
-- 普通账号只能上传 Pre Alert 并查看自己的上传记录。
-- 登录态使用 HttpOnly Cookie：`integrer_session`。
-- 审计日志会记录登录、退出、用户管理、上传、审核、下载和删除等操作。
-
-## API
-
-- `GET /health`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/logout`
-- `GET /api/v1/auth/me`
-- `GET /api/v1/users`，仅管理员
-- `POST /api/v1/users`，仅管理员
-- `PATCH /api/v1/users/{userId}`，仅管理员
-- `POST /api/v1/users/{userId}/reset-password`，仅管理员
-- `GET /api/v1/waybill-uploads`，管理员读取全部上传记录，普通用户只读取自己的上传记录
-- `POST /api/v1/waybill-uploads/file`，上传 Pre Alert 表单与附件
-- `POST /api/v1/waybill-uploads/pre-alert`，上传 Pre Alert 表单与附件（别名路径）
-- `PATCH /api/v1/waybill-uploads/{uploadId}/status`，仅管理员审核上传记录
-- `GET /api/v1/waybill-uploads/{uploadId}/files/{fileId}/download`，下载上传的附件
-- `DELETE /api/v1/waybill-uploads/{uploadId}`，删除本系统的上传记录和附件
-
-## 测试
-
-后端：
+Backend:
 
 ```powershell
 cd backend
 ..\.venv\Scripts\python -m pytest
 ```
 
-前端：
+Frontend:
 
 ```powershell
 cd frontend
-npm test
+npm test -- --run
 npm run lint
 npm run build
 ```
 
-数据库迁移 SQL 检查：
+Alembic SQL dry run:
 
 ```powershell
 cd backend
 ..\.venv\Scripts\python -m alembic upgrade head --sql
 ```
-
-## 数据归属与上传
-
-- 管理员可以查看全部上传记录；普通用户只能查看自己的上传记录。
-- `/waybill-uploads` 提供 Pre Alert 上传窗口，管理员和普通用户都可以上传。普通用户上传的记录归属于自己；管理员可以选择目标用户。
-- 上传字段包括 `Shipment Type`、`Air Waybill Number`、`Air Waybill Gross Weight (KG)`、`Air Waybill Pieces`、可选的 `Arrival Flight Number`、PDF Air Waybill 文件和 Excel Customer Pre Alert 文件。
-- 后端会校验重量和件数是否为数字、PDF 单个文件小于 10MB、Excel 文件小于 20MB。PDF 会检查文件头，Excel 一期先按扩展名校验 `.xls` / `.xlsx`，并对 Excel 内容执行 Pre Alert 业务校验（违禁品名称、同一收件人/地址申报金额上限等）。
-- 上传成功后记录默认状态为 `pending_review`，管理员可以将其改为 `approved` 或 `rejected`。
-- 删除上传记录只影响本系统：会删除上传记录及其附件，不会对外部系统执行任何操作。

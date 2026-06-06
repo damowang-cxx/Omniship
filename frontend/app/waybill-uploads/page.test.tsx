@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import WaybillUploadsPage from "./page";
 
 const routerMock = vi.hoisted(() => ({
+  push: vi.fn(),
   replace: vi.fn()
 }));
 
@@ -19,7 +20,6 @@ const apiMock = vi.hoisted(() => ({
   listUsers: vi.fn(),
   listWaybillUploads: vi.fn(),
   logout: vi.fn(),
-  updateWaybillUploadStatus: vi.fn(),
   uploadPreAlertFile: vi.fn()
 }));
 
@@ -60,6 +60,11 @@ const uploadItem = {
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
   user: {
+    id: "user-id",
+    email: "user@example.com",
+    username: "User"
+  },
+  uploadedBy: {
     id: "user-id",
     email: "user@example.com",
     username: "User"
@@ -118,10 +123,6 @@ describe("WaybillUploadsPage", () => {
       status: "pending_review",
       boundUserId: "user-id"
     });
-    apiMock.updateWaybillUploadStatus.mockResolvedValue({
-      ...uploadItem,
-      status: "approved"
-    });
     apiMock.deleteWaybillUpload.mockResolvedValue({
       status: "deleted",
       uploadId: "upload-id"
@@ -152,7 +153,7 @@ describe("WaybillUploadsPage", () => {
   it("shows backend Excel validation errors in a dialog", async () => {
     apiMock.uploadPreAlertFile.mockRejectedValueOnce(
       new Error(
-        "Request failed with 400: Pre Alert validation failed: S列 GoodsDescription row 2 contains prohibited term(s): Vacuum cleaner; 同一收件人/地址的 U列申报金额超过 150 EUR: Jane Doe / 1 Test Street totals 150.01 EUR from rows 2, 3"
+        "Request failed with 400: Pre Alert validation failed: 同一收件人/地址的 W 列申报金额超过 150 EUR: rows 2, 3, recipient Jane Doe, address 1 Test Street, total 150.01 EUR"
       )
     );
 
@@ -163,65 +164,41 @@ describe("WaybillUploadsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload Pre Alert" }));
 
     expect(
-      await screen.findByRole("dialog", { name: "Excel 校验未通过" })
+      await screen.findByRole("dialog", { name: "Excel validation failed" })
     ).toBeInTheDocument();
-    expect(screen.getAllByText(/GoodsDescription row 2/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Vacuum cleaner/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/同一收件人\/地址/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/W 列申报金额超过 150 EUR/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/rows 2, 3/).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "我知道了" }));
+    fireEvent.click(screen.getByRole("button", { name: "I understand" }));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
-  it("shows all uploaded records and review actions for admins", async () => {
-    apiMock.getCurrentUser.mockResolvedValueOnce({ user: adminUser });
-    apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
+  it("hides target user and management navigation for regular users", async () => {
+    render(<WaybillUploadsPage />);
+
+    expect(await screen.findByRole("heading", { name: "Upload Pre Alert" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Target User")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Waybill Management/ })).not.toBeInTheDocument();
+  });
+
+  it("shows target user and management navigation for admins", async () => {
+    apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
 
     render(<WaybillUploadsPage />);
 
-    expect(await screen.findByText("784-84063276")).toBeInTheDocument();
-    expect(screen.getAllByText("user@example.com").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "Approve 784-84063276" }));
-
-    await waitFor(() => {
-      expect(apiMock.updateWaybillUploadStatus).toHaveBeenCalledWith(
-        "upload-id",
-        "approved"
-      );
-    });
+    expect(await screen.findByLabelText("Target User")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Waybill Management/ })).toHaveAttribute(
+      "href",
+      "/waybill-upload-management"
+    );
+    expect(screen.getByText("Manage submitted waybills")).toBeInTheDocument();
+    expect(apiMock.listWaybillUploads).not.toHaveBeenCalled();
   });
 
-  it("lets admins filter uploads by user and number", async () => {
-    apiMock.getCurrentUser.mockResolvedValueOnce({ user: adminUser });
-    apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
-
-    render(<WaybillUploadsPage />);
-
-    expect(await screen.findByLabelText("Filter User")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Filter User"), {
-      target: { value: "user-id" }
-    });
-    fireEvent.change(screen.getByLabelText("Filter Review Status"), {
-      target: { value: "pending_review" }
-    });
-    fireEvent.change(screen.getByLabelText("Filter Number"), {
-      target: { value: "78484063276" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-
-    await waitFor(() => {
-      expect(apiMock.listWaybillUploads).toHaveBeenLastCalledWith({
-        userId: "user-id",
-        status: "pending_review",
-        q: "78484063276"
-      });
-    });
-  });
-
-  it("shows file download links in upload details", async () => {
+  it("shows file download links in regular user upload details", async () => {
     apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
 
     render(<WaybillUploadsPage />);
@@ -238,7 +215,7 @@ describe("WaybillUploadsPage", () => {
     );
   });
 
-  it("deletes an upload record", async () => {
+  it("deletes a regular user upload record", async () => {
     apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem] });
 
     render(<WaybillUploadsPage />);
