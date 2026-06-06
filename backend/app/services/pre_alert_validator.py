@@ -9,8 +9,12 @@ from typing import Iterable
 
 RECIPIENT_NAME_COLUMN_INDEX = 12  # L
 ADDRESS_COLUMN_INDEX = 13  # M
+LIMITED_QUANTITY_COLUMN_INDEX = 21  # U
 VALUE_EUR_COLUMN_INDEX = 23  # W
+CONSISTENT_COLUMN_INDEXES = (1, 2, 3, 4, 5, 6, 7)  # A-G
+MUST_BE_EMPTY_COLUMN_INDEXES = (14, 15, 17, 29)  # N, O, Q, AC
 MAX_RECIPIENT_ADDRESS_VALUE_EUR = Decimal("150")
+MAX_LIMITED_QUANTITY = Decimal("5")
 
 
 class PreAlertValidationError(ValueError):
@@ -20,8 +24,10 @@ class PreAlertValidationError(ValueError):
 @dataclass(frozen=True)
 class PreAlertRow:
     row_number: int
+    values: tuple[object, ...]
     recipient_name: str
     address: str
+    limited_quantity_raw: object
     value_eur_raw: object
 
 
@@ -31,7 +37,13 @@ def validate_pre_alert_excel(
     content: bytes,
 ) -> None:
     rows = list(_read_rows(filename=filename, content=content))
-    validation_errors = _find_recipient_address_value_errors(rows)
+    active_rows = [row for row in rows if not _is_blank_row(row)]
+    validation_errors = [
+        *_find_limited_quantity_errors(active_rows),
+        *_find_must_be_empty_errors(active_rows),
+        *_find_consistent_column_errors(active_rows),
+        *_find_recipient_address_value_errors(active_rows),
+    ]
     if validation_errors:
         raise PreAlertValidationError(
             "Pre Alert validation failed: " + "; ".join(validation_errors[:20])
@@ -84,8 +96,10 @@ def _read_xls_rows(content: bytes) -> list[PreAlertRow]:
 def _build_row(row_number: int, row: tuple | list) -> PreAlertRow:
     return PreAlertRow(
         row_number=row_number,
+        values=tuple(row),
         recipient_name=_cell_text(_cell(row, RECIPIENT_NAME_COLUMN_INDEX)),
         address=_cell_text(_cell(row, ADDRESS_COLUMN_INDEX)),
+        limited_quantity_raw=_cell(row, LIMITED_QUANTITY_COLUMN_INDEX),
         value_eur_raw=_cell(row, VALUE_EUR_COLUMN_INDEX),
     )
 
@@ -140,6 +154,54 @@ def _find_recipient_address_value_errors(rows: list[PreAlertRow]) -> list[str]:
     return errors[:10]
 
 
+def _find_limited_quantity_errors(rows: list[PreAlertRow]) -> list[str]:
+    errors = []
+    for row in rows:
+        raw_quantity = _cell_text(row.limited_quantity_raw)
+        if not raw_quantity:
+            continue
+
+        quantity = _parse_decimal(row.limited_quantity_raw)
+        if quantity is None:
+            errors.append(f"U row {row.row_number} value is not a valid number")
+            continue
+        if quantity > MAX_LIMITED_QUANTITY:
+            errors.append(
+                f"U row {row.row_number} value must be less than or equal to 5"
+            )
+    return errors[:10]
+
+
+def _find_must_be_empty_errors(rows: list[PreAlertRow]) -> list[str]:
+    errors = []
+    for row in rows:
+        filled_columns = [
+            _column_letter(column_index)
+            for column_index in MUST_BE_EMPTY_COLUMN_INDEXES
+            if _cell_text(_cell(row.values, column_index))
+        ]
+        if filled_columns:
+            errors.append(
+                f"{'/'.join(filled_columns)} row {row.row_number} must be empty"
+            )
+    return errors[:10]
+
+
+def _find_consistent_column_errors(rows: list[PreAlertRow]) -> list[str]:
+    if not rows:
+        return []
+
+    reference = _consistent_values(rows[0])
+    errors = []
+    for row in rows[1:]:
+        current = _consistent_values(row)
+        if current != reference:
+            errors.append(
+                f"A/B/C/D/E/F/G row {row.row_number} values must match row {rows[0].row_number}"
+            )
+    return errors[:10]
+
+
 def _parse_decimal(value: object) -> Decimal | None:
     if value is None or isinstance(value, bool):
         return None
@@ -170,3 +232,27 @@ def _normalize_group_key(value: str) -> str:
 
 def _format_decimal(value: Decimal) -> str:
     return format(value.normalize(), "f")
+
+
+def _is_blank_row(row: PreAlertRow) -> bool:
+    return all(not _cell_text(value) for value in row.values)
+
+
+def _consistent_values(row: PreAlertRow) -> tuple[str, ...]:
+    return tuple(
+        _normalize_consistency_value(_cell(row.values, column_index))
+        for column_index in CONSISTENT_COLUMN_INDEXES
+    )
+
+
+def _normalize_consistency_value(value: object) -> str:
+    return re.sub(r"\s+", " ", _cell_text(value))
+
+
+def _column_letter(one_based_index: int) -> str:
+    letters = ""
+    index = one_based_index
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters

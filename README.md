@@ -96,6 +96,9 @@ Excel validation uses the new Pre Alert template:
 - For the same recipient and address, the total declared amount must not exceed `150 EUR`.
 - A non-empty W value must be numeric.
 - If W has an amount, L and M are required.
+- U column value must be numeric when present and must be less than or equal to `5`.
+- N, O, Q, and AC columns must be empty.
+- A, B, C, D, E, F, and G column values must be consistent across all non-empty rows.
 - Other business validation rules are intentionally not active yet.
 
 Successful uploads are stored with review status `pending_review`. Admins can later mark them `approved` or `rejected`. Only `approved` uploads appear in `/waybills`.

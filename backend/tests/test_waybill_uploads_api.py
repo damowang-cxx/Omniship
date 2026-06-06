@@ -44,9 +44,10 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
 
     workbook = Workbook()
     sheet = workbook.active
-    headers = [f"Column {index}" for index in range(1, 24)]
+    headers = [f"Column {index}" for index in range(1, 30)]
     headers[11] = "name"
     headers[12] = "thoroughfare"
+    headers[20] = "quantity"
     headers[22] = "price"
     sheet.append(headers)
     for row_payload in rows or [
@@ -57,11 +58,23 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
             "value": 12.5,
         }
     ]:
-        row = [""] * 23
+        row = [""] * 29
+        consistent_values = row_payload.get("a_to_g")
+        if consistent_values:
+            for index, value in enumerate(consistent_values[:7]):
+                row[index] = value
+        else:
+            for index, key in enumerate(("a", "b", "c", "d", "e", "f", "g")):
+                row[index] = row_payload.get(key, "")
         row[11] = row_payload.get("name", "")
         row[12] = row_payload.get("address", "")
+        row[13] = row_payload.get("n", "")
+        row[14] = row_payload.get("o", "")
+        row[16] = row_payload.get("q", "")
         row[18] = row_payload.get("goods", "")
+        row[20] = row_payload.get("u", "")
         row[22] = row_payload.get("value", "")
+        row[28] = row_payload.get("ac", "")
         sheet.append(row)
 
     output = BytesIO()
@@ -323,6 +336,122 @@ def test_pre_alert_upload_rejects_amount_without_name_or_address(
 
     assert response.status_code == 400
     assert "recipient name and address are required" in response.text
+
+
+def test_pre_alert_upload_allows_u_at_5_and_matching_a_to_g(client, db_session):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "a_to_g": ["EPIX", "DE", "AIR", "A", "B", "C", "D"],
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "u": 5,
+                        "value": 12.5,
+                    },
+                    {
+                        "a_to_g": ["EPIX", "DE", "AIR", "A", "B", "C", "D"],
+                        "name": "John Doe",
+                        "address": "2 Test Street",
+                        "u": "5.00",
+                        "value": 20,
+                    },
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 201
+
+
+def test_pre_alert_upload_rejects_u_over_5(client, db_session):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "u": 5.01,
+                        "value": 12.5,
+                    }
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "U row 2 value must be less than or equal to 5" in response.text
+
+
+def test_pre_alert_upload_rejects_filled_n_o_q_ac_columns(client, db_session):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "value": 12.5,
+                        "n": "must be empty",
+                        "o": "must be empty",
+                        "q": "must be empty",
+                        "ac": "must be empty",
+                    }
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "N/O/Q/AC row 2 must be empty" in response.text
+
+
+def test_pre_alert_upload_rejects_inconsistent_a_to_g_columns(client, db_session):
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_content=pre_alert_workbook_bytes(
+                [
+                    {
+                        "a_to_g": ["EPIX", "DE", "AIR", "A", "B", "C", "D"],
+                        "name": "Jane Doe",
+                        "address": "1 Test Street",
+                        "value": 12.5,
+                    },
+                    {
+                        "a_to_g": ["EPIX", "FR", "AIR", "A", "B", "C", "D"],
+                        "name": "John Doe",
+                        "address": "2 Test Street",
+                        "value": 20,
+                    },
+                ]
+            )
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "A/B/C/D/E/F/G row 3 values must match row 2" in response.text
 
 
 def test_non_admin_cannot_upload_for_target_user(client, db_session):
