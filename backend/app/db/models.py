@@ -74,6 +74,51 @@ class WaybillUpload(Base):
     files: Mapped[list["WaybillUploadFile"]] = relationship(
         back_populates="upload", cascade="all, delete-orphan"
     )
+    tracking_record: Mapped["WaybillTrackingRecord | None"] = relationship(
+        back_populates="upload", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class WaybillTrackingRecord(Base):
+    __tablename__ = "waybill_tracking_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    upload_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("waybill_uploads.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    public_code: Mapped[str] = mapped_column(
+        String(8), nullable=False, unique=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="created")
+    status_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    received_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    received_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    in_warehouse_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    released_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outbound_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    upload: Mapped["WaybillUpload"] = relationship(back_populates="tracking_record")
+    user: Mapped["User"] = relationship()
 
 
 class WaybillUploadFile(Base):

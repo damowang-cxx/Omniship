@@ -24,7 +24,7 @@ describe("LoginPage", () => {
     apiMock.login.mockResolvedValue({ user: { email: "admin@example.com" } });
   });
 
-  it("submits credentials and redirects to uploads", async () => {
+  it("submits credentials and redirects to waybills", async () => {
     render(<LoginPage />);
 
     fireEvent.change(screen.getByLabelText("邮箱"), {
@@ -37,7 +37,7 @@ describe("LoginPage", () => {
 
     await waitFor(() => {
       expect(apiMock.login).toHaveBeenCalledWith("admin@example.com", "password123");
-      expect(routerMock.replace).toHaveBeenCalledWith("/waybill-uploads");
+      expect(routerMock.replace).toHaveBeenCalledWith("/waybills");
     });
   });
 

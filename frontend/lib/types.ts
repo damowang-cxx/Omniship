@@ -28,6 +28,17 @@ export interface UserCreateRequest {
 
 export type ShipmentType = "Air" | "Road" | "Train";
 export type WaybillUploadStatus = "pending_review" | "approved" | "rejected";
+export type WaybillTrackingStatus =
+  | "created"
+  | "noa_received"
+  | "received"
+  | "ready_to_scan"
+  | "scanning"
+  | "pending_clearance"
+  | "partial_inbound"
+  | "inbound"
+  | "partial_outbound"
+  | "outbound";
 
 export interface WaybillPreAlertUploadPayload {
   shipmentType: ShipmentType;
@@ -95,4 +106,43 @@ export interface WaybillUploadFilters {
 export interface WaybillUploadDeleteResponse {
   status: "deleted";
   uploadId: string;
+}
+
+export interface WaybillItem {
+  id: string;
+  publicCode: string;
+  uploadId: string;
+  userId: string;
+  number: string;
+  status: WaybillTrackingStatus;
+  statusChangedAt: string;
+  weightKg: string;
+  pieces: number;
+  receivedCount: number;
+  receivedTotal: number;
+  inWarehouseCount: number;
+  releasedCount: number;
+  outboundCount: number;
+  createdAt: string;
+  updatedAt: string;
+  user?: WaybillUploadUserItem | null;
+}
+
+export interface WaybillListResponse {
+  items: WaybillItem[];
+}
+
+export interface WaybillFilters {
+  userId?: string;
+  status?: WaybillTrackingStatus | "";
+  q?: string;
+}
+
+export interface WaybillUpdatePayload {
+  status?: WaybillTrackingStatus;
+  receivedCount?: number;
+  receivedTotal?: number;
+  inWarehouseCount?: number;
+  releasedCount?: number;
+  outboundCount?: number;
 }

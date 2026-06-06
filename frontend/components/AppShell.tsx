@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardList, LogOut, UploadCloud, Users } from "lucide-react";
+import { ClipboardList, LogOut, Package, UploadCloud, Users } from "lucide-react";
 import type { AppUser } from "@/lib/types";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
@@ -16,7 +16,7 @@ export function AppShell({
   children
 }: {
   user: AppUser;
-  active: "uploads" | "upload-management" | "users";
+  active: "waybills" | "uploads" | "upload-management" | "users";
   messages: AppMessage[];
   unreadCount: number;
   isInfoOpen: boolean;
@@ -62,6 +62,15 @@ export function AppShell({
 
           <nav className={styles.nav} aria-label="Primary navigation">
             <p>Navigation</p>
+            <Link
+              aria-current={active === "waybills" ? "page" : undefined}
+              className={styles.navItem}
+              data-active={active === "waybills"}
+              href="/waybills"
+            >
+              <Package aria-hidden="true" size={18} />
+              <span>Waybills</span>
+            </Link>
             <Link
               aria-current={active === "uploads" ? "page" : undefined}
               className={styles.navItem}

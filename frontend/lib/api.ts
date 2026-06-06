@@ -3,13 +3,17 @@ import type {
   AuthUserResponse,
   UserCreateRequest,
   UserListResponse,
+  WaybillFilters,
+  WaybillItem,
+  WaybillListResponse,
   WaybillUploadItem,
   WaybillUploadDeleteResponse,
   WaybillUploadFilters,
   WaybillPreAlertUploadPayload,
   WaybillPreAlertUploadResponse,
   WaybillUploadListResponse,
-  WaybillUploadStatus
+  WaybillUploadStatus,
+  WaybillUpdatePayload
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -262,6 +266,38 @@ export function getWaybillUploadFileDownloadUrl(
   return getRequestUrl(
     `/api/v1/waybill-uploads/${uploadId}/files/${fileId}/download`
   );
+}
+
+export function listWaybills(filters?: WaybillFilters): Promise<WaybillListResponse> {
+  const params = new URLSearchParams();
+  if (filters?.userId) {
+    params.set("userId", filters.userId);
+  }
+  if (filters?.status) {
+    params.set("status", filters.status);
+  }
+  if (filters?.q?.trim()) {
+    params.set("q", filters.q.trim());
+  }
+
+  const query = params.toString();
+  return requestJson<WaybillListResponse>(
+    `/api/v1/waybills${query ? `?${query}` : ""}`
+  );
+}
+
+export function getWaybill(publicCode: string): Promise<WaybillItem> {
+  return requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}`);
+}
+
+export function updateWaybill(
+  publicCode: string,
+  payload: WaybillUpdatePayload
+): Promise<WaybillItem> {
+  return requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function isUnauthorizedError(error: unknown): boolean {

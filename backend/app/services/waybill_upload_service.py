@@ -29,6 +29,7 @@ from app.services.pre_alert_validator import (
     validate_pre_alert_excel,
 )
 from app.services.request_context import get_request_ip, get_request_user_agent
+from app.services.waybill_service import WaybillService
 
 
 SHIPMENT_TYPES = {"Air", "Road", "Train"}
@@ -197,6 +198,8 @@ class WaybillUploadService:
             status=status,
             reviewed_by_user_id=actor.id,
         )
+        if status == "approved":
+            WaybillService(self.db).ensure_tracking_for_upload(upload)
         self.audit_logs.create(
             "review_waybill_upload",
             actor_user_id=actor.id,

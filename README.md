@@ -1,6 +1,6 @@
 # Waybill Pre Alert Upload Management
 
-Internal EPIX back-office system for submitting Air Waybill Pre Alert data. Users upload a PDF Air Waybill document and an Excel Customer Pre Alert file; the backend validates the files, stores the upload locally, and lets admins review submitted waybills.
+Internal EPIX back-office system for submitting and tracking Air Waybill Pre Alert data. Users upload a PDF Air Waybill document and an Excel Customer Pre Alert file; the backend validates the files, stores the upload locally, lets admins review submitted waybills, and exposes approved waybills on a tracking page.
 
 ## Project Structure
 
@@ -58,17 +58,21 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000/](http://localhost:3000/). Unauthenticated users see the public EPIX landing page. Login is available at `/login`; successful login redirects to `/waybill-uploads`.
+Open [http://localhost:3000/](http://localhost:3000/). Unauthenticated users see the public EPIX landing page. Login is available at `/login`; successful login redirects to `/waybills`.
 
 ## Pages And Permissions
 
 - `/` is the public EPIX landing page.
 - `/login` is the only public login entry.
+- `/waybills` shows approved waybill tracking records. Regular users only see their own records; admins see all records and can edit operational status/progress from the status badge.
+- `/waybills/{publicCode}` shows the waybill detail shell for one approved record.
 - `/waybill-uploads` lets admins and users upload Pre Alert data.
 - `/waybill-upload-management` is admin-only and shows all submitted waybills.
 - `/users` is admin-only account management.
 - Regular users can upload and view only their own upload records.
 - Admins can upload for a selected Target User, review all submissions, download attachments, approve/reject records, and delete local records.
+
+Approved uploads automatically create a local tracking record with a unique 8-character public code. Tracking starts at `Created`; admins can update the operational status to `Created`, `NOA Received`, `Received`, `Ready To Scan`, `Scanning`, `Pending Clearance`, `Partial Inbound`, `Inbound`, `Partial Outbound`, or `Outbound`.
 
 ## Upload Rules
 
@@ -94,7 +98,7 @@ Excel validation uses the new Pre Alert template:
 - If W has an amount, L and M are required.
 - Other business validation rules are intentionally not active yet.
 
-Successful uploads are stored with status `pending_review`. Admins can later mark them `approved` or `rejected`.
+Successful uploads are stored with review status `pending_review`. Admins can later mark them `approved` or `rejected`. Only `approved` uploads appear in `/waybills`.
 
 ## API
 
@@ -112,6 +116,9 @@ Successful uploads are stored with status `pending_review`. Admins can later mar
 - `PATCH /api/v1/waybill-uploads/{uploadId}/status`, admin only
 - `GET /api/v1/waybill-uploads/{uploadId}/files/{fileId}/download`
 - `DELETE /api/v1/waybill-uploads/{uploadId}`
+- `GET /api/v1/waybills`
+- `GET /api/v1/waybills/{publicCode}`
+- `PATCH /api/v1/waybills/{publicCode}`, admin only
 
 ## Ubuntu 24.04 Deployment Notes
 
