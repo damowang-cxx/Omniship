@@ -29,16 +29,13 @@
   text-decoration: none;
 }
 
-.brandMark {
-  align-items: center;
-  background: #dc2626;
-  color: #ffffff;
-  display: inline-flex;
-  font-size: 16px;
-  font-weight: 950;
-  height: 34px;
-  justify-content: center;
-  width: 34px;
+.brandLogo {
+  border: 1px solid #d9e2ef;
+  display: block;
+  height: 38px;
+  object-fit: contain;
+  padding: 3px;
+  width: 38px;
 }
 
 .navLinks {

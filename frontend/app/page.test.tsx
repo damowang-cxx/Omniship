@@ -36,7 +36,7 @@ describe("LandingPage", () => {
       "/login"
     );
     expect(screen.getByText("Priority air freight")).toBeInTheDocument();
-    expect(screen.getByText("contact@example.com")).toBeInTheDocument();
+    expect(screen.getByText("hello@epix-logistics.com")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(routerMock.replace).not.toHaveBeenCalled();

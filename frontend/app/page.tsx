@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -63,7 +64,14 @@ export default function LandingPage() {
     <main className={styles.page}>
       <header className={styles.navbar}>
         <Link className={styles.brand} href="/" aria-label="EPIX home">
-          <span className={styles.brandMark}>E</span>
+          <Image
+            alt=""
+            aria-hidden="true"
+            className={styles.brandLogo}
+            height={38}
+            src="/brand/epix.jpg"
+            width={38}
+          />
           <span>EPIX</span>
         </Link>
         <nav className={styles.navLinks} aria-label="Landing navigation">
@@ -192,11 +200,11 @@ export default function LandingPage() {
         <div className={styles.contactGrid}>
           <span>
             <Mail aria-hidden="true" size={18} />
-            contact@example.com
+            hello@epix-logistics.com
           </span>
           <span>
             <Plane aria-hidden="true" size={18} />
-            +00 000 000 000
+            +31 684747361
           </span>
           <span>
             <MapPin aria-hidden="true" size={18} />
