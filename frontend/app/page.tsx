@@ -68,11 +68,10 @@ export default function LandingPage() {
             alt=""
             aria-hidden="true"
             className={styles.brandLogo}
-            height={38}
+            height={46}
             src="/brand/epix.jpg"
-            width={38}
+            width={156}
           />
-          <span>EPIX</span>
         </Link>
         <nav className={styles.navLinks} aria-label="Landing navigation">
           <a href="#services">Services</a>

@@ -110,6 +110,21 @@ class WaybillTrackingRecord(Base):
     in_warehouse_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     released_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     outbound_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    noa_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    collection_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    scanned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    customs_clearance_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    outbound_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )

@@ -111,6 +111,7 @@ class WaybillRepository:
         in_warehouse_count: int | None = None,
         released_count: int | None = None,
         outbound_count: int | None = None,
+        milestone_updates: dict[str, object] | None = None,
     ) -> WaybillTrackingRecord:
         if status is not None:
             record.status = status
@@ -124,5 +125,7 @@ class WaybillRepository:
             record.released_count = released_count
         if outbound_count is not None:
             record.outbound_count = outbound_count
+        for field_name, value in (milestone_updates or {}).items():
+            setattr(record, field_name, value)
         self.db.flush()
         return record

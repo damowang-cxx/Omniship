@@ -27,6 +27,13 @@ WAYBILL_STATUSES = {
     "outbound",
 }
 PUBLIC_CODE_ALPHABET = string.ascii_uppercase + string.digits
+MILESTONE_PAYLOAD_TO_MODEL = {
+    "noaAt": "noa_at",
+    "collectionAt": "collection_at",
+    "scannedAt": "scanned_at",
+    "customsClearanceAt": "customs_clearance_at",
+    "outboundAt": "outbound_at",
+}
 
 
 class WaybillValidationError(ValueError):
@@ -100,6 +107,11 @@ class WaybillService:
             record.status_changed_at = datetime.now(timezone.utc)
 
         self._validate_counts(record, payload)
+        milestone_updates = {
+            model_field: getattr(payload, payload_field)
+            for payload_field, model_field in MILESTONE_PAYLOAD_TO_MODEL.items()
+            if payload_field in payload.model_fields_set
+        }
         self.waybills.update(
             record,
             status=payload.status,
@@ -108,6 +120,7 @@ class WaybillService:
             in_warehouse_count=payload.inWarehouseCount,
             released_count=payload.releasedCount,
             outbound_count=payload.outboundCount,
+            milestone_updates=milestone_updates,
         )
         self.audit_logs.create(
             "update_waybill_tracking",
@@ -121,6 +134,7 @@ class WaybillService:
                 "airWaybillNumber": record.upload.air_waybill_number,
                 "status": record.status,
                 "statusChanged": status_changed,
+                "milestoneFields": list(milestone_updates.keys()),
             },
         )
         self.db.commit()
@@ -177,6 +191,11 @@ class WaybillService:
             inWarehouseCount=record.in_warehouse_count,
             releasedCount=record.released_count,
             outboundCount=record.outbound_count,
+            noaAt=record.noa_at,
+            collectionAt=record.collection_at,
+            scannedAt=record.scanned_at,
+            customsClearanceAt=record.customs_clearance_at,
+            outboundAt=record.outbound_at,
             createdAt=record.created_at,
             updatedAt=record.updated_at,
             user=WaybillUploadUserItem.model_validate(record.user)

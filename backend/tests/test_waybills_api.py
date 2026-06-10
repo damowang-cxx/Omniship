@@ -57,6 +57,11 @@ def test_approved_upload_creates_waybill_tracking_record(client, db_session):
     assert item["inWarehouseCount"] == 0
     assert item["releasedCount"] == 0
     assert item["outboundCount"] == 0
+    assert item["noaAt"] is None
+    assert item["collectionAt"] is None
+    assert item["scannedAt"] is None
+    assert item["customsClearanceAt"] is None
+    assert item["outboundAt"] is None
     assert item["user"]["email"] == "user@example.com"
 
     assert login(client, email="user@example.com").status_code == 200
@@ -101,13 +106,24 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
             "inWarehouseCount": 2,
             "releasedCount": 1,
             "outboundCount": 0,
+            "noaAt": "2026-05-11T12:30:00Z",
+            "collectionAt": "2026-05-11T14:15:00Z",
         },
     )
     assert progress_response.status_code == 200
     progress_body = progress_response.json()
     assert progress_body["receivedCount"] == 3
     assert progress_body["inWarehouseCount"] == 2
+    assert progress_body["noaAt"].startswith("2026-05-11T12:30:00")
+    assert progress_body["collectionAt"].startswith("2026-05-11T14:15:00")
     assert progress_body["statusChangedAt"] == original_status_changed_at
+
+    clear_response = client.patch(
+        f"/api/v1/waybills/{public_code}",
+        json={"noaAt": None},
+    )
+    assert clear_response.status_code == 200
+    assert clear_response.json()["noaAt"] is None
 
     status_response = client.patch(
         f"/api/v1/waybills/{public_code}",

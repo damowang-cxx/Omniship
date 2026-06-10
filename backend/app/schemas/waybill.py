@@ -37,6 +37,13 @@ class WaybillItem(BaseModel):
     in_warehouse_count: int = Field(alias="inWarehouseCount")
     released_count: int = Field(alias="releasedCount")
     outbound_count: int = Field(alias="outboundCount")
+    noa_at: datetime | None = Field(default=None, alias="noaAt")
+    collection_at: datetime | None = Field(default=None, alias="collectionAt")
+    scanned_at: datetime | None = Field(default=None, alias="scannedAt")
+    customs_clearance_at: datetime | None = Field(
+        default=None, alias="customsClearanceAt"
+    )
+    outbound_at: datetime | None = Field(default=None, alias="outboundAt")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     user: WaybillUploadUserItem | None = None
@@ -57,3 +64,8 @@ class WaybillUpdateRequest(BaseModel):
     inWarehouseCount: int | None = Field(default=None, ge=0)
     releasedCount: int | None = Field(default=None, ge=0)
     outboundCount: int | None = Field(default=None, ge=0)
+    noaAt: datetime | None = None
+    collectionAt: datetime | None = None
+    scannedAt: datetime | None = None
+    customsClearanceAt: datetime | None = None
+    outboundAt: datetime | None = None

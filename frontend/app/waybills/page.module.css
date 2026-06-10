@@ -404,6 +404,119 @@
   padding: 22px;
 }
 
+.detailHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.detailHeader h2 {
+  color: var(--text);
+  font-size: 30px;
+  margin: 0;
+}
+
+.milestoneForm {
+  display: grid;
+  gap: 16px;
+}
+
+.milestoneGrid {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  overflow: hidden;
+}
+
+.milestoneItem {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1.2fr);
+  min-height: 74px;
+  padding: 14px 16px;
+}
+
+.milestoneItem:last-child {
+  border-bottom: 0;
+}
+
+.milestoneLabel {
+  color: #344054;
+  display: grid;
+  font-size: 14px;
+  font-weight: 900;
+  gap: 4px;
+}
+
+.milestoneLabel small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.milestoneTime {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.milestoneTime[data-empty="true"] {
+  color: #98a2b3;
+}
+
+.milestoneInput {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  min-height: 42px;
+  padding: 0 12px;
+  width: min(100%, 320px);
+}
+
+.milestoneInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: 0;
+}
+
+.detailActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.detailActions button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.detailActions button:first-child {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: #344054;
+}
+
+.detailActions button:last-child {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #ffffff;
+}
+
+.detailActions button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .backLink {
   color: var(--accent-strong);
   font-size: 13px;
@@ -428,9 +541,15 @@
   }
 
   .workspaceHeader,
-  .listHeader {
+  .listHeader,
+  .detailHeader {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .milestoneItem {
+    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .accountTag {

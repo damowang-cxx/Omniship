@@ -123,6 +123,11 @@ export interface WaybillItem {
   inWarehouseCount: number;
   releasedCount: number;
   outboundCount: number;
+  noaAt?: string | null;
+  collectionAt?: string | null;
+  scannedAt?: string | null;
+  customsClearanceAt?: string | null;
+  outboundAt?: string | null;
   createdAt: string;
   updatedAt: string;
   user?: WaybillUploadUserItem | null;
@@ -145,4 +150,9 @@ export interface WaybillUpdatePayload {
   inWarehouseCount?: number;
   releasedCount?: number;
   outboundCount?: number;
+  noaAt?: string | null;
+  collectionAt?: string | null;
+  scannedAt?: string | null;
+  customsClearanceAt?: string | null;
+  outboundAt?: string | null;
 }

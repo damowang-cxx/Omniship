@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WaybillDetailPage from "./page";
@@ -13,7 +13,8 @@ const apiMock = vi.hoisted(() => ({
   isUnauthorizedError: vi.fn((error: unknown) =>
     error instanceof Error && error.message.includes("401")
   ),
-  logout: vi.fn()
+  logout: vi.fn(),
+  updateWaybill: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -63,6 +64,11 @@ const waybillItem = {
   inWarehouseCount: 0,
   releasedCount: 0,
   outboundCount: 0,
+  noaAt: null,
+  collectionAt: null,
+  scannedAt: null,
+  customsClearanceAt: null,
+  outboundAt: null,
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z"
 };
@@ -83,6 +89,52 @@ describe("WaybillDetailPage", () => {
       "/waybills"
     );
     expect(apiMock.getWaybill).toHaveBeenCalledWith("A7K2P9QX");
+  });
+
+  it("lets admins edit milestone times", async () => {
+    apiMock.updateWaybill.mockResolvedValue({
+      ...waybillItem,
+      noaAt: "2026-05-11T12:30:00Z"
+    });
+
+    render(<WaybillDetailPage />);
+
+    const noaInput = await screen.findByLabelText("NOA Time");
+    fireEvent.change(noaInput, { target: { value: "2026-05-11T12:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save milestone times" }));
+
+    await waitFor(() => {
+      expect(apiMock.updateWaybill).toHaveBeenCalledWith(
+        "A7K2P9QX",
+        expect.objectContaining({
+          noaAt: expect.any(String),
+          collectionAt: null,
+          scannedAt: null,
+          customsClearanceAt: null,
+          outboundAt: null
+        })
+      );
+    });
+    expect(await screen.findByText("Waybill milestone times updated")).toBeInTheDocument();
+  });
+
+  it("shows milestone times as read-only for regular users", async () => {
+    apiMock.getCurrentUser.mockResolvedValueOnce({
+      user: { ...adminUser, role: "user" }
+    });
+    apiMock.getWaybill.mockResolvedValueOnce({
+      ...waybillItem,
+      noaAt: "2026-05-11T12:30:00Z"
+    });
+
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByText("NOA")).toBeInTheDocument();
+    expect(screen.queryByLabelText("NOA Time")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save milestone times" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Read-only milestones")).toBeInTheDocument();
   });
 
   it("redirects unauthenticated users to the public page", async () => {
