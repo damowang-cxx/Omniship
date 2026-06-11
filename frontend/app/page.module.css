@@ -1,13 +1,22 @@
 .page {
-  background: #f6f8fb;
-  color: #172033;
+  --brand-blue: #173bd7;
+  --brand-sky: #2f86f6;
+  --brand-navy: #082f75;
+  --brand-ink: #13213f;
+  --brand-soft: #f4f8ff;
+  --brand-soft-blue: #eaf3ff;
+  --brand-border: #d3e4f8;
+  --brand-muted-blue: #536f96;
+
+  background: var(--brand-soft);
+  color: var(--brand-ink);
   min-height: 100vh;
 }
 
 .navbar {
   align-items: center;
   background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid #d9e2ef;
+  border-bottom: 1px solid var(--brand-border);
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 24px;
@@ -20,7 +29,7 @@
 
 .brand {
   align-items: center;
-  color: #172033;
+  color: var(--brand-ink);
   display: inline-flex;
   line-height: 0;
   text-decoration: none;
@@ -41,7 +50,7 @@
 }
 
 .navLinks a {
-  color: #4b5870;
+  color: var(--brand-muted-blue);
   font-size: 14px;
   font-weight: 850;
   letter-spacing: 0;
@@ -49,7 +58,110 @@
 }
 
 .navLinks a:hover {
-  color: #0f4c81;
+  color: var(--brand-blue);
+}
+
+.navActions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.languageSelector {
+  position: relative;
+}
+
+.languageButton {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--brand-border);
+  color: var(--brand-ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 950;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.languageButton:hover,
+.languageButton[aria-expanded="true"] {
+  border-color: var(--brand-blue);
+  color: var(--brand-blue);
+}
+
+.languageCode {
+  min-width: 18px;
+  text-align: center;
+}
+
+.languageChevron {
+  transition: transform 160ms ease;
+}
+
+.languageButton[aria-expanded="true"] .languageChevron {
+  transform: rotate(180deg);
+}
+
+.languageMenu {
+  background: #ffffff;
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 18px 42px rgba(23, 32, 51, 0.16);
+  min-width: 154px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+}
+
+.languageOption {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--brand-ink);
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.languageOption:hover,
+.languageOption[aria-checked="true"] {
+  background: var(--brand-soft-blue);
+  color: var(--brand-blue);
+}
+
+.languageOption span {
+  display: grid;
+  gap: 2px;
+}
+
+.languageOption strong {
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.languageOption small {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.languageCheck {
+  color: var(--brand-sky);
+  opacity: 0;
+}
+
+.languageOption[aria-checked="true"] .languageCheck {
+  opacity: 1;
 }
 
 .loginButton,
@@ -63,8 +175,8 @@
 }
 
 .loginButton {
-  background: #172033;
-  border: 1px solid #172033;
+  background: var(--brand-navy);
+  border: 1px solid var(--brand-navy);
   color: #ffffff;
   font-size: 14px;
   min-height: 40px;
@@ -72,13 +184,13 @@
 }
 
 .loginButton:hover {
-  background: #0f4c81;
-  border-color: #0f4c81;
+  background: var(--brand-blue);
+  border-color: var(--brand-blue);
 }
 
 .hero {
   background-image:
-    linear-gradient(90deg, rgba(9, 18, 34, 0.88) 0%, rgba(9, 18, 34, 0.7) 45%, rgba(9, 18, 34, 0.28) 100%),
+    linear-gradient(90deg, rgba(5, 28, 74, 0.92) 0%, rgba(14, 56, 132, 0.76) 48%, rgba(47, 134, 246, 0.24) 100%),
     url("https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1800&q=80");
   background-position: center;
   background-size: cover;
@@ -88,8 +200,8 @@
 
 .heroOverlay {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(246, 248, 251, 0.16) 100%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 96px);
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(234, 243, 255, 0.2) 100%),
+    repeating-linear-gradient(90deg, rgba(188, 220, 255, 0.16) 0 1px, transparent 1px 96px);
   inset: 0;
   position: absolute;
 }
@@ -103,7 +215,7 @@
 }
 
 .eyebrow {
-  color: #dc2626;
+  color: var(--brand-blue);
   font-size: 12px;
   font-weight: 950;
   letter-spacing: 0;
@@ -112,7 +224,7 @@
 }
 
 .hero .eyebrow {
-  color: #fca5a5;
+  color: #9fd0ff;
 }
 
 .hero h1 {
@@ -149,18 +261,18 @@
 }
 
 .primaryCta {
-  background: #dc2626;
+  background: var(--brand-blue);
   color: #ffffff;
   gap: 8px;
 }
 
 .primaryCta:hover {
-  background: #b91c1c;
+  background: var(--brand-sky);
 }
 
 .secondaryCta {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(159, 208, 255, 0.62);
   color: #ffffff;
 }
 
@@ -170,8 +282,8 @@
 
 .metrics {
   background: #ffffff;
-  border-bottom: 1px solid #d9e2ef;
-  border-top: 1px solid #d9e2ef;
+  border-bottom: 1px solid var(--brand-border);
+  border-top: 1px solid var(--brand-border);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto;
@@ -186,24 +298,24 @@
 }
 
 .metrics div + div {
-  border-left: 1px solid #d9e2ef;
+  border-left: 1px solid var(--brand-border);
 }
 
 .metrics svg,
 .serviceCard svg,
-.whyGrid svg,
+.whyChecklist svg,
 .contactGrid svg {
-  color: #dc2626;
+  color: var(--brand-blue);
 }
 
 .metrics strong {
-  color: #172033;
+  color: var(--brand-ink);
   font-size: 17px;
   font-weight: 950;
 }
 
 .metrics span {
-  color: #53617a;
+  color: var(--brand-muted-blue);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.55;
@@ -216,6 +328,7 @@
   margin: 0 auto;
   max-width: 1180px;
   padding: 50px 42px 78px;
+  scroll-margin-top: 88px;
 }
 
 .sectionHeader {
@@ -225,9 +338,8 @@
 }
 
 .sectionHeader h2,
-.processText h2,
 .contactFooter h2 {
-  color: #172033;
+  color: var(--brand-ink);
   font-size: 38px;
   font-weight: 950;
   letter-spacing: 0;
@@ -235,119 +347,91 @@
   margin: 0;
 }
 
-.sectionHeader p,
-.processText p {
-  color: #53617a;
+.sectionHeader p {
+  color: var(--brand-muted-blue);
   font-size: 16px;
   font-weight: 680;
   line-height: 1.75;
   margin: 0;
 }
 
-.serviceGrid,
-.whyGrid {
+.serviceGrid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.serviceCard,
-.whyGrid div {
+.serviceCard {
   background: #ffffff;
-  border: 1px solid #d9e2ef;
+  border: 1px solid var(--brand-border);
   display: grid;
   gap: 14px;
   padding: 24px;
 }
 
-.serviceCard h3,
-.whyGrid h3 {
-  color: #172033;
+.serviceCard h3 {
+  color: var(--brand-ink);
   font-size: 19px;
   font-weight: 950;
   letter-spacing: 0;
   margin: 0;
 }
 
-.serviceCard p,
-.whyGrid p {
-  color: #53617a;
+.serviceCard p {
+  color: var(--brand-muted-blue);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.7;
   margin: 0;
 }
 
-.processBand {
-  background: #172033;
-  color: #ffffff;
-  display: grid;
-  gap: 36px;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  padding: 76px max(42px, calc((100vw - 1180px) / 2 + 42px));
-}
-
-.processText {
-  display: grid;
-  gap: 14px;
-}
-
-.processText h2,
 .contactFooter h2 {
   color: #ffffff;
-}
-
-.processText p {
-  color: #c7d3e5;
-}
-
-.processList {
-  counter-reset: step;
-  display: grid;
-  gap: 12px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.processList li {
-  align-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 56px 1fr;
-  min-height: 72px;
-  padding: 14px 18px;
-}
-
-.processList span {
-  color: #fca5a5;
-  font-size: 14px;
-  font-weight: 950;
-}
-
-.processList strong {
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 900;
 }
 
 .whySection {
   padding-top: 74px;
 }
 
+.whyChecklist {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.whyChecklist li {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--brand-border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr;
+  min-height: 54px;
+  padding: 14px 16px;
+}
+
+.whyChecklist span {
+  color: var(--brand-ink);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.45;
+}
+
 .contactFooter {
-  background: #0f4c81;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
   color: #ffffff;
   display: grid;
   gap: 28px;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.7fr);
   padding: 64px max(42px, calc((100vw - 1180px) / 2 + 42px));
+  scroll-margin-top: 88px;
 }
 
 .contactFooter .eyebrow {
-  color: #bfdbfe;
+  color: #cde5ff;
   margin-bottom: 12px;
 }
 
@@ -360,7 +444,7 @@
 .contactGrid span {
   align-items: center;
   background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(205, 229, 255, 0.28);
   color: #ffffff;
   display: inline-flex;
   font-size: 15px;
@@ -371,7 +455,113 @@
 }
 
 .contactGrid svg {
-  color: #bfdbfe;
+  color: #cde5ff;
+}
+
+.partnerBand {
+  background: var(--brand-soft-blue);
+  border-top: 1px solid var(--brand-border);
+  padding: 28px max(24px, calc((100vw - 1180px) / 2 + 42px));
+}
+
+.partnerLogos {
+  align-items: center;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 1180px;
+}
+
+.partnerLogo {
+  align-items: center;
+  color: var(--brand-muted-blue);
+  display: inline-flex;
+  font-size: 28px;
+  font-weight: 950;
+  gap: 10px;
+  justify-content: center;
+  letter-spacing: 0;
+  min-height: 54px;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.partnerLogo::before,
+.partnerLogo::after {
+  content: "";
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.colissimoLogo {
+  font-size: 21px;
+  text-transform: lowercase;
+}
+
+.colissimoLogo::before {
+  background:
+    linear-gradient(135deg, transparent 0 34%, currentColor 35% 100%),
+    linear-gradient(45deg, currentColor 0 50%, transparent 51%);
+  height: 24px;
+  opacity: 0.9;
+  width: 24px;
+}
+
+.fedexLogo {
+  font-size: 34px;
+  letter-spacing: -1px;
+}
+
+.dhlLogo {
+  font-size: 28px;
+  font-style: italic;
+  letter-spacing: 1px;
+}
+
+.dhlLogo::before,
+.dhlLogo::after {
+  background: currentColor;
+  box-shadow:
+    0 -6px 0 currentColor,
+    0 6px 0 currentColor;
+  height: 2px;
+  opacity: 0.55;
+  width: 34px;
+}
+
+.dpdLogo {
+  font-size: 28px;
+}
+
+.dpdLogo::before {
+  border: 3px solid currentColor;
+  height: 21px;
+  transform: rotate(45deg);
+  width: 21px;
+}
+
+.upsLogo {
+  border: 3px solid currentColor;
+  border-radius: 12px 12px 16px 16px;
+  font-size: 23px;
+  min-height: 48px;
+  min-width: 52px;
+  padding: 3px 10px 6px;
+}
+
+.pedllerLogo {
+  font-size: 27px;
+  letter-spacing: -0.5px;
+}
+
+.pedllerLogo::after {
+  background: currentColor;
+  border-radius: 999px;
+  height: 9px;
+  margin-left: -4px;
+  opacity: 0.75;
+  width: 9px;
 }
 
 @media (max-width: 920px) {
@@ -398,10 +588,14 @@
 
   .metrics,
   .serviceGrid,
-  .whyGrid,
-  .processBand,
+  .whyChecklist,
   .contactFooter {
     grid-template-columns: 1fr;
+  }
+
+  .partnerLogos {
+    gap: 18px 24px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .metrics {
@@ -411,12 +605,11 @@
 
   .metrics div + div {
     border-left: 0;
-    border-top: 1px solid #d9e2ef;
+    border-top: 1px solid var(--brand-border);
   }
 
   .section,
   .whySection,
-  .processBand,
   .contactFooter {
     padding-left: 24px;
     padding-right: 24px;
@@ -430,6 +623,24 @@
 
   .brand {
     font-size: 18px;
+  }
+
+  .navActions {
+    gap: 8px;
+  }
+
+  .languageButton {
+    justify-content: center;
+    padding: 0 10px;
+  }
+
+  .languageCode,
+  .languageChevron {
+    display: none;
+  }
+
+  .languageMenu {
+    right: -58px;
   }
 
   .loginButton {
@@ -449,8 +660,29 @@
     font-size: 16px;
   }
 
+  .partnerBand {
+    padding: 22px 18px;
+  }
+
+  .partnerLogos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .partnerLogo {
+    font-size: 22px;
+    min-height: 46px;
+  }
+
+  .fedexLogo {
+    font-size: 27px;
+  }
+
+  .dhlLogo::before,
+  .dhlLogo::after {
+    width: 22px;
+  }
+
   .sectionHeader h2,
-  .processText h2,
   .contactFooter h2 {
     font-size: 30px;
   }
