@@ -84,29 +84,64 @@ type LandingContent = {
 const partnerLogos = [
   {
     name: "Colissimo",
-    className: styles.colissimoLogo
+    src: "/partners/colissimo.svg",
+    width: 164,
+    height: 42,
+    className: styles.partnerLogoWide
   },
   {
     name: "FedEx",
-    className: styles.fedexLogo
+    src: "/partners/fedex.svg",
+    width: 138,
+    height: 50,
+    className: styles.partnerLogoLong
   },
   {
     name: "DHL",
-    className: styles.dhlLogo
+    src: "/partners/dhl.svg",
+    width: 154,
+    height: 34,
+    className: styles.partnerLogoLong
   },
   {
     name: "DPD",
-    className: styles.dpdLogo
+    src: "/partners/dpd.svg",
+    width: 106,
+    height: 44,
+    className: styles.partnerLogoMedium
   },
   {
     name: "UPS",
-    className: styles.upsLogo
+    src: "/partners/ups.svg",
+    width: 54,
+    height: 64,
+    className: styles.partnerLogoShield
   },
   {
-    name: "Pedller",
-    className: styles.pedllerLogo
+    name: "Peddler",
+    src: "/partners/peddler.svg",
+    width: 112,
+    height: 50,
+    className: styles.partnerLogoCompact
   }
 ];
+
+const renderHeroTitle = (title: string) => {
+  const protectedTerm = "E-commerce";
+  const termIndex = title.indexOf(protectedTerm);
+
+  if (termIndex === -1) {
+    return title;
+  }
+
+  return (
+    <>
+      {title.slice(0, termIndex)}
+      <span className={styles.keepTogether}>{protectedTerm}</span>
+      {title.slice(termIndex + protectedTerm.length)}
+    </>
+  );
+};
 
 const landingContent: Record<Locale, LandingContent> = {
   en: {
@@ -213,7 +248,7 @@ const landingContent: Record<Locale, LandingContent> = {
     },
     contact: {
       eyebrow: "Contact",
-      title: "Talk to EPIX about your next air shipment.",
+      title: "Contact EPIX To Discuss Your Upcoming Air Freight Requirements.",
       email: "hello@epix-logistics.com",
       phone: "+31 684747361",
       location: "Global air freight desk"
@@ -482,8 +517,8 @@ export default function LandingPageClient({
       <section className={styles.hero}>
         <div className={styles.heroOverlay} />
         <div className={styles.heroContent}>
-          <p className={styles.eyebrow}>{copy.hero.eyebrow}</p>
-          <h1>{copy.hero.title}</h1>
+        <p className={styles.eyebrow}>{copy.hero.eyebrow}</p>
+          <h1>{renderHeroTitle(copy.hero.title)}</h1>
           <p className={styles.heroCopy}>{copy.hero.copy}</p>
           <div className={styles.heroActions}>
             <a className={styles.primaryCta} href="#services">
@@ -569,12 +604,14 @@ export default function LandingPageClient({
       <section className={styles.partnerBand} aria-label={copy.partners.label}>
         <div className={styles.partnerLogos}>
           {partnerLogos.map((partner) => (
-            <div
-              aria-label={partner.name}
-              className={`${styles.partnerLogo} ${partner.className}`}
-              key={partner.name}
-            >
-              <span aria-hidden="true">{partner.name}</span>
+            <div className={styles.partnerLogo} key={partner.name}>
+              <Image
+                alt={partner.name}
+                className={`${styles.partnerLogoImage} ${partner.className}`}
+                height={partner.height}
+                src={partner.src}
+                width={partner.width}
+              />
             </div>
           ))}
         </div>

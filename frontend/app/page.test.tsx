@@ -79,12 +79,12 @@ describe("LandingPage", () => {
     expect(
       screen.getByRole("region", { name: "Logistics partners" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Colissimo")).toBeInTheDocument();
-    expect(screen.getByText("FedEx")).toBeInTheDocument();
-    expect(screen.getByText("DHL")).toBeInTheDocument();
-    expect(screen.getByText("DPD")).toBeInTheDocument();
-    expect(screen.getByText("UPS")).toBeInTheDocument();
-    expect(screen.getByText("Pedller")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Colissimo" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "FedEx" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "DHL" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "DPD" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "UPS" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Peddler" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(routerMock.replace).not.toHaveBeenCalled();
