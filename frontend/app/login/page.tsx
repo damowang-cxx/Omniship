@@ -45,7 +45,7 @@ export default function LoginPage() {
     <main className={styles.page}>
       <section className={styles.panel}>
         <div className={styles.brand}>
-          <span>Omniship</span>
+          <span>EPIX Logistics</span>
           <h1>登录</h1>
         </div>
 
