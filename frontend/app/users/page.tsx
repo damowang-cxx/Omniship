@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   createUser,
+  deleteUser,
   getCurrentUser,
   isUnauthorizedError,
   listUsers,
@@ -113,6 +114,25 @@ export default function UsersPage() {
       await refreshUsers();
     } catch (error) {
       addMessage("重置密码失败", error instanceof Error ? error.message : "请求失败");
+    }
+  }
+
+  async function handleDeleteUser(user: AppUser) {
+    if (user.id === currentUser?.id) {
+      addMessage("无法删除当前账号", "请使用其他管理员账号删除该用户。");
+      return;
+    }
+
+    const confirmed = window.confirm(`确定要删除用户 ${user.email} 吗？`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteUser(user.id);
+      await refreshUsers();
+    } catch (error) {
+      addMessage("删除用户失败", error instanceof Error ? error.message : "请求失败");
     }
   }
 
@@ -235,6 +255,19 @@ export default function UsersPage() {
                           </button>
                           <button onClick={() => setResetTarget(user)} type="button">
                             重置密码
+                          </button>
+                          <button
+                            className={styles.dangerButton}
+                            disabled={user.id === currentUser.id}
+                            onClick={() => handleDeleteUser(user)}
+                            title={
+                              user.id === currentUser.id
+                                ? "不能删除当前登录账号"
+                                : `删除 ${user.email}`
+                            }
+                            type="button"
+                          >
+                            删除
                           </button>
                         </div>
                       </td>

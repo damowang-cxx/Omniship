@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import UsersPage from "./page";
 
@@ -8,6 +8,7 @@ const routerMock = vi.hoisted(() => ({
 
 const apiMock = vi.hoisted(() => ({
   createUser: vi.fn(),
+  deleteUser: vi.fn(),
   getCurrentUser: vi.fn(),
   isUnauthorizedError: vi.fn((error: unknown) =>
     error instanceof Error && error.message.includes("401")
@@ -53,6 +54,7 @@ describe("UsersPage", () => {
       ]
     });
     apiMock.createUser.mockResolvedValue({ id: "new-user" });
+    apiMock.deleteUser.mockResolvedValue({ status: "deleted" });
     apiMock.updateUserStatus.mockResolvedValue({ id: "user-id" });
     apiMock.resetUserPassword.mockResolvedValue({ id: "user-id" });
   });
@@ -85,6 +87,28 @@ describe("UsersPage", () => {
         password: "password123"
       });
     });
+  });
+
+  it("deletes a user after confirmation", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<UsersPage />);
+
+    const userRow = (await screen.findByText("operator@example.com")).closest("tr");
+    expect(userRow).not.toBeNull();
+    fireEvent.click(
+      within(userRow as HTMLElement).getByRole("button", { name: "删除" })
+    );
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        "确定要删除用户 operator@example.com 吗？"
+      );
+      expect(apiMock.deleteUser).toHaveBeenCalledWith("user-id");
+      expect(apiMock.listUsers).toHaveBeenCalledTimes(2);
+    });
+
+    confirmMock.mockRestore();
   });
 
   it("redirects unauthenticated users to the public landing page", async () => {

@@ -36,3 +36,6 @@ class UserStatusUpdateRequest(BaseModel):
 class UserPasswordResetRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
+
+class UserDeleteResponse(BaseModel):
+    status: str

@@ -8,6 +8,7 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.user import (
     UserCreateRequest,
+    UserDeleteResponse,
     UserListResponse,
     UserPasswordResetRequest,
     UserPublic,
@@ -88,3 +89,26 @@ def reset_password(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return UserPublic.model_validate(user)
 
+
+@router.delete("/{user_id}", response_model=UserDeleteResponse)
+def delete_user(
+    user_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> UserDeleteResponse:
+    try:
+        UserService(db).delete_user(
+            actor=current_user,
+            user_id=user_id,
+            request=request,
+        )
+    except ValueError as exc:
+        error_detail = str(exc)
+        error_status = (
+            status.HTTP_404_NOT_FOUND
+            if error_detail == "User not found"
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=error_status, detail=error_detail) from exc
+    return UserDeleteResponse(status="deleted")

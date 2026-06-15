@@ -187,6 +187,12 @@ export function resetUserPassword(
   });
 }
 
+export function deleteUser(userId: string): Promise<{ status: string }> {
+  return requestJson<{ status: string }>(`/api/v1/users/${userId}`, {
+    method: "DELETE"
+  });
+}
+
 export function listWaybillUploads(
   filters?: WaybillUploadFilters
 ): Promise<WaybillUploadListResponse> {

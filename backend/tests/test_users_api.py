@@ -39,6 +39,14 @@ def test_admin_can_manage_users(client, db_session):
     )
     assert reset_response.status_code == 200
 
+    delete_response = client.delete(f"/api/v1/users/{user_id}")
+    assert delete_response.status_code == 200
+    assert delete_response.json()["status"] == "deleted"
+
+    list_after_delete_response = client.get("/api/v1/users")
+    assert list_after_delete_response.status_code == 200
+    assert len(list_after_delete_response.json()["items"]) == 1
+
     actions = [
         row.action
         for row in db_session.execute(select(AuditLog).order_by(AuditLog.created_at)).scalars()
@@ -46,6 +54,22 @@ def test_admin_can_manage_users(client, db_session):
     assert "create_user" in actions
     assert "disable_user" in actions
     assert "reset_password" in actions
+    assert "delete_user" in actions
+
+
+def test_admin_cannot_delete_self(client, db_session):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    assert login(client, email="admin@example.com").status_code == 200
+
+    response = client.delete(f"/api/v1/users/{admin.id}")
+
+    assert response.status_code == 400
+    assert "Cannot delete your own account" in response.text
 
 
 def test_regular_user_cannot_manage_users(client, db_session):
@@ -55,4 +79,3 @@ def test_regular_user_cannot_manage_users(client, db_session):
     response = client.get("/api/v1/users")
 
     assert response.status_code == 403
-

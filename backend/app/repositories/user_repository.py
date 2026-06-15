@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import User
@@ -43,3 +43,9 @@ class UserRepository:
         statement = select(User).order_by(User.created_at.desc(), User.email.asc())
         return list(self.db.execute(statement).scalars().all())
 
+    def count_by_role(self, role: str) -> int:
+        statement = select(func.count()).select_from(User).where(User.role == role)
+        return self.db.execute(statement).scalar_one()
+
+    def delete(self, user: User) -> None:
+        self.db.delete(user)

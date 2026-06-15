@@ -88,9 +88,27 @@ class UserService:
         self.db.refresh(user)
         return user
 
+    def delete_user(self, *, actor: User, user_id: UUID, request: Request) -> None:
+        user = self._get_existing_user(user_id)
+        if user.id == actor.id:
+            raise ValueError("Cannot delete your own account")
+        if user.role == "admin" and self.users.count_by_role("admin") <= 1:
+            raise ValueError("Cannot delete the last admin account")
+
+        self.audit_logs.create(
+            "delete_user",
+            actor_user_id=actor.id,
+            target_type="user",
+            target_id=str(user.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={"email": user.email, "role": user.role},
+        )
+        self.users.delete(user)
+        self.db.commit()
+
     def _get_existing_user(self, user_id: UUID) -> User:
         user = self.users.get_by_id(user_id)
         if user is None:
             raise ValueError("User not found")
         return user
-
