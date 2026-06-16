@@ -111,6 +111,7 @@ class WaybillTrackingRecord(Base):
     received_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     received_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     in_warehouse_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pallet_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     fyco_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="released"
     )

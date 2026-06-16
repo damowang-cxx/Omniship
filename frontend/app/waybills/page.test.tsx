@@ -72,6 +72,7 @@ const waybillItem = {
   receivedCount: 0,
   receivedTotal: 8,
   inWarehouseCount: 0,
+  palletCount: 2,
   fycoStatus: "released",
   releasedCount: 0,
   outboundCount: 0,
@@ -95,6 +96,7 @@ describe("WaybillsPage", () => {
       status: "inbound",
       receivedCount: 5,
       inWarehouseCount: 5,
+      palletCount: 4,
       fycoStatus: "fyco",
       releasedCount: 2,
       outboundCount: 1
@@ -114,6 +116,8 @@ describe("WaybillsPage", () => {
     expect(screen.getByText("AMS")).toBeInTheDocument();
     expect(screen.getByText("12.500")).toBeInTheDocument();
     expect(screen.getByText("0 / 8")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Pallet Count" })).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Fyco" })).toBeInTheDocument();
     expect(screen.getAllByText("Released").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0.00% (0)").length).toBeGreaterThan(0);
@@ -156,6 +160,9 @@ describe("WaybillsPage", () => {
     fireEvent.change(screen.getByLabelText("In Warehouse Count"), {
       target: { value: "5" }
     });
+    fireEvent.change(screen.getByLabelText("Pallet Count"), {
+      target: { value: "4" }
+    });
     fireEvent.change(screen.getByLabelText("Fyco"), {
       target: { value: "fyco" }
     });
@@ -167,6 +174,7 @@ describe("WaybillsPage", () => {
         receivedCount: 5,
         receivedTotal: 8,
         inWarehouseCount: 5,
+        palletCount: 4,
         fycoStatus: "fyco",
         releasedCount: 0,
         outboundCount: 0

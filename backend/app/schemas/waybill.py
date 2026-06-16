@@ -62,6 +62,7 @@ class WaybillItem(BaseModel):
     received_count: int = Field(alias="receivedCount")
     received_total: int = Field(alias="receivedTotal")
     in_warehouse_count: int = Field(alias="inWarehouseCount")
+    pallet_count: int = Field(alias="palletCount")
     fyco_status: WaybillFycoStatus = Field(alias="fycoStatus")
     released_count: int = Field(alias="releasedCount")
     outbound_count: int = Field(alias="outboundCount")
@@ -132,6 +133,7 @@ class WaybillUpdateRequest(BaseModel):
     receivedCount: int | None = Field(default=None, ge=0)
     receivedTotal: int | None = Field(default=None, ge=0)
     inWarehouseCount: int | None = Field(default=None, ge=0)
+    palletCount: int | None = Field(default=None, ge=0)
     fycoStatus: WaybillFycoStatus | None = None
     releasedCount: int | None = Field(default=None, ge=0)
     outboundCount: int | None = Field(default=None, ge=0)

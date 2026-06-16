@@ -57,6 +57,7 @@ type EditForm = {
   receivedCount: string;
   receivedTotal: string;
   inWarehouseCount: string;
+  palletCount: string;
   fycoStatus: WaybillFycoStatus;
   releasedCount: string;
   outboundCount: string;
@@ -221,6 +222,7 @@ export default function WaybillsPage() {
       receivedCount: String(waybill.receivedCount),
       receivedTotal: String(waybill.receivedTotal),
       inWarehouseCount: String(waybill.inWarehouseCount),
+      palletCount: String(waybill.palletCount),
       fycoStatus: waybill.fycoStatus,
       releasedCount: String(waybill.releasedCount),
       outboundCount: String(waybill.outboundCount)
@@ -257,6 +259,10 @@ export default function WaybillsPage() {
           inWarehouseCount: parseNonNegativeInteger(
             editForm.inWarehouseCount,
             "In Warehouse count"
+          ),
+          palletCount: parseNonNegativeInteger(
+            editForm.palletCount,
+            "Pallet Count"
           ),
           fycoStatus: editForm.fycoStatus,
           releasedCount: parseNonNegativeInteger(
@@ -433,6 +439,7 @@ export default function WaybillsPage() {
                     <th>Weight(kg)</th>
                     <th>Received</th>
                     <th>Parcels</th>
+                    <th>Pallet Count</th>
                     <th>In Warehouse</th>
                     <th>Fyco</th>
                     <th>Released</th>
@@ -488,6 +495,7 @@ export default function WaybillsPage() {
                         <td>
                           <span className={styles.metricLink}>{waybill.pieces}</span>
                         </td>
+                        <td>{waybill.palletCount}</td>
                         <td>
                           <span className={styles[`metric${inWarehouseTone === "good" ? "Good" : inWarehouseTone === "warn" ? "Warn" : "Muted"}`]}>
                             {formatProgress(waybill.inWarehouseCount, waybill.pieces)}
@@ -606,6 +614,20 @@ export default function WaybillsPage() {
                   required
                   type="number"
                   value={editForm.inWarehouseCount}
+                />
+              </label>
+              <label className={styles.dialogField}>
+                Pallet Count
+                <input
+                  min="0"
+                  onChange={(event) =>
+                    setEditForm((current) =>
+                      current ? { ...current, palletCount: event.target.value } : current
+                    )
+                  }
+                  required
+                  type="number"
+                  value={editForm.palletCount}
                 />
               </label>
               <label className={styles.dialogField}>

@@ -184,6 +184,7 @@ export interface WaybillItem {
   receivedCount: number;
   receivedTotal: number;
   inWarehouseCount: number;
+  palletCount: number;
   fycoStatus: WaybillFycoStatus;
   releasedCount: number;
   outboundCount: number;
@@ -213,6 +214,7 @@ export interface WaybillUpdatePayload {
   receivedCount?: number;
   receivedTotal?: number;
   inWarehouseCount?: number;
+  palletCount?: number;
   fycoStatus?: WaybillFycoStatus;
   releasedCount?: number;
   outboundCount?: number;

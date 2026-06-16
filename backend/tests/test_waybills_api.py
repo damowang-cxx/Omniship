@@ -70,6 +70,7 @@ def test_approved_upload_creates_waybill_tracking_record(client, db_session):
     assert item["receivedCount"] == 0
     assert item["receivedTotal"] == 12
     assert item["inWarehouseCount"] == 0
+    assert item["palletCount"] == 0
     assert item["fycoStatus"] == "released"
     assert item["releasedCount"] == 0
     assert item["outboundCount"] == 0
@@ -120,6 +121,7 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
             "receivedCount": 3,
             "receivedTotal": 10,
             "inWarehouseCount": 2,
+            "palletCount": 4,
             "fycoStatus": "fyco",
             "releasedCount": 1,
             "outboundCount": 0,
@@ -131,6 +133,7 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
     progress_body = progress_response.json()
     assert progress_body["receivedCount"] == 3
     assert progress_body["inWarehouseCount"] == 2
+    assert progress_body["palletCount"] == 4
     assert progress_body["fycoStatus"] == "fyco"
     assert progress_body["noaAt"].startswith("2026-05-11T12:30:00")
     assert progress_body["collectionAt"].startswith("2026-05-11T14:15:00")
