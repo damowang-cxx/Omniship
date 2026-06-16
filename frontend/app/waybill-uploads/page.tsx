@@ -27,8 +27,6 @@ import type { AppUser, ShipmentType, WaybillUploadItem } from "@/lib/types";
 import styles from "./page.module.css";
 
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
-const EXCEL_MAX_BYTES = 20 * 1024 * 1024;
-const EXCEL_EXTENSIONS = [".xls", ".xlsx"];
 
 const initialForm = {
   shipmentType: "Air" as ShipmentType,
@@ -213,12 +211,6 @@ export default function WaybillUploadsPage() {
     }
     if (!preAlertFile) {
       return "Upload Pre Alert File is required";
-    }
-    if (!hasExtension(preAlertFile, EXCEL_EXTENSIONS)) {
-      return "Upload Pre Alert File must be an Excel file";
-    }
-    if (preAlertFile.size > EXCEL_MAX_BYTES) {
-      return "Upload Pre Alert File must be smaller than 20 MB";
     }
     return null;
   }, [
@@ -531,10 +523,9 @@ export default function WaybillUploadsPage() {
             <label className={styles.fileDrop}>
               <FileSpreadsheet aria-hidden="true" size={24} />
               <strong>Upload Pre Alert File</strong>
-              <span>Upload Customer Pre Alert</span>
+              <span>Any file type is temporarily allowed</span>
               <input
                 aria-label="Upload Pre Alert File"
-                accept=".xls,.xlsx"
                 onChange={(event) => setPreAlertFile(event.target.files?.[0] ?? null)}
                 required
                 type="file"
@@ -542,7 +533,7 @@ export default function WaybillUploadsPage() {
               <small>
                 {preAlertFile
                   ? `${preAlertFile.name} (${formatBytes(preAlertFile.size)})`
-                  : "No Excel file selected"}
+                  : "No file selected"}
               </small>
             </label>
           </div>

@@ -24,20 +24,14 @@ from app.schemas.waybill_upload import (
     WaybillUploadItem,
     WaybillUploadListResponse,
 )
-from app.services.pre_alert_validator import (
-    PreAlertValidationError,
-    validate_pre_alert_excel,
-)
 from app.services.request_context import get_request_ip, get_request_user_agent
-from app.services.waybill_service import WaybillService
+from app.services.waybill_service import WaybillService, WaybillValidationError
 
 
 SHIPMENT_TYPES = {"Air", "Road", "Train"}
 UPLOAD_STATUSES = {"pending_review", "approved", "rejected"}
 PDF_MAX_BYTES = 10 * 1024 * 1024
-PRE_ALERT_MAX_BYTES = 20 * 1024 * 1024
 PDF_EXTENSIONS = {".pdf"}
-EXCEL_EXTENSIONS = {".xls", ".xlsx"}
 AIRPORT_FIELD_MAX_LENGTH = 120
 
 logger = logging.getLogger(__name__)
@@ -131,11 +125,11 @@ class WaybillUploadService:
         pre_alert = await self._collect_files(
             [pre_alert_file],
             file_kind="customer_pre_alert",
-            allowed_extensions=EXCEL_EXTENSIONS,
-            max_bytes=PRE_ALERT_MAX_BYTES,
+            allowed_extensions=None,
+            max_bytes=None,
             required=True,
+            allow_empty=True,
         )
-        self._validate_pre_alert_file(pre_alert[0])
 
         upload = self.uploads.create(
             user_id=target_user.id,
@@ -216,7 +210,14 @@ class WaybillUploadService:
         if status == "approved":
             waybill_service = WaybillService(self.db)
             record = waybill_service.ensure_tracking_for_upload(upload)
-            waybill_service.sync_parcels_for_record(record, force=True)
+            try:
+                waybill_service.sync_parcels_for_record(record, force=True)
+            except WaybillValidationError:
+                logger.info(
+                    "Skipping Pre Alert parcel sync for upload %s after validation was bypassed",
+                    upload.id,
+                    exc_info=True,
+                )
         self.audit_logs.create(
             "review_waybill_upload",
             actor_user_id=actor.id,
@@ -322,15 +323,6 @@ class WaybillUploadService:
             bound_user_id=upload.user_id,
         )
 
-    def _validate_pre_alert_file(self, file_payload: dict) -> None:
-        try:
-            validate_pre_alert_excel(
-                filename=file_payload["original_filename"],
-                content=file_payload["content"],
-            )
-        except PreAlertValidationError as exc:
-            raise WaybillUploadValidationError(str(exc)) from exc
-
     def _resolve_target_user(self, actor: User, target_user_id: UUID | None) -> User:
         if target_user_id is None:
             return actor
@@ -390,9 +382,10 @@ class WaybillUploadService:
         files: list[UploadFile],
         *,
         file_kind: str,
-        allowed_extensions: set[str],
-        max_bytes: int,
+        allowed_extensions: set[str] | None,
+        max_bytes: int | None,
         required: bool,
+        allow_empty: bool = False,
     ) -> list[dict]:
         if required and not files:
             raise WaybillUploadValidationError("Required file is missing")
@@ -403,15 +396,15 @@ class WaybillUploadService:
                 continue
             filename = Path(file.filename).name
             extension = Path(filename).suffix.lower()
-            if extension not in allowed_extensions:
+            if allowed_extensions is not None and extension not in allowed_extensions:
                 raise WaybillUploadValidationError(
                     f"{filename} has an unsupported file type"
                 )
 
             content = await file.read()
-            if not content:
+            if not content and not allow_empty:
                 raise WaybillUploadValidationError(f"{filename} is empty")
-            if len(content) > max_bytes:
+            if max_bytes is not None and len(content) > max_bytes:
                 raise WaybillUploadValidationError(f"{filename} exceeds the size limit")
             if file_kind == "air_waybill_document" and not content.startswith(b"%PDF"):
                 raise WaybillUploadValidationError(f"{filename} must be a PDF file")

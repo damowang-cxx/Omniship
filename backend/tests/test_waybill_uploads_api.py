@@ -196,6 +196,35 @@ def test_pre_alert_upload_validates_weight_and_pdf(client, db_session):
     assert "must be a PDF" in invalid_pdf.text
 
 
+def test_pre_alert_upload_temporarily_allows_any_pre_alert_file(client, db_session):
+    create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    create_test_user(db_session, email="user@example.com", username="User")
+    assert login(client, email="user@example.com").status_code == 200
+
+    upload_response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(
+            excel_name="pre-alert.txt",
+            excel_content=b"not an excel workbook",
+        ),
+    )
+    assert upload_response.status_code == 201
+
+    assert login(client, email="admin@example.com").status_code == 200
+    review_response = client.patch(
+        f"/api/v1/waybill-uploads/{upload_response.json()['uploadId']}/status",
+        json={"status": "approved"},
+    )
+    assert review_response.status_code == 200
+    assert review_response.json()["status"] == "approved"
+
+
 def test_pre_alert_upload_no_longer_rejects_old_banned_goods_column(
     client,
     db_session,
@@ -262,7 +291,7 @@ def test_pre_alert_upload_allows_same_recipient_address_at_150_eur(
     assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_same_recipient_address_over_150_eur(
+def test_pre_alert_upload_temporarily_allows_same_recipient_address_over_150_eur(
     client,
     db_session,
 ):
@@ -298,13 +327,10 @@ def test_pre_alert_upload_rejects_same_recipient_address_over_150_eur(
         ),
     )
 
-    assert response.status_code == 400
-    assert "同一收件人/地址的 W 列申报金额超过 150 EUR" in response.text
-    assert "150 EUR" in response.text
-    assert "rows 2, 3" in response.text
+    assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_invalid_w_amount(client, db_session):
+def test_pre_alert_upload_temporarily_allows_invalid_w_amount(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -324,11 +350,10 @@ def test_pre_alert_upload_rejects_invalid_w_amount(client, db_session):
         ),
     )
 
-    assert response.status_code == 400
-    assert "L/M/W row 2 amount is not a valid number" in response.text
+    assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_amount_without_name_or_address(
+def test_pre_alert_upload_temporarily_allows_amount_without_name_or_address(
     client,
     db_session,
 ):
@@ -345,8 +370,7 @@ def test_pre_alert_upload_rejects_amount_without_name_or_address(
         ),
     )
 
-    assert response.status_code == 400
-    assert "recipient name and address are required" in response.text
+    assert response.status_code == 201
 
 
 def test_pre_alert_upload_allows_u_at_20_and_matching_a_to_g(client, db_session):
@@ -381,7 +405,7 @@ def test_pre_alert_upload_allows_u_at_20_and_matching_a_to_g(client, db_session)
     assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_u_over_20(client, db_session):
+def test_pre_alert_upload_temporarily_allows_u_over_20(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -402,11 +426,10 @@ def test_pre_alert_upload_rejects_u_over_20(client, db_session):
         ),
     )
 
-    assert response.status_code == 400
-    assert "U row 2 value must be less than or equal to 20" in response.text
+    assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_filled_n_o_q_ac_columns(client, db_session):
+def test_pre_alert_upload_temporarily_allows_filled_n_o_q_ac_columns(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -430,11 +453,10 @@ def test_pre_alert_upload_rejects_filled_n_o_q_ac_columns(client, db_session):
         ),
     )
 
-    assert response.status_code == 400
-    assert "N/O/Q/AC row 2 must be empty" in response.text
+    assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_inconsistent_a_to_g_columns(client, db_session):
+def test_pre_alert_upload_temporarily_allows_inconsistent_a_to_g_columns(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -461,8 +483,7 @@ def test_pre_alert_upload_rejects_inconsistent_a_to_g_columns(client, db_session
         ),
     )
 
-    assert response.status_code == 400
-    assert "A/B/C/D/E/F/G row 3 values must match row 2" in response.text
+    assert response.status_code == 201
 
 
 def test_non_admin_cannot_upload_for_target_user(client, db_session):

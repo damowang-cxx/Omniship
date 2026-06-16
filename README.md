@@ -87,9 +87,9 @@ Upload form fields:
 - `Airport of Departure`
 - `Airport of Arrival`
 - `Air Waybill Document(s)`: PDF only, each file under 10 MB
-- `Upload Pre Alert File`: `.xls` or `.xlsx`, under 20 MB
+- `Upload Pre Alert File`: temporarily unrestricted; file type, file size, and Excel content validation are currently bypassed
 
-Excel validation uses the new Pre Alert template:
+Excel validation is temporarily bypassed. When re-enabled, it uses the new Pre Alert template:
 
 - Row 1 is treated as headers; validation starts at row 2.
 - L column (`name`) is the recipient.

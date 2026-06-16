@@ -110,8 +110,8 @@ function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText("Upload Pre Alert File"), {
     target: {
       files: [
-        new File(["excel"], "pre-alert.xlsx", {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        new File(["temporarily unrestricted"], "pre-alert.txt", {
+          type: "text/plain"
         })
       ]
     }
