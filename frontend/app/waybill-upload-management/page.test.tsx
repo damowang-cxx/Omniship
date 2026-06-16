@@ -55,6 +55,8 @@ const uploadItem = {
   grossWeightKg: "12.500",
   pieces: 8,
   arrivalFlightNumber: "EK0147",
+  airportOfDeparture: "HKG",
+  airportOfArrival: "AMS",
   status: "pending_review",
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
@@ -103,6 +105,8 @@ describe("WaybillUploadManagementPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Waybill Management" })).toBeInTheDocument();
     expect(screen.getByText("784-84063276")).toBeInTheDocument();
+    expect(screen.getByText("HKG")).toBeInTheDocument();
+    expect(screen.getByText("AMS")).toBeInTheDocument();
     expect(screen.getAllByText("user@example.com").length).toBeGreaterThan(0);
     expect(screen.getAllByText("admin@example.com").length).toBeGreaterThan(0);
   });

@@ -64,12 +64,15 @@ const waybillItem = {
   userId: "user-id",
   number: "784-84063276",
   status: "noa_received",
+  airportOfDeparture: "HKG",
+  airportOfArrival: "AMS",
   statusChangedAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
   weightKg: "12.500",
   pieces: 8,
   receivedCount: 0,
   receivedTotal: 8,
   inWarehouseCount: 0,
+  fycoStatus: "released",
   releasedCount: 0,
   outboundCount: 0,
   createdAt: "2026-05-11T10:00:00Z",
@@ -92,6 +95,7 @@ describe("WaybillsPage", () => {
       status: "inbound",
       receivedCount: 5,
       inWarehouseCount: 5,
+      fycoStatus: "fyco",
       releasedCount: 2,
       outboundCount: 1
     });
@@ -106,8 +110,12 @@ describe("WaybillsPage", () => {
       "/waybills/A7K2P9QX"
     );
     expect(screen.getAllByText("NOA Received").length).toBeGreaterThan(0);
+    expect(screen.getByText("HKG")).toBeInTheDocument();
+    expect(screen.getByText("AMS")).toBeInTheDocument();
     expect(screen.getByText("12.500")).toBeInTheDocument();
     expect(screen.getByText("0 / 8")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Fyco" })).toBeInTheDocument();
+    expect(screen.getAllByText("Released").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0.00% (0)").length).toBeGreaterThan(0);
     expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
   });
@@ -136,8 +144,11 @@ describe("WaybillsPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Edit status 784-84063276" }));
+    expect(screen.getAllByRole("option", { name: "Cleared" }).length).toBeGreaterThan(
+      1
+    );
     fireEvent.change(screen.getByLabelText("Waybill Status"), {
-      target: { value: "inbound" }
+      target: { value: "cleared" }
     });
     fireEvent.change(screen.getByLabelText("Received Count"), {
       target: { value: "5" }
@@ -145,14 +156,18 @@ describe("WaybillsPage", () => {
     fireEvent.change(screen.getByLabelText("In Warehouse Count"), {
       target: { value: "5" }
     });
+    fireEvent.change(screen.getByLabelText("Fyco"), {
+      target: { value: "fyco" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(apiMock.updateWaybill).toHaveBeenCalledWith("A7K2P9QX", {
-        status: "inbound",
+        status: "cleared",
         receivedCount: 5,
         receivedTotal: 8,
         inWarehouseCount: 5,
+        fycoStatus: "fyco",
         releasedCount: 0,
         outboundCount: 0
       });

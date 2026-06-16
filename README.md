@@ -72,7 +72,7 @@ Open [http://localhost:3000/](http://localhost:3000/). Unauthenticated users see
 - Regular users can upload and view only their own upload records.
 - Admins can upload for a selected Target User, review all submissions, download attachments, approve/reject records, and delete local records.
 
-Approved uploads automatically create a local tracking record with a unique 8-character public code. Tracking starts at `Created`; admins can update the operational status to `Created`, `NOA Received`, `Received`, `Ready To Scan`, `Scanning`, `Pending Clearance`, `Partial Inbound`, `Inbound`, `Partial Outbound`, or `Outbound`.
+Approved uploads automatically create a local tracking record with a unique 8-character public code. Tracking starts at `Created`; admins can update the operational status to `Created`, `NOA Received`, `Received`, `Ready To Scan`, `Scanning`, `Pending Clearance`, `Cleared`, `Partial Inbound`, `Inbound`, `Partial Outbound`, or `Outbound`.
 
 ## Upload Rules
 
@@ -84,6 +84,8 @@ Upload form fields:
 - `Air Waybill Gross Weight (KG)`
 - `Air Waybill Pieces`
 - `Arrival Flight Number`, optional
+- `Airport of Departure`
+- `Airport of Arrival`
 - `Air Waybill Document(s)`: PDF only, each file under 10 MB
 - `Upload Pre Alert File`: `.xls` or `.xlsx`, under 20 MB
 

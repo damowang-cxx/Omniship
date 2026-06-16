@@ -38,6 +38,7 @@ PDF_MAX_BYTES = 10 * 1024 * 1024
 PRE_ALERT_MAX_BYTES = 20 * 1024 * 1024
 PDF_EXTENSIONS = {".pdf"}
 EXCEL_EXTENSIONS = {".xls", ".xlsx"}
+AIRPORT_FIELD_MAX_LENGTH = 120
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,8 @@ class WaybillUploadService:
         gross_weight_kg: str,
         pieces: str,
         arrival_flight_number: str | None,
+        airport_of_departure: str,
+        airport_of_arrival: str,
         air_waybill_documents: list[UploadFile],
         pre_alert_file: UploadFile,
         target_user_id: UUID | None = None,
@@ -109,6 +112,14 @@ class WaybillUploadService:
         )
         pieces_value = self._parse_positive_int(pieces, "Air Waybill Pieces")
         arrival_flight_number = (arrival_flight_number or "").strip() or None
+        airport_of_departure = self._validate_plain_text(
+            airport_of_departure,
+            "Airport of Departure",
+        )
+        airport_of_arrival = self._validate_plain_text(
+            airport_of_arrival,
+            "Airport of Arrival",
+        )
 
         documents = await self._collect_files(
             air_waybill_documents,
@@ -134,6 +145,8 @@ class WaybillUploadService:
             gross_weight_kg=gross_weight,
             pieces=pieces_value,
             arrival_flight_number=arrival_flight_number,
+            airport_of_departure=airport_of_departure,
+            airport_of_arrival=airport_of_arrival,
         )
         saved_files = []
         try:
@@ -162,6 +175,8 @@ class WaybillUploadService:
                     "airWaybillNumber": air_waybill_number,
                     "boundUserId": str(target_user.id),
                     "shipmentType": shipment_type,
+                    "airportOfDeparture": airport_of_departure,
+                    "airportOfArrival": airport_of_arrival,
                 },
             )
             self.db.commit()
@@ -199,7 +214,9 @@ class WaybillUploadService:
             reviewed_by_user_id=actor.id,
         )
         if status == "approved":
-            WaybillService(self.db).ensure_tracking_for_upload(upload)
+            waybill_service = WaybillService(self.db)
+            record = waybill_service.ensure_tracking_for_upload(upload)
+            waybill_service.sync_parcels_for_record(record, force=True)
         self.audit_logs.create(
             "review_waybill_upload",
             actor_user_id=actor.id,
@@ -299,6 +316,8 @@ class WaybillUploadService:
         return WaybillPreAlertUploadResponse(
             upload_id=upload.id,
             air_waybill_number=upload.air_waybill_number,
+            airport_of_departure=upload.airport_of_departure or "",
+            airport_of_arrival=upload.airport_of_arrival or "",
             status=upload.status,
             bound_user_id=upload.user_id,
         )
@@ -355,6 +374,16 @@ class WaybillUploadService:
         if parsed <= 0:
             raise WaybillUploadValidationError(f"{label} must be greater than 0")
         return parsed
+
+    def _validate_plain_text(self, value: str, label: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise WaybillUploadValidationError(f"{label} is required")
+        if len(text) > AIRPORT_FIELD_MAX_LENGTH:
+            raise WaybillUploadValidationError(
+                f"{label} must be {AIRPORT_FIELD_MAX_LENGTH} characters or fewer"
+            )
+        return text
 
     async def _collect_files(
         self,

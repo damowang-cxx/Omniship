@@ -56,6 +56,8 @@ const uploadItem = {
   grossWeightKg: "12.500",
   pieces: 8,
   arrivalFlightNumber: "EK0147",
+  airportOfDeparture: "HKG",
+  airportOfArrival: "AMS",
   status: "pending_review",
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
@@ -94,6 +96,12 @@ function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText("Arrival Flight Number"), {
     target: { value: "EK0147" }
   });
+  fireEvent.change(screen.getByLabelText("Airport of Departure"), {
+    target: { value: "HKG" }
+  });
+  fireEvent.change(screen.getByLabelText("Airport of Arrival"), {
+    target: { value: "AMS" }
+  });
   fireEvent.change(screen.getByLabelText("Air Waybill Document(s)"), {
     target: {
       files: [new File(["%PDF-1.4"], "awb.pdf", { type: "application/pdf" })]
@@ -120,6 +128,8 @@ describe("WaybillUploadsPage", () => {
     apiMock.uploadPreAlertFile.mockResolvedValue({
       uploadId: "upload-id",
       airWaybillNumber: "784-84063276",
+      airportOfDeparture: "HKG",
+      airportOfArrival: "AMS",
       status: "pending_review",
       boundUserId: "user-id"
     });
@@ -145,7 +155,9 @@ describe("WaybillUploadsPage", () => {
       airWaybillNumber: "784-84063276",
       grossWeightKg: "12.5",
       pieces: "8",
-      arrivalFlightNumber: "EK0147"
+      arrivalFlightNumber: "EK0147",
+      airportOfDeparture: "HKG",
+      airportOfArrival: "AMS"
     });
     expect(await screen.findByText("Upload saved for 784-84063276")).toBeInTheDocument();
   });
@@ -204,6 +216,8 @@ describe("WaybillUploadsPage", () => {
     render(<WaybillUploadsPage />);
 
     expect(await screen.findByText("784-84063276")).toBeInTheDocument();
+    expect(screen.getByText("HKG")).toBeInTheDocument();
+    expect(screen.getByText("AMS")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Details 784-84063276" }));
 
     const link = await screen.findByRole("link", {

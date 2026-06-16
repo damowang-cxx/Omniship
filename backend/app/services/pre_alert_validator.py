@@ -14,7 +14,7 @@ VALUE_EUR_COLUMN_INDEX = 23  # W
 CONSISTENT_COLUMN_INDEXES = (1, 2, 3, 4, 5, 6, 7)  # A-G
 MUST_BE_EMPTY_COLUMN_INDEXES = (14, 15, 17, 29)  # N, O, Q, AC
 MAX_RECIPIENT_ADDRESS_VALUE_EUR = Decimal("150")
-MAX_LIMITED_QUANTITY = Decimal("5")
+MAX_LIMITED_QUANTITY = Decimal("20")
 
 
 class PreAlertValidationError(ValueError):
@@ -167,7 +167,7 @@ def _find_limited_quantity_errors(rows: list[PreAlertRow]) -> list[str]:
             continue
         if quantity > MAX_LIMITED_QUANTITY:
             errors.append(
-                f"U row {row.row_number} value must be less than or equal to 5"
+                f"U row {row.row_number} value must be less than or equal to 20"
             )
     return errors[:10]
 

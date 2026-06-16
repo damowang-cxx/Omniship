@@ -356,6 +356,8 @@ export default function WaybillUploadManagementPage() {
                     <th>Pieces</th>
                     <th>Flight</th>
                     <th>Status</th>
+                    <th>Airport of Departure</th>
+                    <th>Airport of Arrival</th>
                     <th>Files</th>
                     <th>Uploaded</th>
                     <th>Actions</th>
@@ -377,6 +379,8 @@ export default function WaybillUploadManagementPage() {
                             {statusLabel(upload.status)}
                           </span>
                         </td>
+                        <td>{upload.airportOfDeparture || "-"}</td>
+                        <td>{upload.airportOfArrival || "-"}</td>
                         <td>{upload.files.length}</td>
                         <td>{formatDateTime(upload.createdAt)}</td>
                         <td>
@@ -422,7 +426,7 @@ export default function WaybillUploadManagementPage() {
                       </tr>
                       {expandedUploadId === upload.id && (
                         <tr className={styles.detailRow}>
-                          <td colSpan={11}>
+                          <td colSpan={13}>
                             <div className={styles.detailPanel}>
                               <div className={styles.detailGrid}>
                                 <div>
@@ -440,6 +444,14 @@ export default function WaybillUploadManagementPage() {
                                 <div>
                                   <span>Review Status</span>
                                   <strong>{statusLabel(upload.status)}</strong>
+                                </div>
+                                <div>
+                                  <span>Departure</span>
+                                  <strong>{upload.airportOfDeparture || "-"}</strong>
+                                </div>
+                                <div>
+                                  <span>Arrival</span>
+                                  <strong>{upload.airportOfArrival || "-"}</strong>
                                 </div>
                               </div>
 

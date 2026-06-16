@@ -8,12 +8,20 @@ const routerMock = vi.hoisted(() => ({
 }));
 
 const apiMock = vi.hoisted(() => ({
+  deleteWaybillPodFile: vi.fn(),
   getCurrentUser: vi.fn(),
   getWaybill: vi.fn(),
+  getWaybillPodFileDownloadUrl: vi.fn(
+    (publicCode: string, fileId: string) =>
+      `/backend/v1/waybills/${publicCode}/pod/${fileId}/download`
+  ),
   isUnauthorizedError: vi.fn((error: unknown) =>
     error instanceof Error && error.message.includes("401")
   ),
+  listWaybillParcels: vi.fn(),
   logout: vi.fn(),
+  uploadWaybillPodFile: vi.fn(),
+  updateWaybillParcels: vi.fn(),
   updateWaybill: vi.fn()
 }));
 
@@ -62,6 +70,7 @@ const waybillItem = {
   receivedCount: 0,
   receivedTotal: 8,
   inWarehouseCount: 0,
+  fycoStatus: "released",
   releasedCount: 0,
   outboundCount: 0,
   noaAt: null,
@@ -70,14 +79,49 @@ const waybillItem = {
   customsClearanceAt: null,
   outboundAt: null,
   createdAt: "2026-05-11T10:00:00Z",
-  updatedAt: "2026-05-11T10:00:00Z"
+  updatedAt: "2026-05-11T10:00:00Z",
+  podFiles: []
 };
+
+const parcelItems = [
+  {
+    id: "parcel-1",
+    parcelUnitNumber: "CP148956844DE",
+    status: "created",
+    numberOfItems: 14,
+    weightKg: "7.460",
+    destinationRaw: "ES",
+    destinationCode: "ES",
+    destinationName: "Spain",
+    inbound: false,
+    outbound: false,
+    specialInstruction: false,
+    createdAt: "2026-05-11T10:00:00Z",
+    updatedAt: "2026-05-11T10:00:00Z"
+  },
+  {
+    id: "parcel-2",
+    parcelUnitNumber: "CG148125160DE",
+    status: "released",
+    numberOfItems: 13,
+    weightKg: "9.310",
+    destinationRaw: "意大利",
+    destinationCode: "IT",
+    destinationName: "Italy",
+    inbound: true,
+    outbound: true,
+    specialInstruction: false,
+    createdAt: "2026-05-11T10:00:00Z",
+    updatedAt: "2026-05-11T10:00:00Z"
+  }
+];
 
 describe("WaybillDetailPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
     apiMock.getWaybill.mockResolvedValue(waybillItem);
+    apiMock.listWaybillParcels.mockResolvedValue({ items: parcelItems });
   });
 
   it("shows the waybill number title", async () => {
@@ -89,6 +133,20 @@ describe("WaybillDetailPage", () => {
       "/waybills"
     );
     expect(apiMock.getWaybill).toHaveBeenCalledWith("A7K2P9QX");
+    expect(apiMock.listWaybillParcels).toHaveBeenCalledWith("A7K2P9QX");
+  });
+
+  it("shows Details and Parcels sections with parsed parcel columns", async () => {
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Parcels" })).toBeInTheDocument();
+    expect(screen.getByText("Parcel Unit Number")).toBeInTheDocument();
+    expect(screen.getByText("Number Of Items")).toBeInTheDocument();
+    expect(screen.getByText("Destination group")).toBeInTheDocument();
+    expect(screen.getByText("CP148956844DE")).toBeInTheDocument();
+    expect(screen.getByText("Spain")).toBeInTheDocument();
+    expect(screen.getByLabelText("Parcel Status CP148956844DE")).toHaveValue("created");
   });
 
   it("lets admins edit milestone times", async () => {
@@ -135,6 +193,131 @@ describe("WaybillDetailPage", () => {
       screen.queryByRole("button", { name: "Save milestone times" })
     ).not.toBeInTheDocument();
     expect(screen.getByText("Read-only milestones")).toBeInTheDocument();
+  });
+
+  it("shows parcels as read-only for regular users", async () => {
+    apiMock.getCurrentUser.mockResolvedValueOnce({
+      user: { ...adminUser, role: "user" }
+    });
+
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByText("CP148956844DE")).toBeInTheDocument();
+    expect(screen.getByText("Created")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Parcel Status CP148956844DE")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Select parcel CP148956844DE")).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Inbound crossed")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Outbound checked")).toHaveLength(1);
+  });
+
+  it("lets admins bulk update selected parcels", async () => {
+    apiMock.updateWaybillParcels.mockResolvedValue({
+      items: parcelItems.map((parcel) => ({
+        ...parcel,
+        status: "inbound",
+        inbound: true,
+        outbound: false,
+        specialInstruction: true
+      }))
+    });
+
+    render(<WaybillDetailPage />);
+
+    fireEvent.click(await screen.findByLabelText("Select parcel CP148956844DE"));
+    fireEvent.change(screen.getByLabelText("Bulk parcel status"), {
+      target: { value: "inbound" }
+    });
+    fireEvent.change(screen.getByLabelText("Bulk parcel Inbound"), {
+      target: { value: "true" }
+    });
+    fireEvent.change(screen.getByLabelText("Bulk parcel Outbound"), {
+      target: { value: "false" }
+    });
+    fireEvent.change(screen.getByLabelText("Bulk parcel Special Instruction"), {
+      target: { value: "true" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      expect(apiMock.updateWaybillParcels).toHaveBeenCalledWith("A7K2P9QX", {
+        parcelIds: ["parcel-1"],
+        status: "inbound",
+        inbound: true,
+        outbound: false,
+        specialInstruction: true
+      });
+    });
+    expect(await screen.findByText("1 parcel updated")).toBeInTheDocument();
+  });
+
+  it("shows POD downloads without upload controls for regular users", async () => {
+    apiMock.getCurrentUser.mockResolvedValueOnce({
+      user: { ...adminUser, role: "user" }
+    });
+    apiMock.getWaybill.mockResolvedValueOnce({
+      ...waybillItem,
+      podFiles: [
+        {
+          id: "pod-1",
+          originalFilename: "proof-one.pdf",
+          contentType: "application/pdf",
+          sizeBytes: 2048,
+          createdAt: "2026-05-11T12:30:00Z"
+        }
+      ]
+    });
+
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByText("签收证明")).toBeInTheDocument();
+    const downloadLink = screen.getByRole("link", { name: "Download PDF" });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      "/backend/v1/waybills/A7K2P9QX/pod/pod-1/download"
+    );
+    expect(screen.queryByLabelText("POD PDF")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("lets admins upload and delete POD files", async () => {
+    const podFile = {
+      id: "pod-1",
+      originalFilename: "proof-one.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 2048,
+      createdAt: "2026-05-11T12:30:00Z"
+    };
+    apiMock.uploadWaybillPodFile.mockResolvedValue({
+      ...waybillItem,
+      podFiles: [podFile]
+    });
+    apiMock.deleteWaybillPodFile.mockResolvedValue({
+      status: "deleted",
+      podFileId: "pod-1"
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<WaybillDetailPage />);
+
+    const input = await screen.findByLabelText("POD PDF");
+    const file = new File(["%PDF-1.4 proof"], "proof-one.pdf", {
+      type: "application/pdf"
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload POD" }));
+
+    await waitFor(() => {
+      expect(apiMock.uploadWaybillPodFile).toHaveBeenCalledWith("A7K2P9QX", file);
+    });
+    expect(await screen.findByText("proof-one.pdf")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(apiMock.deleteWaybillPodFile).toHaveBeenCalledWith("A7K2P9QX", "pod-1");
+    });
+    expect(screen.queryByText("proof-one.pdf")).not.toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it("redirects unauthenticated users to the public page", async () => {

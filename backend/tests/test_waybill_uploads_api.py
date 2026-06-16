@@ -34,6 +34,8 @@ def pre_alert_data(**overrides):
         "grossWeightKg": "12.5",
         "pieces": "8",
         "arrivalFlightNumber": "EK0147",
+        "airportOfDeparture": "HKG",
+        "airportOfArrival": "AMS",
     }
     data.update(overrides)
     return data
@@ -45,9 +47,12 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     headers = [f"Column {index}" for index in range(1, 30)]
+    headers[8] = "parcel unit number"
     headers[11] = "name"
     headers[12] = "thoroughfare"
+    headers[18] = "destination"
     headers[20] = "quantity"
+    headers[21] = "weight"
     headers[22] = "price"
     sheet.append(headers)
     for row_payload in rows or [
@@ -71,8 +76,10 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
         row[13] = row_payload.get("n", "")
         row[14] = row_payload.get("o", "")
         row[16] = row_payload.get("q", "")
-        row[18] = row_payload.get("goods", "")
+        row[8] = row_payload.get("parcel_unit_number", "")
+        row[18] = row_payload.get("destination", row_payload.get("goods", ""))
         row[20] = row_payload.get("u", "")
+        row[21] = row_payload.get("weight", "")
         row[22] = row_payload.get("value", "")
         row[28] = row_payload.get("ac", "")
         sheet.append(row)
@@ -101,6 +108,8 @@ def test_user_uploads_pre_alert_and_admin_can_review(client, db_session):
     assert upload_response.status_code == 201
     upload_body = upload_response.json()
     assert upload_body["airWaybillNumber"] == "784-84063276"
+    assert upload_body["airportOfDeparture"] == "HKG"
+    assert upload_body["airportOfArrival"] == "AMS"
     assert upload_body["status"] == "pending_review"
     assert upload_body["boundUserId"]
     assert "platform" not in upload_body
@@ -117,6 +126,8 @@ def test_user_uploads_pre_alert_and_admin_can_review(client, db_session):
     assert admin_list_response.status_code == 200
     admin_items = admin_list_response.json()["items"]
     assert admin_items[0]["airWaybillNumber"] == "784-84063276"
+    assert admin_items[0]["airportOfDeparture"] == "HKG"
+    assert admin_items[0]["airportOfArrival"] == "AMS"
     assert admin_items[0]["status"] == "pending_review"
     assert admin_items[0]["user"]["email"] == "user@example.com"
     assert "platform" not in admin_items[0]
@@ -338,7 +349,7 @@ def test_pre_alert_upload_rejects_amount_without_name_or_address(
     assert "recipient name and address are required" in response.text
 
 
-def test_pre_alert_upload_allows_u_at_5_and_matching_a_to_g(client, db_session):
+def test_pre_alert_upload_allows_u_at_20_and_matching_a_to_g(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -352,14 +363,14 @@ def test_pre_alert_upload_allows_u_at_5_and_matching_a_to_g(client, db_session):
                         "a_to_g": ["EPIX", "DE", "AIR", "A", "B", "C", "D"],
                         "name": "Jane Doe",
                         "address": "1 Test Street",
-                        "u": 5,
+                        "u": 20,
                         "value": 12.5,
                     },
                     {
                         "a_to_g": ["EPIX", "DE", "AIR", "A", "B", "C", "D"],
                         "name": "John Doe",
                         "address": "2 Test Street",
-                        "u": "5.00",
+                        "u": "20.00",
                         "value": 20,
                     },
                 ]
@@ -370,7 +381,7 @@ def test_pre_alert_upload_allows_u_at_5_and_matching_a_to_g(client, db_session):
     assert response.status_code == 201
 
 
-def test_pre_alert_upload_rejects_u_over_5(client, db_session):
+def test_pre_alert_upload_rejects_u_over_20(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
 
@@ -383,7 +394,7 @@ def test_pre_alert_upload_rejects_u_over_5(client, db_session):
                     {
                         "name": "Jane Doe",
                         "address": "1 Test Street",
-                        "u": 5.01,
+                        "u": 21,
                         "value": 12.5,
                     }
                 ]
@@ -392,7 +403,7 @@ def test_pre_alert_upload_rejects_u_over_5(client, db_session):
     )
 
     assert response.status_code == 400
-    assert "U row 2 value must be less than or equal to 5" in response.text
+    assert "U row 2 value must be less than or equal to 20" in response.text
 
 
 def test_pre_alert_upload_rejects_filled_n_o_q_ac_columns(client, db_session):

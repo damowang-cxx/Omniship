@@ -35,9 +35,23 @@ export type WaybillTrackingStatus =
   | "ready_to_scan"
   | "scanning"
   | "pending_clearance"
+  | "cleared"
   | "partial_inbound"
   | "inbound"
   | "partial_outbound"
+  | "outbound";
+export type WaybillFycoStatus = "released" | "fyco";
+export type WaybillParcelStatus =
+  | "created"
+  | "pending_check"
+  | "inspection"
+  | "released"
+  | "temporary_released"
+  | "exception"
+  | "confiscated"
+  | "destroyed"
+  | "on_hold"
+  | "inbound"
   | "outbound";
 
 export interface WaybillPreAlertUploadPayload {
@@ -46,6 +60,8 @@ export interface WaybillPreAlertUploadPayload {
   grossWeightKg: string;
   pieces: string;
   arrivalFlightNumber?: string;
+  airportOfDeparture: string;
+  airportOfArrival: string;
   targetUserId?: string;
   airWaybillDocuments: File[];
   preAlertFile: File;
@@ -54,6 +70,8 @@ export interface WaybillPreAlertUploadPayload {
 export interface WaybillPreAlertUploadResponse {
   uploadId: string;
   airWaybillNumber: string;
+  airportOfDeparture: string;
+  airportOfArrival: string;
   status: WaybillUploadStatus;
   boundUserId: string;
 }
@@ -83,6 +101,8 @@ export interface WaybillUploadItem {
   grossWeightKg: string;
   pieces: number;
   arrivalFlightNumber?: string | null;
+  airportOfDeparture?: string | null;
+  airportOfArrival?: string | null;
   status: WaybillUploadStatus;
   reviewedByUserId?: string | null;
   reviewedAt?: string | null;
@@ -108,6 +128,47 @@ export interface WaybillUploadDeleteResponse {
   uploadId: string;
 }
 
+export interface WaybillPodFileItem {
+  id: string;
+  originalFilename: string;
+  contentType?: string | null;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface WaybillPodDeleteResponse {
+  status: "deleted";
+  podFileId: string;
+}
+
+export interface WaybillParcelItem {
+  id: string;
+  parcelUnitNumber: string;
+  status: WaybillParcelStatus;
+  numberOfItems: number;
+  weightKg: string;
+  destinationRaw?: string | null;
+  destinationCode?: string | null;
+  destinationName?: string | null;
+  inbound: boolean;
+  outbound: boolean;
+  specialInstruction: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WaybillParcelListResponse {
+  items: WaybillParcelItem[];
+}
+
+export interface WaybillParcelBulkUpdatePayload {
+  parcelIds: string[];
+  status?: WaybillParcelStatus;
+  inbound?: boolean;
+  outbound?: boolean;
+  specialInstruction?: boolean;
+}
+
 export interface WaybillItem {
   id: string;
   publicCode: string;
@@ -115,12 +176,15 @@ export interface WaybillItem {
   userId: string;
   number: string;
   status: WaybillTrackingStatus;
+  airportOfDeparture?: string | null;
+  airportOfArrival?: string | null;
   statusChangedAt: string;
   weightKg: string;
   pieces: number;
   receivedCount: number;
   receivedTotal: number;
   inWarehouseCount: number;
+  fycoStatus: WaybillFycoStatus;
   releasedCount: number;
   outboundCount: number;
   noaAt?: string | null;
@@ -131,6 +195,7 @@ export interface WaybillItem {
   createdAt: string;
   updatedAt: string;
   user?: WaybillUploadUserItem | null;
+  podFiles: WaybillPodFileItem[];
 }
 
 export interface WaybillListResponse {
@@ -148,6 +213,7 @@ export interface WaybillUpdatePayload {
   receivedCount?: number;
   receivedTotal?: number;
   inWarehouseCount?: number;
+  fycoStatus?: WaybillFycoStatus;
   releasedCount?: number;
   outboundCount?: number;
   noaAt?: string | null;

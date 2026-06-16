@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import type {
   AppUser,
+  WaybillFycoStatus,
   WaybillFilters,
   WaybillItem,
   WaybillTrackingStatus
@@ -29,6 +30,7 @@ const statusOptions: { value: WaybillTrackingStatus; label: string }[] = [
   { value: "ready_to_scan", label: "Ready To Scan" },
   { value: "scanning", label: "Scanning" },
   { value: "pending_clearance", label: "Pending Clearance" },
+  { value: "cleared", label: "Cleared" },
   { value: "partial_inbound", label: "Partial Inbound" },
   { value: "inbound", label: "Inbound" },
   { value: "partial_outbound", label: "Partial Outbound" },
@@ -45,17 +47,27 @@ const initialFilters: {
   q: ""
 };
 
+const fycoOptions: { value: WaybillFycoStatus; label: string }[] = [
+  { value: "released", label: "Released" },
+  { value: "fyco", label: "Fyco" }
+];
+
 type EditForm = {
   status: WaybillTrackingStatus;
   receivedCount: string;
   receivedTotal: string;
   inWarehouseCount: string;
+  fycoStatus: WaybillFycoStatus;
   releasedCount: string;
   outboundCount: string;
 };
 
 function statusLabel(status: WaybillTrackingStatus) {
   return statusOptions.find((option) => option.value === status)?.label ?? status;
+}
+
+function fycoLabel(status: WaybillFycoStatus) {
+  return fycoOptions.find((option) => option.value === status)?.label ?? status;
 }
 
 function formatStatusAge(value: string) {
@@ -209,6 +221,7 @@ export default function WaybillsPage() {
       receivedCount: String(waybill.receivedCount),
       receivedTotal: String(waybill.receivedTotal),
       inWarehouseCount: String(waybill.inWarehouseCount),
+      fycoStatus: waybill.fycoStatus,
       releasedCount: String(waybill.releasedCount),
       outboundCount: String(waybill.outboundCount)
     });
@@ -245,6 +258,7 @@ export default function WaybillsPage() {
             editForm.inWarehouseCount,
             "In Warehouse count"
           ),
+          fycoStatus: editForm.fycoStatus,
           releasedCount: parseNonNegativeInteger(
             editForm.releasedCount,
             "Released count"
@@ -413,11 +427,14 @@ export default function WaybillsPage() {
                   <tr>
                     <th>Number</th>
                     <th>Status</th>
+                    <th>Airport of Departure</th>
+                    <th>Airport of Arrival</th>
                     <th>Status Changed</th>
                     <th>Weight(kg)</th>
                     <th>Received</th>
                     <th>Parcels</th>
                     <th>In Warehouse</th>
+                    <th>Fyco</th>
                     <th>Released</th>
                     <th>Outbound</th>
                   </tr>
@@ -461,6 +478,8 @@ export default function WaybillsPage() {
                             </span>
                           )}
                         </td>
+                        <td>{waybill.airportOfDeparture || "-"}</td>
+                        <td>{waybill.airportOfArrival || "-"}</td>
                         <td>{formatStatusAge(waybill.statusChangedAt)}</td>
                         <td>{waybill.weightKg}</td>
                         <td>
@@ -472,6 +491,11 @@ export default function WaybillsPage() {
                         <td>
                           <span className={styles[`metric${inWarehouseTone === "good" ? "Good" : inWarehouseTone === "warn" ? "Warn" : "Muted"}`]}>
                             {formatProgress(waybill.inWarehouseCount, waybill.pieces)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={styles.fycoPill} data-value={waybill.fycoStatus}>
+                            {fycoLabel(waybill.fycoStatus)}
                           </span>
                         </td>
                         <td>
@@ -583,6 +607,29 @@ export default function WaybillsPage() {
                   type="number"
                   value={editForm.inWarehouseCount}
                 />
+              </label>
+              <label className={styles.dialogField}>
+                Fyco
+                <select
+                  aria-label="Fyco"
+                  onChange={(event) =>
+                    setEditForm((current) =>
+                      current
+                        ? {
+                            ...current,
+                            fycoStatus: event.target.value as WaybillFycoStatus
+                          }
+                        : current
+                    )
+                  }
+                  value={editForm.fycoStatus}
+                >
+                  {fycoOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className={styles.dialogField}>
                 Released Count

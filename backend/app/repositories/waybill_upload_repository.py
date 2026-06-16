@@ -90,6 +90,8 @@ class WaybillUploadRepository:
         gross_weight_kg,
         pieces: int,
         arrival_flight_number: str | None,
+        airport_of_departure: str,
+        airport_of_arrival: str,
     ) -> WaybillUpload:
         upload = WaybillUpload(
             user_id=user_id,
@@ -102,6 +104,8 @@ class WaybillUploadRepository:
             gross_weight_kg=gross_weight_kg,
             pieces=pieces,
             arrival_flight_number=arrival_flight_number,
+            airport_of_departure=airport_of_departure,
+            airport_of_arrival=airport_of_arrival,
             status="pending_review",
         )
         self.db.add(upload)

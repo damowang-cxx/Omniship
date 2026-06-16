@@ -16,7 +16,11 @@ const UPLOAD_PROXY_TIMEOUT_MS = Number(
 );
 
 function getProxyTimeoutMs(path: string[], method: string) {
-  if (method === "POST" && path.join("/") === "waybill-uploads/file") {
+  const joinedPath = path.join("/");
+  if (
+    method === "POST" &&
+    (joinedPath === "waybill-uploads/file" || /^waybills\/[^/]+\/pod$/.test(joinedPath))
+  ) {
     return UPLOAD_PROXY_TIMEOUT_MS;
   }
   return DEFAULT_PROXY_TIMEOUT_MS;

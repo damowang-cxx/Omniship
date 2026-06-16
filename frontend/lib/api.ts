@@ -6,6 +6,9 @@ import type {
   WaybillFilters,
   WaybillItem,
   WaybillListResponse,
+  WaybillParcelBulkUpdatePayload,
+  WaybillParcelListResponse,
+  WaybillPodDeleteResponse,
   WaybillUploadItem,
   WaybillUploadDeleteResponse,
   WaybillUploadFilters,
@@ -221,6 +224,8 @@ export function uploadPreAlertFile(
   formData.append("airWaybillNumber", payload.airWaybillNumber);
   formData.append("grossWeightKg", payload.grossWeightKg);
   formData.append("pieces", payload.pieces);
+  formData.append("airportOfDeparture", payload.airportOfDeparture);
+  formData.append("airportOfArrival", payload.airportOfArrival);
   if (payload.arrivalFlightNumber) {
     formData.append("arrivalFlightNumber", payload.arrivalFlightNumber);
   }
@@ -296,6 +301,27 @@ export function getWaybill(publicCode: string): Promise<WaybillItem> {
   return requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}`);
 }
 
+export function listWaybillParcels(
+  publicCode: string
+): Promise<WaybillParcelListResponse> {
+  return requestJson<WaybillParcelListResponse>(
+    `/api/v1/waybills/${publicCode}/parcels`
+  );
+}
+
+export function updateWaybillParcels(
+  publicCode: string,
+  payload: WaybillParcelBulkUpdatePayload
+): Promise<WaybillParcelListResponse> {
+  return requestJson<WaybillParcelListResponse>(
+    `/api/v1/waybills/${publicCode}/parcels`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
 export function updateWaybill(
   publicCode: string,
   payload: WaybillUpdatePayload
@@ -304,6 +330,43 @@ export function updateWaybill(
     method: "PATCH",
     body: JSON.stringify(payload)
   });
+}
+
+export function uploadWaybillPodFile(
+  publicCode: string,
+  file: File
+): Promise<WaybillItem> {
+  const formData = new FormData();
+  formData.append("podFile", file);
+
+  return requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}/pod`, {
+    method: "POST",
+    body: formData,
+    timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+    timeoutMessage:
+      "POD upload is taking longer than expected. Please keep the backend running and check the waybill detail."
+  });
+}
+
+export function deleteWaybillPodFile(
+  publicCode: string,
+  podFileId: string
+): Promise<WaybillPodDeleteResponse> {
+  return requestJson<WaybillPodDeleteResponse>(
+    `/api/v1/waybills/${publicCode}/pod/${podFileId}`,
+    {
+      method: "DELETE"
+    }
+  );
+}
+
+export function getWaybillPodFileDownloadUrl(
+  publicCode: string,
+  podFileId: string
+) {
+  return getRequestUrl(
+    `/api/v1/waybills/${publicCode}/pod/${podFileId}/download`
+  );
 }
 
 export function isUnauthorizedError(error: unknown): boolean {

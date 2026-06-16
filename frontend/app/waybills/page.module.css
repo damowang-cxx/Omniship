@@ -177,7 +177,7 @@
 
 .tableWrap table {
   border-collapse: collapse;
-  min-width: 1120px;
+  min-width: 1400px;
   width: 100%;
 }
 
@@ -265,6 +265,12 @@
   color: #ffffff;
 }
 
+.statusPill[data-status="cleared"],
+.statusButton[data-status="cleared"] {
+  background: #10b981;
+  color: #ffffff;
+}
+
 .statusPill[data-status="partial_inbound"],
 .statusButton[data-status="partial_inbound"] {
   background: #fb923c;
@@ -301,6 +307,26 @@
 .metricWarn {
   color: #ff8a00;
   font-weight: 900;
+}
+
+.fycoPill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: center;
+  min-width: 78px;
+  padding: 5px 10px;
+}
+
+.fycoPill[data-value="released"] {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.fycoPill[data-value="fyco"] {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .emptyState {
@@ -517,6 +543,365 @@
   opacity: 0.7;
 }
 
+.podSection {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.podHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.podHeader h3 {
+  color: var(--text);
+  font-size: 20px;
+  margin: 0;
+}
+
+.podLimit,
+.podLimitNote {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.podList {
+  display: grid;
+  gap: 10px;
+}
+
+.podItem {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.podItem strong {
+  color: var(--text);
+  display: block;
+  font-size: 14px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.podMeta {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.podActions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.podDownload,
+.podDelete,
+.podUpload button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.podDownload {
+  align-items: center;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #ffffff;
+  display: inline-flex;
+  text-decoration: none;
+}
+
+.podDelete {
+  background: #ffffff;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+}
+
+.podDelete:disabled,
+.podUpload button:disabled,
+.podUpload input:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.podEmpty {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  font-weight: 800;
+  min-height: 82px;
+  padding: 12px;
+}
+
+.podUpload {
+  align-items: flex-end;
+  background: #ffffff;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.podUpload label {
+  color: #344054;
+  display: grid;
+  flex: 1 1 260px;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 7px;
+}
+
+.podUpload input {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.podUpload input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: 0;
+}
+
+.podUpload button {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #ffffff;
+}
+
+.detailSection,
+.parcelSection {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sectionHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.sectionHeader h3 {
+  color: var(--text);
+  font-size: 20px;
+  margin: 0;
+}
+
+.parcelSection {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.parcelBulkToolbar {
+  align-items: flex-end;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+}
+
+.parcelBulkToolbar strong {
+  align-self: center;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  margin-right: 2px;
+}
+
+.parcelBulkToolbar label {
+  color: #344054;
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 6px;
+}
+
+.parcelBulkToolbar select,
+.parcelStatusSelect {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.parcelBulkToolbar select:focus,
+.parcelStatusSelect:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: 0;
+}
+
+.parcelBulkToolbar button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.parcelBulkToolbar button[type="submit"] {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #ffffff;
+}
+
+.parcelBulkToolbar button[type="button"] {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: #344054;
+}
+
+.parcelBulkToolbar button:disabled,
+.parcelBulkToolbar select:disabled,
+.parcelStatusSelect:disabled,
+.parcelFlagButton:disabled,
+.parcelCheckbox:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.parcelTableWrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.parcelTable {
+  min-width: 1040px;
+}
+
+.parcelTable th:first-child,
+.parcelTable td:first-child {
+  width: 46px;
+}
+
+.parcelNumber {
+  color: #ff4d4f;
+  font-weight: 900;
+}
+
+.parcelStatusPill {
+  background: #eef4ff;
+  color: #175cd3;
+}
+
+.parcelStatusPill[data-status="created"] {
+  background: #4bb7d6;
+  color: #ffffff;
+}
+
+.parcelStatusPill[data-status="released"],
+.parcelStatusPill[data-status="inbound"],
+.parcelStatusPill[data-status="outbound"] {
+  background: #3faf57;
+  color: #ffffff;
+}
+
+.parcelStatusPill[data-status="exception"],
+.parcelStatusPill[data-status="confiscated"],
+.parcelStatusPill[data-status="destroyed"],
+.parcelStatusPill[data-status="on_hold"] {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+}
+
+.parcelDestination {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.parcelBooleanCell {
+  text-align: center;
+}
+
+.parcelFlagButton,
+.parcelFlagIcon {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.parcelFlagButton {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.parcelFlagButton[data-value="true"],
+.parcelFlagIcon[data-value="true"] {
+  color: #16a34a;
+}
+
+.parcelFlagButton[data-value="false"],
+.parcelFlagIcon[data-value="false"] {
+  color: #ff4d4f;
+}
+
+.parcelCheckbox {
+  accent-color: var(--accent);
+  height: 16px;
+  width: 16px;
+}
+
+.parcelEmpty {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  font-weight: 800;
+  min-height: 82px;
+  padding: 12px;
+}
+
 .backLink {
   color: var(--accent-strong);
   font-size: 13px;
@@ -542,14 +927,40 @@
 
   .workspaceHeader,
   .listHeader,
-  .detailHeader {
+  .detailHeader,
+  .sectionHeader,
+  .parcelBulkToolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .detailPanel,
+  .parcelSection {
+    padding: 14px;
+  }
+
+  .parcelBulkToolbar label,
+  .parcelBulkToolbar select,
+  .parcelBulkToolbar button {
+    width: 100%;
   }
 
   .milestoneItem {
     align-items: stretch;
     grid-template-columns: 1fr;
+  }
+
+  .podHeader,
+  .podItem,
+  .podActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .podDownload,
+  .podDelete {
+    justify-content: center;
+    width: 100%;
   }
 
   .accountTag {

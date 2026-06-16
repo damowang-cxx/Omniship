@@ -106,6 +106,16 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.routeGrid {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px;
+}
+
 .field,
 .radioGroup {
   border: 0;
@@ -419,7 +429,7 @@
 
 .tableWrap table {
   border-collapse: collapse;
-  min-width: 1260px;
+  min-width: 1460px;
   width: 100%;
 }
 
@@ -590,6 +600,7 @@
 
 @media (max-width: 920px) {
   .formGrid,
+  .routeGrid,
   .fileGrid,
   .filterBar,
   .detailGrid {

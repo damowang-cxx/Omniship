@@ -36,6 +36,8 @@ const initialForm = {
   grossWeightKg: "",
   pieces: "",
   arrivalFlightNumber: "",
+  airportOfDeparture: "",
+  airportOfArrival: "",
   targetUserId: ""
 };
 
@@ -192,6 +194,12 @@ export default function WaybillUploadsPage() {
     if (!form.pieces.trim() || !/^\d+$/.test(form.pieces.trim())) {
       return "Air Waybill Pieces must be a number";
     }
+    if (!form.airportOfDeparture.trim()) {
+      return "Airport of Departure is required";
+    }
+    if (!form.airportOfArrival.trim()) {
+      return "Airport of Arrival is required";
+    }
     if (!airWaybillDocuments.length) {
       return "Air Waybill Document(s) is required";
     }
@@ -213,7 +221,15 @@ export default function WaybillUploadsPage() {
       return "Upload Pre Alert File must be smaller than 20 MB";
     }
     return null;
-  }, [airWaybillDocuments, form.airWaybillNumber, form.grossWeightKg, form.pieces, preAlertFile]);
+  }, [
+    airWaybillDocuments,
+    form.airWaybillNumber,
+    form.airportOfArrival,
+    form.airportOfDeparture,
+    form.grossWeightKg,
+    form.pieces,
+    preAlertFile
+  ]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -239,6 +255,8 @@ export default function WaybillUploadsPage() {
           grossWeightKg: form.grossWeightKg.trim(),
           pieces: form.pieces.trim(),
           arrivalFlightNumber: form.arrivalFlightNumber.trim() || undefined,
+          airportOfDeparture: form.airportOfDeparture.trim(),
+          airportOfArrival: form.airportOfArrival.trim(),
           targetUserId: isAdmin ? form.targetUserId : undefined,
           airWaybillDocuments,
           preAlertFile
@@ -452,6 +470,40 @@ export default function WaybillUploadsPage() {
             </label>
           </div>
 
+          <div className={styles.routeGrid}>
+            <label className={styles.field}>
+              Airport of Departure
+              <input
+                maxLength={120}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    airportOfDeparture: event.target.value
+                  }))
+                }
+                placeholder="HKG"
+                required
+                value={form.airportOfDeparture}
+              />
+            </label>
+
+            <label className={styles.field}>
+              Airport of Arrival
+              <input
+                maxLength={120}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    airportOfArrival: event.target.value
+                  }))
+                }
+                placeholder="AMS"
+                required
+                value={form.airportOfArrival}
+              />
+            </label>
+          </div>
+
           <div className={styles.fileGrid}>
             <label className={styles.fileDrop}>
               <FileText aria-hidden="true" size={24} />
@@ -580,6 +632,8 @@ export default function WaybillUploadsPage() {
                       <th>Pieces</th>
                       <th>Flight</th>
                       <th>Status</th>
+                      <th>Airport of Departure</th>
+                      <th>Airport of Arrival</th>
                       <th>Files</th>
                       <th>Uploaded</th>
                       <th>Actions</th>
@@ -599,6 +653,8 @@ export default function WaybillUploadsPage() {
                               {statusLabel(upload.status)}
                             </span>
                           </td>
+                          <td>{upload.airportOfDeparture || "-"}</td>
+                          <td>{upload.airportOfArrival || "-"}</td>
                           <td>{upload.files.length}</td>
                           <td>{formatDateTime(upload.createdAt)}</td>
                           <td>
@@ -628,12 +684,20 @@ export default function WaybillUploadsPage() {
                         </tr>
                         {expandedUploadId === upload.id && (
                           <tr className={styles.detailRow}>
-                            <td colSpan={9}>
+                            <td colSpan={11}>
                               <div className={styles.detailPanel}>
                                 <div className={styles.detailGrid}>
                                   <div>
                                     <span>Owner</span>
                                     <strong>{currentUser.email}</strong>
+                                  </div>
+                                  <div>
+                                    <span>Departure</span>
+                                    <strong>{upload.airportOfDeparture || "-"}</strong>
+                                  </div>
+                                  <div>
+                                    <span>Arrival</span>
+                                    <strong>{upload.airportOfArrival || "-"}</strong>
                                   </div>
                                   <div>
                                     <span>Uploaded At</span>

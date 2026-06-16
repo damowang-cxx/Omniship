@@ -28,6 +28,8 @@ class WaybillUploadUserItem(BaseModel):
 class WaybillPreAlertUploadResponse(BaseModel):
     upload_id: UUID = Field(alias="uploadId")
     air_waybill_number: str = Field(alias="airWaybillNumber")
+    airport_of_departure: str = Field(alias="airportOfDeparture")
+    airport_of_arrival: str = Field(alias="airportOfArrival")
     status: str
     bound_user_id: UUID = Field(alias="boundUserId")
 
@@ -43,6 +45,8 @@ class WaybillUploadItem(BaseModel):
     gross_weight_kg: Decimal = Field(alias="grossWeightKg")
     pieces: int
     arrival_flight_number: str | None = Field(default=None, alias="arrivalFlightNumber")
+    airport_of_departure: str | None = Field(default=None, alias="airportOfDeparture")
+    airport_of_arrival: str | None = Field(default=None, alias="airportOfArrival")
     status: str
     reviewed_by_user_id: UUID | None = Field(default=None, alias="reviewedByUserId")
     reviewed_at: datetime | None = Field(default=None, alias="reviewedAt")

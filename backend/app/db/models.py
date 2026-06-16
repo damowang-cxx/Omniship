@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -49,6 +50,8 @@ class WaybillUpload(Base):
     gross_weight_kg: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     pieces: Mapped[int] = mapped_column(Integer, nullable=False)
     arrival_flight_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    airport_of_departure: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    airport_of_arrival: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending_review")
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
@@ -108,6 +111,9 @@ class WaybillTrackingRecord(Base):
     received_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     received_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     in_warehouse_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fyco_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="released"
+    )
     released_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     outbound_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     noa_at: Mapped[datetime | None] = mapped_column(
@@ -134,6 +140,16 @@ class WaybillTrackingRecord(Base):
 
     upload: Mapped["WaybillUpload"] = relationship(back_populates="tracking_record")
     user: Mapped["User"] = relationship()
+    pod_files: Mapped[list["WaybillPodFile"]] = relationship(
+        back_populates="tracking_record",
+        cascade="all, delete-orphan",
+        order_by="WaybillPodFile.created_at",
+    )
+    parcels: Mapped[list["WaybillParcel"]] = relationship(
+        back_populates="tracking_record",
+        cascade="all, delete-orphan",
+        order_by="WaybillParcel.parcel_unit_number",
+    )
 
 
 class WaybillUploadFile(Base):
@@ -159,6 +175,79 @@ class WaybillUploadFile(Base):
     )
 
     upload: Mapped["WaybillUpload"] = relationship(back_populates="files")
+
+
+class WaybillPodFile(Base):
+    __tablename__ = "waybill_pod_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tracking_record_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("waybill_tracking_records.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    tracking_record: Mapped["WaybillTrackingRecord"] = relationship(
+        back_populates="pod_files"
+    )
+    uploaded_by: Mapped["User | None"] = relationship(
+        foreign_keys=[uploaded_by_user_id]
+    )
+
+
+class WaybillParcel(Base):
+    __tablename__ = "waybill_parcels"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tracking_record_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("waybill_tracking_records.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parcel_unit_number: Mapped[str] = mapped_column(
+        String(255), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="created")
+    number_of_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight_kg: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    destination_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    destination_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    destination_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    inbound: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    outbound: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    special_instruction: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    tracking_record: Mapped["WaybillTrackingRecord"] = relationship(
+        back_populates="parcels"
+    )
 
 
 class User(Base):
