@@ -163,6 +163,7 @@ class WaybillService:
             in_warehouse_count=payload.inWarehouseCount,
             pallet_count=payload.palletCount,
             fyco_status=payload.fycoStatus,
+            update_fyco_status="fycoStatus" in payload.model_fields_set,
             released_count=payload.releasedCount,
             outbound_count=payload.outboundCount,
             milestone_updates=milestone_updates,

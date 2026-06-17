@@ -309,7 +309,7 @@
   font-weight: 900;
 }
 
-.fycoPill {
+.clearancePill {
   border-radius: 999px;
   display: inline-flex;
   font-size: 12px;
@@ -319,12 +319,12 @@
   padding: 5px 10px;
 }
 
-.fycoPill[data-value="released"] {
+.clearancePill[data-value="released"] {
   background: #ecfdf5;
   color: #047857;
 }
 
-.fycoPill[data-value="fyco"] {
+.clearancePill[data-value="fyco"] {
   background: #eff6ff;
   color: #1d4ed8;
 }

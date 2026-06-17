@@ -97,7 +97,7 @@ describe("WaybillsPage", () => {
       receivedCount: 5,
       inWarehouseCount: 5,
       palletCount: 4,
-      fycoStatus: "fyco",
+      fycoStatus: null,
       releasedCount: 2,
       outboundCount: 1
     });
@@ -118,7 +118,7 @@ describe("WaybillsPage", () => {
     expect(screen.getByText("0 / 8")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Pallet Count" })).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Fyco" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Clearance Status" })).toBeInTheDocument();
     expect(screen.getAllByText("Released").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0.00% (0)").length).toBeGreaterThan(0);
     expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
@@ -163,8 +163,8 @@ describe("WaybillsPage", () => {
     fireEvent.change(screen.getByLabelText("Pallet Count"), {
       target: { value: "4" }
     });
-    fireEvent.change(screen.getByLabelText("Fyco"), {
-      target: { value: "fyco" }
+    fireEvent.change(screen.getByLabelText("Clearance Status"), {
+      target: { value: "" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -175,7 +175,7 @@ describe("WaybillsPage", () => {
         receivedTotal: 8,
         inWarehouseCount: 5,
         palletCount: 4,
-        fycoStatus: "fyco",
+        fycoStatus: null,
         releasedCount: 0,
         outboundCount: 0
       });

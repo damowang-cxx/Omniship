@@ -63,7 +63,7 @@ class WaybillItem(BaseModel):
     received_total: int = Field(alias="receivedTotal")
     in_warehouse_count: int = Field(alias="inWarehouseCount")
     pallet_count: int = Field(alias="palletCount")
-    fyco_status: WaybillFycoStatus = Field(alias="fycoStatus")
+    fyco_status: WaybillFycoStatus | None = Field(default=None, alias="fycoStatus")
     released_count: int = Field(alias="releasedCount")
     outbound_count: int = Field(alias="outboundCount")
     noa_at: datetime | None = Field(default=None, alias="noaAt")

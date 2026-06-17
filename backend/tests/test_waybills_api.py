@@ -71,7 +71,7 @@ def test_approved_upload_creates_waybill_tracking_record(client, db_session):
     assert item["receivedTotal"] == 12
     assert item["inWarehouseCount"] == 0
     assert item["palletCount"] == 0
-    assert item["fycoStatus"] == "released"
+    assert item["fycoStatus"] is None
     assert item["releasedCount"] == 0
     assert item["outboundCount"] == 0
     assert item["noaAt"] is None
@@ -138,6 +138,13 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
     assert progress_body["noaAt"].startswith("2026-05-11T12:30:00")
     assert progress_body["collectionAt"].startswith("2026-05-11T14:15:00")
     assert progress_body["statusChangedAt"] == original_status_changed_at
+
+    clearance_response = client.patch(
+        f"/api/v1/waybills/{public_code}",
+        json={"fycoStatus": None},
+    )
+    assert clearance_response.status_code == 200
+    assert clearance_response.json()["fycoStatus"] is None
 
     clear_response = client.patch(
         f"/api/v1/waybills/{public_code}",

@@ -47,7 +47,8 @@ const initialFilters: {
   q: ""
 };
 
-const fycoOptions: { value: WaybillFycoStatus; label: string }[] = [
+const clearanceStatusOptions: { value: WaybillFycoStatus | ""; label: string }[] = [
+  { value: "", label: "" },
   { value: "released", label: "Released" },
   { value: "fyco", label: "Fyco" }
 ];
@@ -58,7 +59,7 @@ type EditForm = {
   receivedTotal: string;
   inWarehouseCount: string;
   palletCount: string;
-  fycoStatus: WaybillFycoStatus;
+  fycoStatus: WaybillFycoStatus | "";
   releasedCount: string;
   outboundCount: string;
 };
@@ -67,8 +68,11 @@ function statusLabel(status: WaybillTrackingStatus) {
   return statusOptions.find((option) => option.value === status)?.label ?? status;
 }
 
-function fycoLabel(status: WaybillFycoStatus) {
-  return fycoOptions.find((option) => option.value === status)?.label ?? status;
+function clearanceStatusLabel(status?: WaybillFycoStatus | null) {
+  if (!status) {
+    return "";
+  }
+  return clearanceStatusOptions.find((option) => option.value === status)?.label ?? status;
 }
 
 function formatStatusAge(value: string) {
@@ -223,7 +227,7 @@ export default function WaybillsPage() {
       receivedTotal: String(waybill.receivedTotal),
       inWarehouseCount: String(waybill.inWarehouseCount),
       palletCount: String(waybill.palletCount),
-      fycoStatus: waybill.fycoStatus,
+      fycoStatus: waybill.fycoStatus ?? "",
       releasedCount: String(waybill.releasedCount),
       outboundCount: String(waybill.outboundCount)
     });
@@ -264,7 +268,7 @@ export default function WaybillsPage() {
             editForm.palletCount,
             "Pallet Count"
           ),
-          fycoStatus: editForm.fycoStatus,
+          fycoStatus: editForm.fycoStatus || null,
           releasedCount: parseNonNegativeInteger(
             editForm.releasedCount,
             "Released count"
@@ -441,7 +445,7 @@ export default function WaybillsPage() {
                     <th>Parcels</th>
                     <th>Pallet Count</th>
                     <th>In Warehouse</th>
-                    <th>Fyco</th>
+                    <th>Clearance Status</th>
                     <th>Released</th>
                     <th>Outbound</th>
                   </tr>
@@ -502,8 +506,8 @@ export default function WaybillsPage() {
                           </span>
                         </td>
                         <td>
-                          <span className={styles.fycoPill} data-value={waybill.fycoStatus}>
-                            {fycoLabel(waybill.fycoStatus)}
+                          <span className={styles.clearancePill} data-value={waybill.fycoStatus || ""}>
+                            {clearanceStatusLabel(waybill.fycoStatus)}
                           </span>
                         </td>
                         <td>
@@ -631,23 +635,23 @@ export default function WaybillsPage() {
                 />
               </label>
               <label className={styles.dialogField}>
-                Fyco
+                Clearance Status
                 <select
-                  aria-label="Fyco"
+                  aria-label="Clearance Status"
                   onChange={(event) =>
                     setEditForm((current) =>
                       current
                         ? {
                             ...current,
-                            fycoStatus: event.target.value as WaybillFycoStatus
+                            fycoStatus: event.target.value as WaybillFycoStatus | ""
                           }
                         : current
                     )
                   }
                   value={editForm.fycoStatus}
                 >
-                  {fycoOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
+                  {clearanceStatusOptions.map((option) => (
+                    <option key={option.value || "blank"} value={option.value}>
                       {option.label}
                     </option>
                   ))}

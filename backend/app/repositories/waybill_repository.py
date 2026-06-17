@@ -117,7 +117,6 @@ class WaybillRepository:
             received_total=upload.pieces,
             in_warehouse_count=0,
             pallet_count=0,
-            fyco_status="released",
             released_count=0,
             outbound_count=0,
         )
@@ -213,6 +212,7 @@ class WaybillRepository:
         in_warehouse_count: int | None = None,
         pallet_count: int | None = None,
         fyco_status: str | None = None,
+        update_fyco_status: bool = False,
         released_count: int | None = None,
         outbound_count: int | None = None,
         milestone_updates: dict[str, object] | None = None,
@@ -227,7 +227,7 @@ class WaybillRepository:
             record.in_warehouse_count = in_warehouse_count
         if pallet_count is not None:
             record.pallet_count = pallet_count
-        if fyco_status is not None:
+        if update_fyco_status:
             record.fyco_status = fyco_status
         if released_count is not None:
             record.released_count = released_count
