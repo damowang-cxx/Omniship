@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
@@ -23,6 +24,20 @@ from app.services.waybill_service import (
 
 
 router = APIRouter(prefix="/api/v1/waybills", tags=["waybills"])
+
+POD_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+def _pod_media_type(original_filename: str, content_type: str | None) -> str:
+    if content_type:
+        return content_type
+    extension = Path(original_filename).suffix.lower()
+    return POD_MEDIA_TYPES.get(extension, "application/octet-stream")
 
 
 @router.get("", response_model=WaybillListResponse)
@@ -86,7 +101,7 @@ def download_waybill_pod_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return FileResponse(
         path=file.storage_path,
-        media_type=file.content_type or "application/pdf",
+        media_type=_pod_media_type(file.original_filename, file.content_type),
         filename=file.original_filename,
     )
 

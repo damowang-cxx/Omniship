@@ -307,7 +307,7 @@ export default function WaybillDetailPage() {
         setWaybill(updated);
         setPodFile(null);
         form.reset();
-        setNotice({ tone: "success", text: "POD PDF uploaded" });
+        setNotice({ tone: "success", text: "POD file uploaded" });
         addMessage(
           "POD uploaded",
           `${podFile.name} was added to ${updated.number}.`,
@@ -350,7 +350,7 @@ export default function WaybillDetailPage() {
               }
             : current
         );
-        setNotice({ tone: "success", text: "POD PDF deleted" });
+        setNotice({ tone: "success", text: "POD file deleted" });
         addMessage(
           "POD deleted",
           `${file.originalFilename} was removed from ${waybill.number}.`,
@@ -599,7 +599,7 @@ export default function WaybillDetailPage() {
                 <p className={styles.eyebrow}>POD</p>
                 <h3>签收证明</h3>
               </div>
-              <span className={styles.podLimit}>{podFiles.length}/2 PDF</span>
+              <span className={styles.podLimit}>{podFiles.length}/2 files</span>
             </div>
 
             {podFiles.length > 0 ? (
@@ -620,7 +620,7 @@ export default function WaybillDetailPage() {
                         rel="noreferrer"
                         target="_blank"
                       >
-                        Download PDF
+                        Download File
                       </a>
                       {isAdmin && (
                         <button
@@ -637,16 +637,16 @@ export default function WaybillDetailPage() {
                 ))}
               </div>
             ) : (
-              <div className={styles.podEmpty}>No POD PDF has been uploaded.</div>
+              <div className={styles.podEmpty}>No POD file has been uploaded.</div>
             )}
 
             {isAdmin && (
               <form className={styles.podUpload} onSubmit={handleUploadPod}>
                 <label>
-                  <span>POD PDF</span>
+                  <span>POD file</span>
                   <input
-                    accept="application/pdf,.pdf"
-                    aria-label="POD PDF"
+                    accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+                    aria-label="POD file"
                     disabled={!canUploadPod || isUploadingPod}
                     onChange={(event) => setPodFile(event.target.files?.[0] ?? null)}
                     type="file"

@@ -66,7 +66,13 @@ PARCEL_STATUSES = {
 PUBLIC_CODE_ALPHABET = string.ascii_uppercase + string.digits
 POD_MAX_FILES = 2
 POD_MAX_BYTES = 10 * 1024 * 1024
-POD_EXTENSIONS = {".pdf"}
+POD_FILE_TYPES = {
+    ".pdf": ("PDF", "application/pdf", (b"%PDF",)),
+    ".jpg": ("JPEG", "image/jpeg", (b"\xff\xd8\xff",)),
+    ".jpeg": ("JPEG", "image/jpeg", (b"\xff\xd8\xff",)),
+    ".png": ("PNG", "image/png", (b"\x89PNG\r\n\x1a\n",)),
+}
+POD_ALLOWED_FORMATS = "PDF, JPEG, or PNG"
 MILESTONE_PAYLOAD_TO_MODEL = {
     "noaAt": "noa_at",
     "collectionAt": "collection_at",
@@ -203,7 +209,7 @@ class WaybillService:
             raise WaybillPermissionError("Admin permission required")
         record = self._get_visible_record(actor, public_code=public_code)
         if len(record.pod_files) >= POD_MAX_FILES:
-            raise WaybillValidationError("POD supports up to 2 PDF files")
+            raise WaybillValidationError("POD supports up to 2 files")
 
         file_payload = await self._collect_pod_file(file)
         saved_file = self._save_pod_file(record, file_payload)
@@ -467,24 +473,28 @@ class WaybillService:
 
     async def _collect_pod_file(self, file: UploadFile) -> dict:
         if not file or not file.filename:
-            raise WaybillValidationError("POD PDF file is required")
+            raise WaybillValidationError("POD file is required")
 
         filename = Path(file.filename).name
         extension = Path(filename).suffix.lower()
-        if extension not in POD_EXTENSIONS:
-            raise WaybillValidationError(f"{filename} has an unsupported file type")
+        file_type = POD_FILE_TYPES.get(extension)
+        if file_type is None:
+            raise WaybillValidationError(
+                f"{filename} must be a {POD_ALLOWED_FORMATS} file"
+            )
 
         content = await file.read()
         if not content:
             raise WaybillValidationError(f"{filename} is empty")
         if len(content) > POD_MAX_BYTES:
             raise WaybillValidationError(f"{filename} exceeds the size limit")
-        if not content.startswith(b"%PDF"):
-            raise WaybillValidationError(f"{filename} must be a PDF file")
+        format_label, media_type, signatures = file_type
+        if not content.startswith(signatures):
+            raise WaybillValidationError(f"{filename} must be a valid {format_label} file")
 
         return {
             "original_filename": filename,
-            "content_type": file.content_type,
+            "content_type": media_type,
             "content": content,
             "size_bytes": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),

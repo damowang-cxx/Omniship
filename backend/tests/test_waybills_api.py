@@ -384,22 +384,28 @@ def test_admin_uploads_limits_and_deletes_pod_files(
             f"/api/v1/waybills/{public_code}/pod",
             files={
                 "podFile": (
-                    "proof-two.pdf",
-                    b"%PDF-1.4\nproof two",
-                    "application/pdf",
+                    "proof-two.jpg",
+                    b"\xff\xd8\xff proof two",
+                    "image/jpeg",
                 )
             },
         )
         assert second_upload.status_code == 201
-        assert len(second_upload.json()["podFiles"]) == 2
+        second_body = second_upload.json()
+        assert len(second_body["podFiles"]) == 2
+        second_file_id = next(
+            item["id"]
+            for item in second_body["podFiles"]
+            if item["originalFilename"] == "proof-two.jpg"
+        )
 
         third_upload = client.post(
             f"/api/v1/waybills/{public_code}/pod",
             files={
                 "podFile": (
-                    "proof-three.pdf",
-                    b"%PDF-1.4\nproof three",
-                    "application/pdf",
+                    "proof-three.png",
+                    b"\x89PNG\r\n\x1a\nproof three",
+                    "image/png",
                 )
             },
         )
@@ -426,10 +432,11 @@ def test_admin_uploads_limits_and_deletes_pod_files(
         assert forbidden_upload.status_code == 403
 
         download_response = client.get(
-            f"/api/v1/waybills/{public_code}/pod/{first_file_id}/download"
+            f"/api/v1/waybills/{public_code}/pod/{second_file_id}/download"
         )
         assert download_response.status_code == 200
-        assert download_response.content.startswith(b"%PDF")
+        assert download_response.headers["content-type"].startswith("image/jpeg")
+        assert download_response.content.startswith(b"\xff\xd8\xff")
 
         forbidden_delete = client.delete(
             f"/api/v1/waybills/{public_code}/pod/{first_file_id}"
@@ -449,6 +456,22 @@ def test_admin_uploads_limits_and_deletes_pod_files(
                 select(WaybillPodFile).where(WaybillPodFile.id == UUID(first_file_id))
             ).scalar_one_or_none()
             is None
+        )
+
+        png_upload = client.post(
+            f"/api/v1/waybills/{public_code}/pod",
+            files={
+                "podFile": (
+                    "proof-three.png",
+                    b"\x89PNG\r\n\x1a\nproof three",
+                    "image/png",
+                )
+            },
+        )
+        assert png_upload.status_code == 201
+        assert any(
+            item["originalFilename"] == "proof-three.png"
+            for item in png_upload.json()["podFiles"]
         )
 
         actions = {row.action for row in db_session.execute(select(AuditLog)).scalars()}

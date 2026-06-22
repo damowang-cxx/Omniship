@@ -259,8 +259,8 @@ describe("WaybillDetailPage", () => {
       podFiles: [
         {
           id: "pod-1",
-          originalFilename: "proof-one.pdf",
-          contentType: "application/pdf",
+          originalFilename: "proof-one.png",
+          contentType: "image/png",
           sizeBytes: 2048,
           createdAt: "2026-05-11T12:30:00Z"
         }
@@ -270,20 +270,20 @@ describe("WaybillDetailPage", () => {
     render(<WaybillDetailPage />);
 
     expect(await screen.findByText("签收证明")).toBeInTheDocument();
-    const downloadLink = screen.getByRole("link", { name: "Download PDF" });
+    const downloadLink = screen.getByRole("link", { name: "Download File" });
     expect(downloadLink).toHaveAttribute(
       "href",
       "/backend/v1/waybills/A7K2P9QX/pod/pod-1/download"
     );
-    expect(screen.queryByLabelText("POD PDF")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("POD file")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
   it("lets admins upload and delete POD files", async () => {
     const podFile = {
       id: "pod-1",
-      originalFilename: "proof-one.pdf",
-      contentType: "application/pdf",
+      originalFilename: "proof-one.jpg",
+      contentType: "image/jpeg",
       sizeBytes: 2048,
       createdAt: "2026-05-11T12:30:00Z"
     };
@@ -299,9 +299,9 @@ describe("WaybillDetailPage", () => {
 
     render(<WaybillDetailPage />);
 
-    const input = await screen.findByLabelText("POD PDF");
-    const file = new File(["%PDF-1.4 proof"], "proof-one.pdf", {
-      type: "application/pdf"
+    const input = await screen.findByLabelText("POD file");
+    const file = new File(["jpeg proof"], "proof-one.jpg", {
+      type: "image/jpeg"
     });
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(screen.getByRole("button", { name: "Upload POD" }));
@@ -309,14 +309,14 @@ describe("WaybillDetailPage", () => {
     await waitFor(() => {
       expect(apiMock.uploadWaybillPodFile).toHaveBeenCalledWith("A7K2P9QX", file);
     });
-    expect(await screen.findByText("proof-one.pdf")).toBeInTheDocument();
+    expect(await screen.findByText("proof-one.jpg")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       expect(apiMock.deleteWaybillPodFile).toHaveBeenCalledWith("A7K2P9QX", "pod-1");
     });
-    expect(screen.queryByText("proof-one.pdf")).not.toBeInTheDocument();
+    expect(screen.queryByText("proof-one.jpg")).not.toBeInTheDocument();
     confirmSpy.mockRestore();
   });
 
