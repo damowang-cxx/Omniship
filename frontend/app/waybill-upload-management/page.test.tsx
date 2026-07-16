@@ -57,6 +57,11 @@ const uploadItem = {
   arrivalFlightNumber: "EK0147",
   airportOfDeparture: "HKG",
   airportOfArrival: "AMS",
+  supplierId: "supplier-id",
+  supplierName: "QLS",
+  supplierVersionNumber: 1,
+  validationIssueCount: 0,
+  validationIssues: [],
   status: "pending_review",
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
@@ -148,6 +153,35 @@ describe("WaybillUploadManagementPage", () => {
       "href",
       "/backend/v1/waybill-uploads/upload-id/files/file-id/download"
     );
+  });
+
+  it("marks uploads with supplier warnings and shows their details", async () => {
+    apiMock.listWaybillUploads.mockResolvedValueOnce({
+      items: [
+        {
+          ...uploadItem,
+          validationIssueCount: 2,
+          validationIssues: [
+            {
+              ruleKey: "quantity",
+              ruleName: "Number of Items",
+              rowNumber: 4,
+              column: "U",
+              rawValue: "21",
+              message: "must be less than or equal to 20"
+            }
+          ]
+        }
+      ]
+    });
+
+    render(<WaybillUploadManagementPage />);
+
+    expect(await screen.findByTitle("2 supplier warnings")).toHaveTextContent("!");
+    fireEvent.click(screen.getByRole("button", { name: "Details 784-84063276" }));
+    expect(await screen.findByText("2 supplier rule warnings")).toBeInTheDocument();
+    expect(screen.getByText(/Row 4.*Number of Items.*U/)).toBeInTheDocument();
+    expect(screen.getByText("1 additional warnings are not displayed.")).toBeInTheDocument();
   });
 
   it("approves and rejects uploads", async () => {

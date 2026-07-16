@@ -59,6 +59,8 @@ class WaybillItem(BaseModel):
     status_changed_at: datetime = Field(alias="statusChangedAt")
     weight_kg: Decimal = Field(alias="weightKg")
     pieces: int
+    customs_cartons: int | None = Field(default=None, alias="customsCartons")
+    customs_amount: Decimal | None = Field(default=None, alias="customsAmount")
     received_count: int = Field(alias="receivedCount")
     received_total: int = Field(alias="receivedTotal")
     in_warehouse_count: int = Field(alias="inWarehouseCount")
@@ -94,8 +96,8 @@ class WaybillParcelItem(BaseModel):
     id: UUID
     parcel_unit_number: str = Field(alias="parcelUnitNumber")
     status: WaybillParcelStatus
-    number_of_items: int = Field(alias="numberOfItems")
-    weight_kg: Decimal = Field(alias="weightKg")
+    number_of_items: int | None = Field(default=None, alias="numberOfItems")
+    weight_kg: Decimal | None = Field(default=None, alias="weightKg")
     destination_raw: str | None = Field(default=None, alias="destinationRaw")
     destination_code: str | None = Field(default=None, alias="destinationCode")
     destination_name: str | None = Field(default=None, alias="destinationName")
@@ -130,6 +132,8 @@ class WaybillListResponse(BaseModel):
 
 class WaybillUpdateRequest(BaseModel):
     status: WaybillTrackingStatus | None = None
+    airportOfDeparture: str | None = Field(default=None, max_length=120)
+    airportOfArrival: str | None = Field(default=None, max_length=3)
     receivedCount: int | None = Field(default=None, ge=0)
     receivedTotal: int | None = Field(default=None, ge=0)
     inWarehouseCount: int | None = Field(default=None, ge=0)

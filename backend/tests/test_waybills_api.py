@@ -118,6 +118,8 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
     progress_response = client.patch(
         f"/api/v1/waybills/{public_code}",
         json={
+            "airportOfDeparture": "fra",
+            "airportOfArrival": "cdg",
             "receivedCount": 3,
             "receivedTotal": 10,
             "inWarehouseCount": 2,
@@ -132,12 +134,20 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
     assert progress_response.status_code == 200
     progress_body = progress_response.json()
     assert progress_body["receivedCount"] == 3
+    assert progress_body["airportOfDeparture"] == "FRA"
+    assert progress_body["airportOfArrival"] == "CDG"
     assert progress_body["inWarehouseCount"] == 2
     assert progress_body["palletCount"] == 4
     assert progress_body["fycoStatus"] == "fyco"
     assert progress_body["noaAt"].startswith("2026-05-11T12:30:00")
     assert progress_body["collectionAt"].startswith("2026-05-11T14:15:00")
     assert progress_body["statusChangedAt"] == original_status_changed_at
+
+    invalid_airport_response = client.patch(
+        f"/api/v1/waybills/{public_code}",
+        json={"airportOfArrival": "LONDON"},
+    )
+    assert invalid_airport_response.status_code == 422
 
     clearance_response = client.patch(
         f"/api/v1/waybills/{public_code}",

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -8,22 +8,32 @@ import {
   Eye,
   FileSpreadsheet,
   FileText,
+  ReceiptEuro,
   Trash2,
   UploadCloud,
+  WalletCards,
   X
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
   deleteWaybillUpload,
+  estimatePreAlertTax,
   getCurrentUser,
   getWaybillUploadFileDownloadUrl,
   isUnauthorizedError,
   listUsers,
+  listSuppliers,
   listWaybillUploads,
   logout,
   uploadPreAlertFile
 } from "@/lib/api";
-import type { AppUser, ShipmentType, WaybillUploadItem } from "@/lib/types";
+import type {
+  AppUser,
+  BillingTaxEstimateResponse,
+  ShipmentType,
+  SupplierItem,
+  WaybillUploadItem
+} from "@/lib/types";
 import styles from "./page.module.css";
 
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
@@ -36,7 +46,8 @@ const initialForm = {
   arrivalFlightNumber: "",
   airportOfDeparture: "",
   airportOfArrival: "",
-  targetUserId: ""
+  targetUserId: "",
+  supplierId: ""
 };
 
 function hasExtension(file: File, extensions: string[]) {
@@ -49,6 +60,14 @@ function formatBytes(value: number) {
     return `${Math.round(value / 1024)} KB`;
   }
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatEuro(value: string | undefined) {
+  return new Intl.NumberFormat("en-IE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2
+  }).format(Number(value || 0));
 }
 
 function formatDateTime(value?: string | null) {
@@ -104,10 +123,15 @@ export default function WaybillUploadsPage() {
   const [authState, setAuthState] = useState<"loading" | "ready">("loading");
   const [authError, setAuthError] = useState<string | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
   const [uploads, setUploads] = useState<WaybillUploadItem[]>([]);
   const [form, setForm] = useState(initialForm);
   const [airWaybillDocuments, setAirWaybillDocuments] = useState<File[]>([]);
   const [preAlertFile, setPreAlertFile] = useState<File | null>(null);
+  const [taxEstimate, setTaxEstimate] = useState<BillingTaxEstimateResponse | null>(null);
+  const [taxEstimateError, setTaxEstimateError] = useState<string | null>(null);
+  const [isEstimatingTax, setIsEstimatingTax] = useState(false);
+  const estimateRequestId = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingUploads, setIsLoadingUploads] = useState(false);
   const [deletingUploadId, setDeletingUploadId] = useState<string | null>(null);
@@ -150,6 +174,13 @@ export default function WaybillUploadsPage() {
         setCurrentUser(response.user);
         setForm((current) => ({ ...current, targetUserId: response.user.id }));
 
+        const suppliersResponse = await listSuppliers();
+        setSuppliers(suppliersResponse.items);
+        setForm((current) => ({
+          ...current,
+          supplierId: suppliersResponse.items[0]?.id ?? ""
+        }));
+
         if (response.user.role === "admin") {
           const usersResponse = await listUsers();
           const activeUsers = usersResponse.items.filter((user) => user.status === "active");
@@ -182,9 +213,58 @@ export default function WaybillUploadsPage() {
     return users.find((user) => user.id === form.targetUserId) ?? currentUser;
   }, [currentUser, form.targetUserId, users]);
 
+  const selectedSupplier = useMemo(
+    () => suppliers.find((supplier) => supplier.id === form.supplierId) ?? null,
+    [form.supplierId, suppliers]
+  );
+
+  const handlePreAlertFileChange = useCallback((file: File | null) => {
+    setPreAlertFile(file);
+    setTaxEstimate(null);
+    setTaxEstimateError(null);
+  }, []);
+
+  useEffect(() => {
+    if (
+      !preAlertFile ||
+      !form.supplierId ||
+      !/^[A-Za-z]{3}$/.test(form.airportOfArrival.trim())
+    ) {
+      setIsEstimatingTax(false);
+      return;
+    }
+    const requestId = ++estimateRequestId.current;
+    setIsEstimatingTax(true);
+    setTaxEstimateError(null);
+    void estimatePreAlertTax(
+      preAlertFile,
+      form.supplierId,
+      form.airportOfArrival.trim().toUpperCase()
+    )
+      .then((estimate) => {
+        if (requestId === estimateRequestId.current) {
+          setTaxEstimate(estimate);
+        }
+      })
+      .catch((error) => {
+        if (requestId === estimateRequestId.current) {
+          setTaxEstimate(null);
+          setTaxEstimateError(cleanUploadErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (requestId === estimateRequestId.current) {
+          setIsEstimatingTax(false);
+        }
+      });
+  }, [form.airportOfArrival, form.supplierId, preAlertFile]);
+
   const validateForm = useCallback(() => {
     if (!form.airWaybillNumber.trim()) {
       return "Air Waybill Number is required";
+    }
+    if (!form.supplierId) {
+      return "Supplier is required";
     }
     if (!form.grossWeightKg.trim() || !Number.isFinite(Number(form.grossWeightKg))) {
       return "Air Waybill Gross Weight (KG) must be a number";
@@ -195,8 +275,8 @@ export default function WaybillUploadsPage() {
     if (!form.airportOfDeparture.trim()) {
       return "Airport of Departure is required";
     }
-    if (!form.airportOfArrival.trim()) {
-      return "Airport of Arrival is required";
+    if (!/^[A-Za-z]{3}$/.test(form.airportOfArrival.trim())) {
+      return "Airport of Arrival must be a three-letter IATA code";
     }
     if (!airWaybillDocuments.length) {
       return "Air Waybill Document(s) is required";
@@ -212,6 +292,9 @@ export default function WaybillUploadsPage() {
     if (!preAlertFile) {
       return "Upload Pre Alert File is required";
     }
+    if (!hasExtension(preAlertFile, [".xls", ".xlsx"])) {
+      return "Upload Pre Alert File must be an XLS or XLSX workbook";
+    }
     return null;
   }, [
     airWaybillDocuments,
@@ -220,6 +303,7 @@ export default function WaybillUploadsPage() {
     form.airportOfDeparture,
     form.grossWeightKg,
     form.pieces,
+    form.supplierId,
     preAlertFile
   ]);
 
@@ -250,19 +334,32 @@ export default function WaybillUploadsPage() {
           airportOfDeparture: form.airportOfDeparture.trim(),
           airportOfArrival: form.airportOfArrival.trim(),
           targetUserId: isAdmin ? form.targetUserId : undefined,
+          supplierId: form.supplierId,
           airWaybillDocuments,
           preAlertFile
         });
         setNotice({
           tone: "success",
-          text: `Upload saved for ${response.airWaybillNumber}`
+          text: `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)}`
         });
+        if (isAdmin) {
+          setUsers((current) => current.map((user) =>
+            user.id === response.boundUserId
+              ? { ...user, balance: response.balanceAfter }
+              : user
+          ));
+        } else {
+          setCurrentUser((current) => current ? { ...current, balance: response.balanceAfter } : current);
+        }
         setForm((current) => ({
           ...initialForm,
-          targetUserId: current.targetUserId || currentUser?.id || ""
+          targetUserId: current.targetUserId || currentUser?.id || "",
+          supplierId: current.supplierId
         }));
         setAirWaybillDocuments([]);
         setPreAlertFile(null);
+        setTaxEstimate(null);
+        setTaxEstimateError(null);
         await refreshOwnUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
@@ -394,6 +491,25 @@ export default function WaybillUploadsPage() {
               ))}
             </fieldset>
 
+            <label className={styles.field}>
+              Supplier
+              <select
+                aria-label="Supplier"
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, supplierId: event.target.value }))
+                }
+                required
+                value={form.supplierId}
+              >
+                <option value="">Select supplier</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name} · v{supplier.currentVersionNumber}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             {isAdmin && (
               <label className={styles.field}>
                 Target User
@@ -482,11 +598,12 @@ export default function WaybillUploadsPage() {
             <label className={styles.field}>
               Airport of Arrival
               <input
-                maxLength={120}
+                autoCapitalize="characters"
+                maxLength={3}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    airportOfArrival: event.target.value
+                    airportOfArrival: event.target.value.toUpperCase().slice(0, 3)
                   }))
                 }
                 placeholder="AMS"
@@ -523,10 +640,11 @@ export default function WaybillUploadsPage() {
             <label className={styles.fileDrop}>
               <FileSpreadsheet aria-hidden="true" size={24} />
               <strong>Upload Pre Alert File</strong>
-              <span>Any file type is temporarily allowed</span>
+              <span>XLS or XLSX · validated with {selectedSupplier?.name || "supplier"} rules</span>
               <input
                 aria-label="Upload Pre Alert File"
-                onChange={(event) => setPreAlertFile(event.target.files?.[0] ?? null)}
+                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(event) => void handlePreAlertFileChange(event.target.files?.[0] ?? null)}
                 required
                 type="file"
               />
@@ -544,9 +662,37 @@ export default function WaybillUploadsPage() {
                 {notice.text}
               </div>
             )}
-            <button disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Uploading..." : "Upload Pre Alert"}
-            </button>
+            <div className={styles.billingFooter}>
+              <button disabled={isSubmitting} type="submit">
+                {isSubmitting ? "Uploading..." : "Upload Pre Alert"}
+              </button>
+              <div className={styles.accountSnapshot}>
+                <WalletCards aria-hidden="true" size={20} />
+                <div><span>Customer balance</span><strong>{formatEuro(selectedOwner?.balance)}</strong></div>
+              </div>
+              <div className={styles.taxSnapshot} data-state={taxEstimateError ? "error" : taxEstimate ? "ready" : "idle"}>
+                <ReceiptEuro aria-hidden="true" size={20} />
+                <div>
+                  <span>Tax for this upload</span>
+                  <strong>{isEstimatingTax ? "Calculating..." : taxEstimate ? formatEuro(taxEstimate.estimatedTax) : taxEstimateError ? "Unavailable" : "Select Pre Alert"}</strong>
+                  {taxEstimate && <small>{taxEstimate.billableUnitCount} unique units × {formatEuro(taxEstimate.unitRate)}{taxEstimate.taxableAirport ? "" : " · non-taxable airport"}</small>}
+                  {taxEstimateError && <small title={taxEstimateError}>The file could not be estimated</small>}
+                </div>
+              </div>
+            </div>
+            {taxEstimate && taxEstimate.warningCount > 0 && (
+              <div className={styles.validationWarning} role="status">
+                <AlertTriangle aria-hidden="true" size={18} />
+                <div>
+                  <strong>{taxEstimate.warningCount} non-blocking supplier rule warnings</strong>
+                  {taxEstimate.warnings.slice(0, 3).map((warning) => (
+                    <span key={`${warning.ruleKey}-${warning.rowNumber}-${warning.message}`}>
+                      Row {warning.rowNumber}, {warning.ruleName}: {warning.message}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </form>
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -10,6 +11,7 @@ class UserPublic(BaseModel):
     username: str
     role: str
     status: str
+    balance: Decimal
     last_login_at: datetime | None = Field(default=None, alias="lastLoginAt")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")

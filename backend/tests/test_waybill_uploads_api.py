@@ -4,6 +4,7 @@ from app.db.models import AuditLog
 from sqlalchemy import select
 
 from tests.auth_helpers import create_test_user, login
+from app.services.supplier_defaults import QLS_SUPPLIER_ID
 
 
 def pre_alert_files(
@@ -36,6 +37,7 @@ def pre_alert_data(**overrides):
         "arrivalFlightNumber": "EK0147",
         "airportOfDeparture": "HKG",
         "airportOfArrival": "AMS",
+        "supplierId": str(QLS_SUPPLIER_ID),
     }
     data.update(overrides)
     return data
@@ -55,14 +57,14 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
     headers[21] = "weight"
     headers[22] = "price"
     sheet.append(headers)
-    for row_payload in rows or [
+    for row_index, row_payload in enumerate(rows or [
         {
             "name": "Jane Doe",
             "address": "1 Test Street",
             "goods": "Cotton shirt",
             "value": 12.5,
         }
-    ]:
+    ], start=1):
         row = [""] * 29
         consistent_values = row_payload.get("a_to_g")
         if consistent_values:
@@ -76,9 +78,9 @@ def pre_alert_workbook_bytes(rows: list[dict] | None = None) -> bytes:
         row[13] = row_payload.get("n", "")
         row[14] = row_payload.get("o", "")
         row[16] = row_payload.get("q", "")
-        row[8] = row_payload.get("parcel_unit_number", "")
+        row[8] = row_payload.get("parcel_unit_number", f"PARCEL-{row_index}")
         row[18] = row_payload.get("destination", row_payload.get("goods", ""))
-        row[20] = row_payload.get("u", "")
+        row[20] = row_payload.get("u", 1)
         row[21] = row_payload.get("weight", "")
         row[22] = row_payload.get("value", "")
         row[28] = row_payload.get("ac", "")
@@ -196,7 +198,7 @@ def test_pre_alert_upload_validates_weight_and_pdf(client, db_session):
     assert "must be a PDF" in invalid_pdf.text
 
 
-def test_pre_alert_upload_temporarily_allows_any_pre_alert_file(client, db_session):
+def test_pre_alert_upload_rejects_non_excel_file(client, db_session):
     create_test_user(
         db_session,
         email="admin@example.com",
@@ -214,15 +216,8 @@ def test_pre_alert_upload_temporarily_allows_any_pre_alert_file(client, db_sessi
             excel_content=b"not an excel workbook",
         ),
     )
-    assert upload_response.status_code == 201
-
-    assert login(client, email="admin@example.com").status_code == 200
-    review_response = client.patch(
-        f"/api/v1/waybill-uploads/{upload_response.json()['uploadId']}/status",
-        json={"status": "approved"},
-    )
-    assert review_response.status_code == 200
-    assert review_response.json()["status"] == "approved"
+    assert upload_response.status_code == 400
+    assert "unsupported file type" in upload_response.text
 
 
 def test_pre_alert_upload_no_longer_rejects_old_banned_goods_column(

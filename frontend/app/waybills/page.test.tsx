@@ -69,6 +69,8 @@ const waybillItem = {
   statusChangedAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
   weightKg: "12.500",
   pieces: 8,
+  customsCartons: 5,
+  customsAmount: "15.00",
   receivedCount: 0,
   receivedTotal: 8,
   inWarehouseCount: 0,
@@ -117,6 +119,9 @@ describe("WaybillsPage", () => {
     expect(screen.getByText("12.500")).toBeInTheDocument();
     expect(screen.getByText("0 / 8")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Pallet Count" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Cartons" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Customs" })).toBeInTheDocument();
+    expect(screen.getByText("€15.00")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Clearance Status" })).toBeInTheDocument();
     expect(screen.getAllByText("Released").length).toBeGreaterThan(0);
@@ -154,6 +159,12 @@ describe("WaybillsPage", () => {
     fireEvent.change(screen.getByLabelText("Waybill Status"), {
       target: { value: "cleared" }
     });
+    fireEvent.change(screen.getByLabelText("Edit Airport of Departure"), {
+      target: { value: "fra" }
+    });
+    fireEvent.change(screen.getByLabelText("Edit Airport of Arrival"), {
+      target: { value: "cdg" }
+    });
     fireEvent.change(screen.getByLabelText("Received Count"), {
       target: { value: "5" }
     });
@@ -171,6 +182,8 @@ describe("WaybillsPage", () => {
     await waitFor(() => {
       expect(apiMock.updateWaybill).toHaveBeenCalledWith("A7K2P9QX", {
         status: "cleared",
+        airportOfDeparture: "FRA",
+        airportOfArrival: "CDG",
         receivedCount: 5,
         receivedTotal: 8,
         inWarehouseCount: 5,

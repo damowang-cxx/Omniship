@@ -1,6 +1,13 @@
 import type {
   AppUser,
   AuthUserResponse,
+  BillingAccountResponse,
+  BillingSettingsItem,
+  BillingTaxEstimateResponse,
+  RetroactiveBillingResponse,
+  SupplierItem,
+  SupplierListResponse,
+  SupplierVersionConfig,
   UserCreateRequest,
   UserListResponse,
   WaybillFilters,
@@ -50,6 +57,19 @@ function parseErrorDetail(rawDetail: string) {
           return JSON.stringify(item);
         })
         .join("; ");
+    }
+    if (
+      parsed.detail &&
+      typeof parsed.detail === "object" &&
+      "code" in parsed.detail &&
+      parsed.detail.code === "insufficient_balance"
+    ) {
+      const detail = parsed.detail as {
+        required?: string;
+        balance?: string;
+        shortfall?: string;
+      };
+      return `Insufficient balance. Required €${detail.required}, available €${detail.balance}, shortfall €${detail.shortfall}.`;
     }
   } catch {
     return rawDetail;
@@ -196,6 +216,120 @@ export function deleteUser(userId: string): Promise<{ status: string }> {
   });
 }
 
+export function listSuppliers(): Promise<SupplierListResponse> {
+  return requestJson<SupplierListResponse>("/api/v1/suppliers");
+}
+
+export function createSupplier(
+  name: string,
+  config: SupplierVersionConfig
+): Promise<SupplierItem> {
+  return requestJson<SupplierItem>("/api/v1/suppliers", {
+    method: "POST",
+    body: JSON.stringify({ name, config })
+  });
+}
+
+export function publishSupplierVersion(
+  supplierId: string,
+  config: SupplierVersionConfig
+): Promise<SupplierItem> {
+  return requestJson<SupplierItem>(`/api/v1/suppliers/${supplierId}/versions`, {
+    method: "POST",
+    body: JSON.stringify({ config })
+  });
+}
+
+export function updateSupplier(
+  supplierId: string,
+  payload: { name?: string; status?: "active" | "inactive" }
+): Promise<SupplierItem> {
+  return requestJson<SupplierItem>(`/api/v1/suppliers/${supplierId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getBillingSettings(): Promise<BillingSettingsItem> {
+  return requestJson<BillingSettingsItem>("/api/v1/billing/settings");
+}
+
+export function updateBillingSettings(
+  unitTaxEur: string,
+  taxableAirports: string[],
+  taxEffectiveDate: string
+): Promise<BillingSettingsItem> {
+  return requestJson<BillingSettingsItem>("/api/v1/billing/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ unitTaxEur, taxableAirports, taxEffectiveDate })
+  });
+}
+
+export function applyRetroactiveBilling(
+  waybillNumbers: string[]
+): Promise<RetroactiveBillingResponse> {
+  return requestJson<RetroactiveBillingResponse>("/api/v1/billing/retroactive", {
+    method: "POST",
+    body: JSON.stringify({ waybillNumbers }),
+    timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+    timeoutMessage: "Retroactive customs processing timed out. Please retry the batch."
+  });
+}
+
+export function getMyBillingAccount(): Promise<BillingAccountResponse> {
+  return requestJson<BillingAccountResponse>("/api/v1/billing/me");
+}
+
+export function getUserBillingAccount(
+  userId: string
+): Promise<BillingAccountResponse> {
+  return requestJson<BillingAccountResponse>(`/api/v1/billing/users/${userId}`);
+}
+
+export function rechargeUser(
+  userId: string,
+  amount: string,
+  receipt?: File | null
+): Promise<BillingAccountResponse> {
+  const formData = new FormData();
+  formData.append("amount", amount);
+  if (receipt) {
+    formData.append("receipt", receipt);
+  }
+  return requestJson<BillingAccountResponse>(
+    `/api/v1/billing/users/${userId}/recharges`,
+    {
+      method: "POST",
+      body: formData,
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+      timeoutMessage: "Recharge receipt upload timed out. Please try again."
+    }
+  );
+}
+
+export function getRechargeReceiptUrl(userId: string, entryId: string) {
+  return getRequestUrl(
+    `/api/v1/billing/users/${userId}/recharges/${entryId}/receipt`
+  );
+}
+
+export function estimatePreAlertTax(
+  preAlertFile: File,
+  supplierId: string,
+  airportOfArrival: string
+): Promise<BillingTaxEstimateResponse> {
+  const formData = new FormData();
+  formData.append("preAlertFile", preAlertFile);
+  formData.append("supplierId", supplierId);
+  formData.append("airportOfArrival", airportOfArrival);
+  return requestJson<BillingTaxEstimateResponse>("/api/v1/billing/estimate", {
+    method: "POST",
+    body: formData,
+    timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+    timeoutMessage: "Tax estimate timed out. Please try the Pre Alert file again."
+  });
+}
+
 export function listWaybillUploads(
   filters?: WaybillUploadFilters
 ): Promise<WaybillUploadListResponse> {
@@ -216,6 +350,10 @@ export function listWaybillUploads(
   );
 }
 
+export function getWaybillUpload(uploadId: string): Promise<WaybillUploadItem> {
+  return requestJson<WaybillUploadItem>(`/api/v1/waybill-uploads/${uploadId}`);
+}
+
 export function uploadPreAlertFile(
   payload: WaybillPreAlertUploadPayload
 ): Promise<WaybillPreAlertUploadResponse> {
@@ -232,6 +370,7 @@ export function uploadPreAlertFile(
   if (payload.targetUserId) {
     formData.append("targetUserId", payload.targetUserId);
   }
+  formData.append("supplierId", payload.supplierId);
   for (const file of payload.airWaybillDocuments) {
     formData.append("airWaybillDocuments", file);
   }

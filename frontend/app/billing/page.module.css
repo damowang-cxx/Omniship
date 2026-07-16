@@ -1,0 +1,233 @@
+.loadingPage {
+  align-items: center;
+  background: #f3f6fa;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.loadingPage button,
+.header button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 900;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.workspace {
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 28px;
+}
+
+.header,
+.ledgerHeader {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+}
+
+.header p,
+.ledgerHeader p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.header h2,
+.ledgerHeader h3 {
+  color: var(--text);
+  margin: 0;
+}
+
+.header h2 {
+  font-size: 30px;
+}
+
+.balanceCard {
+  align-items: center;
+  background: #0b3b38;
+  border: 1px solid #0f5f59;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(11, 59, 56, 0.16);
+  color: #ffffff;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: auto 1fr auto;
+  min-height: 172px;
+  overflow: hidden;
+  padding: 26px;
+  position: relative;
+}
+
+.balanceCard::after {
+  border: 34px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  content: "";
+  height: 180px;
+  position: absolute;
+  right: -82px;
+  top: -86px;
+  width: 180px;
+}
+
+.balanceIcon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: flex;
+  height: 58px;
+  justify-content: center;
+  width: 58px;
+}
+
+.balanceCard span,
+.balanceCard small {
+  color: #b9dbd7;
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.balanceCard strong {
+  display: block;
+  font-size: clamp(34px, 5vw, 52px);
+  letter-spacing: -1.5px;
+  line-height: 1.05;
+  margin: 7px 0 9px;
+}
+
+.balanceMark {
+  align-self: end;
+  color: #a8d8d3;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  position: relative;
+  z-index: 1;
+}
+
+.ledgerCard {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.ledgerHeader h3 {
+  font-size: 20px;
+}
+
+.ledgerHeader > span {
+  background: #f2f4f7;
+  border-radius: 999px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  border-collapse: collapse;
+  min-width: 720px;
+  width: 100%;
+}
+
+.tableWrap th,
+.tableWrap td {
+  border-bottom: 1px solid var(--border);
+  color: #344054;
+  padding: 13px 12px;
+  text-align: left;
+}
+
+.tableWrap th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.waybillCell,
+.chargeAmount {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 900;
+  gap: 7px;
+}
+
+.waybillCell svg {
+  color: var(--accent-strong);
+}
+
+.chargeAmount {
+  color: #be123c;
+}
+
+.emptyState {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  justify-content: center;
+  min-height: 200px;
+  text-align: center;
+}
+
+.emptyState svg {
+  color: var(--accent-strong);
+}
+
+.emptyState strong {
+  color: var(--text);
+}
+
+.errorNotice {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  color: #be123c;
+  font-weight: 800;
+  padding: 12px;
+}
+
+@media (max-width: 640px) {
+  .workspace {
+    padding: 18px 14px;
+  }
+
+  .balanceCard {
+    align-items: start;
+    grid-template-columns: auto 1fr;
+    padding: 20px;
+  }
+
+  .balanceMark {
+    display: none;
+  }
+}

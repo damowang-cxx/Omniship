@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import secrets
 import string
 import uuid
@@ -19,6 +20,7 @@ from app.db.models import (
     WaybillUpload,
 )
 from app.repositories.audit_log_repository import AuditLogRepository
+from app.repositories.supplier_repository import SupplierRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.schemas.waybill import (
     WaybillItem,
@@ -29,12 +31,10 @@ from app.schemas.waybill import (
     WaybillPodDeleteResponse,
     WaybillUpdateRequest,
 )
-from app.services.pre_alert_parcel_parser import (
-    PreAlertParcelParseError,
-    parse_pre_alert_parcels,
-)
+from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.waybill_upload import WaybillUploadUserItem
 from app.services.request_context import get_request_ip, get_request_user_agent
+from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 
 
 WAYBILL_STATUSES = {
@@ -97,6 +97,7 @@ class WaybillService:
         self.db = db
         self.settings = settings or get_settings()
         self.waybills = WaybillRepository(db)
+        self.suppliers = SupplierRepository(db)
         self.audit_logs = AuditLogRepository(db)
 
     def ensure_tracking_for_upload(
@@ -155,6 +156,22 @@ class WaybillService:
         if status_changed:
             record.status_changed_at = datetime.now(timezone.utc)
 
+        airport_fields_changed = []
+        if "airportOfDeparture" in payload.model_fields_set:
+            departure = (payload.airportOfDeparture or "").strip().upper()
+            if not departure:
+                raise WaybillValidationError("Airport of Departure is required")
+            record.upload.airport_of_departure = departure
+            airport_fields_changed.append("airportOfDeparture")
+        if "airportOfArrival" in payload.model_fields_set:
+            arrival = (payload.airportOfArrival or "").strip().upper()
+            if not re.fullmatch(r"[A-Z]{3}", arrival):
+                raise WaybillValidationError(
+                    "Airport of Arrival must be a three-letter IATA code"
+                )
+            record.upload.airport_of_arrival = arrival
+            airport_fields_changed.append("airportOfArrival")
+
         self._validate_counts(record, payload)
         milestone_updates = {
             model_field: getattr(payload, payload_field)
@@ -188,6 +205,9 @@ class WaybillService:
                 "fycoStatus": record.fyco_status,
                 "statusChanged": status_changed,
                 "milestoneFields": list(milestone_updates.keys()),
+                "airportFields": airport_fields_changed,
+                "airportOfDeparture": record.upload.airport_of_departure,
+                "airportOfArrival": record.upload.airport_of_arrival,
             },
         )
         self.db.commit()
@@ -333,13 +353,20 @@ class WaybillService:
                 return False
             raise WaybillValidationError("Upload Pre Alert File is missing")
 
+        supplier_version = self.suppliers.get_version(record.upload.supplier_version_id)
+        if supplier_version is None:
+            raise WaybillValidationError("Supplier version not found")
         try:
-            parsed_parcels = parse_pre_alert_parcels(
+            evaluation = SupplierRuleEngine().evaluate(
                 filename=pre_alert_file.original_filename,
                 content=file_path.read_bytes(),
+                config=SupplierVersionConfig.model_validate(supplier_version.config),
             )
-        except PreAlertParcelParseError as exc:
+        except SupplierStructureError as exc:
             raise WaybillValidationError(str(exc)) from exc
+
+        if not evaluation.parcels:
+            return False
 
         self.waybills.replace_parcels(
             record,
@@ -352,7 +379,7 @@ class WaybillService:
                     "destination_code": parcel.destination_code,
                     "destination_name": parcel.destination_name,
                 }
-                for parcel in parsed_parcels
+                for parcel in evaluation.parcels
             ],
         )
         return True
@@ -553,6 +580,7 @@ class WaybillService:
 
     def _build_item(self, record: WaybillTrackingRecord) -> WaybillItem:
         upload = record.upload
+        billing_entry = upload.billing_entry
         return WaybillItem(
             id=record.id,
             publicCode=record.public_code,
@@ -565,6 +593,8 @@ class WaybillService:
             statusChangedAt=record.status_changed_at,
             weightKg=upload.gross_weight_kg,
             pieces=upload.pieces,
+            customsCartons=billing_entry.billable_unit_count if billing_entry else None,
+            customsAmount=billing_entry.amount if billing_entry else None,
             receivedCount=record.received_count,
             receivedTotal=record.received_total,
             inWarehouseCount=record.in_warehouse_count,

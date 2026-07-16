@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Download, Eye, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Download, Eye, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
@@ -350,6 +350,7 @@ export default function WaybillUploadManagementPage() {
                   <tr>
                     <th>Number</th>
                     <th>Type</th>
+                    <th>Supplier</th>
                     <th>Owner</th>
                     <th>Uploaded By</th>
                     <th>Weight</th>
@@ -369,6 +370,7 @@ export default function WaybillUploadManagementPage() {
                       <tr>
                         <td>{upload.airWaybillNumber}</td>
                         <td>{upload.shipmentType}</td>
+                        <td>{upload.supplierName ? `${upload.supplierName} v${upload.supplierVersionNumber}` : "-"}</td>
                         <td>{upload.user?.email ?? upload.userId}</td>
                         <td>{upload.uploadedBy?.email ?? upload.uploadedByUserId ?? "-"}</td>
                         <td>{upload.grossWeightKg}</td>
@@ -395,6 +397,11 @@ export default function WaybillUploadManagementPage() {
                               type="button"
                             >
                               <Eye aria-hidden="true" size={15} />
+                              {upload.validationIssueCount > 0 && (
+                                <span className={styles.warningBadge} title={`${upload.validationIssueCount} supplier warnings`}>
+                                  !
+                                </span>
+                              )}
                             </button>
                             <button
                               aria-label={`Approve ${upload.airWaybillNumber}`}
@@ -426,7 +433,7 @@ export default function WaybillUploadManagementPage() {
                       </tr>
                       {expandedUploadId === upload.id && (
                         <tr className={styles.detailRow}>
-                          <td colSpan={13}>
+                          <td colSpan={14}>
                             <div className={styles.detailPanel}>
                               <div className={styles.detailGrid}>
                                 <div>
@@ -454,6 +461,29 @@ export default function WaybillUploadManagementPage() {
                                   <strong>{upload.airportOfArrival || "-"}</strong>
                                 </div>
                               </div>
+
+                              {upload.validationIssueCount > 0 && (
+                                <div className={styles.validationIssuePanel}>
+                                  <div className={styles.validationIssueHeader}>
+                                    <AlertTriangle aria-hidden="true" size={18} />
+                                    <div>
+                                      <strong>{upload.validationIssueCount} supplier rule warnings</strong>
+                                      <span>Review these issues before approving the waybill.</span>
+                                    </div>
+                                  </div>
+                                  <div className={styles.validationIssueList}>
+                                    {upload.validationIssues.map((issue, index) => (
+                                      <div key={`${issue.ruleKey}-${issue.rowNumber}-${index}`}>
+                                        <strong>Row {issue.rowNumber} · {issue.ruleName} ({issue.column})</strong>
+                                        <span>{issue.message}{issue.rawValue ? ` · Value: ${issue.rawValue}` : ""}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {upload.validationIssueCount > upload.validationIssues.length && (
+                                    <small>{upload.validationIssueCount - upload.validationIssues.length} additional warnings are not displayed.</small>
+                                  )}
+                                </div>
+                              )}
 
                               <div className={styles.fileLinks}>
                                 <span>Attachments</span>

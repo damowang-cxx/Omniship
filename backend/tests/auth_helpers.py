@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from decimal import Decimal
 
 from app.core.security import hash_password
 from app.repositories.user_repository import UserRepository
@@ -12,6 +13,7 @@ def create_test_user(
     password: str = "password123",
     role: str = "user",
     status: str = "active",
+    balance: Decimal | str = "1000.00",
 ):
     user = UserRepository(db_session).create(
         email=email,
@@ -20,6 +22,7 @@ def create_test_user(
         role=role,
         status=status,
     )
+    user.balance = Decimal(balance)
     db_session.commit()
     db_session.refresh(user)
     return user
@@ -30,4 +33,3 @@ def login(client, *, email: str, password: str = "password123"):
         "/api/v1/auth/login",
         json={"email": email, "password": password},
     )
-

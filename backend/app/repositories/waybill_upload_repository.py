@@ -1,4 +1,5 @@
 import re
+from typing import List
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -23,11 +24,29 @@ class WaybillUploadRepository:
                 joinedload(WaybillUpload.files),
                 joinedload(WaybillUpload.user),
                 joinedload(WaybillUpload.uploaded_by),
+                joinedload(WaybillUpload.supplier),
+                joinedload(WaybillUpload.supplier_version),
             )
             .where(WaybillUpload.id == upload_id)
             .limit(1)
         )
         return self.db.execute(statement).unique().scalar_one_or_none()
+
+    def find_for_retroactive_billing(self, number: str) -> list[WaybillUpload]:
+        normalized = normalize_waybill_number(number)
+        statement = (
+            select(WaybillUpload)
+            .options(
+                joinedload(WaybillUpload.files),
+                joinedload(WaybillUpload.user),
+                joinedload(WaybillUpload.supplier),
+                joinedload(WaybillUpload.supplier_version),
+                joinedload(WaybillUpload.billing_entry),
+            )
+            .where(WaybillUpload.normalized_air_waybill_number == normalized)
+            .with_for_update(of=WaybillUpload)
+        )
+        return list(self.db.execute(statement).unique().scalars().all())
 
     def list_for_user(
         self,
@@ -60,6 +79,8 @@ class WaybillUploadRepository:
                 joinedload(WaybillUpload.files),
                 joinedload(WaybillUpload.user),
                 joinedload(WaybillUpload.uploaded_by),
+                joinedload(WaybillUpload.supplier),
+                joinedload(WaybillUpload.supplier_version),
             )
         )
         if user_id is not None:
@@ -85,6 +106,8 @@ class WaybillUploadRepository:
         *,
         user_id: UUID,
         uploaded_by_user_id: UUID,
+        supplier_id: UUID,
+        supplier_version_id: UUID,
         shipment_type: str,
         air_waybill_number: str,
         gross_weight_kg,
@@ -92,10 +115,14 @@ class WaybillUploadRepository:
         arrival_flight_number: str | None,
         airport_of_departure: str,
         airport_of_arrival: str,
+        validation_issue_count: int,
+        validation_issues: List[dict],
     ) -> WaybillUpload:
         upload = WaybillUpload(
             user_id=user_id,
             uploaded_by_user_id=uploaded_by_user_id,
+            supplier_id=supplier_id,
+            supplier_version_id=supplier_version_id,
             shipment_type=shipment_type,
             air_waybill_number=air_waybill_number,
             normalized_air_waybill_number=normalize_waybill_number(
@@ -107,6 +134,8 @@ class WaybillUploadRepository:
             airport_of_departure=airport_of_departure,
             airport_of_arrival=airport_of_arrival,
             status="pending_review",
+            validation_issue_count=validation_issue_count,
+            validation_issues=validation_issues,
         )
         self.db.add(upload)
         self.db.flush()

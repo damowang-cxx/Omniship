@@ -809,8 +809,8 @@ export default function WaybillDetailPage() {
                             </span>
                           )}
                         </td>
-                        <td>{parcel.numberOfItems}</td>
-                        <td>{parcel.weightKg}</td>
+                        <td>{parcel.numberOfItems ?? "-"}</td>
+                        <td>{parcel.weightKg ?? "-"}</td>
                         <td>
                           <span className={styles.parcelDestination}>
                             {formatFlagEmoji(parcel.destinationCode) && (

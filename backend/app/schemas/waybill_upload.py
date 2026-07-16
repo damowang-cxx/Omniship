@@ -32,6 +32,15 @@ class WaybillPreAlertUploadResponse(BaseModel):
     airport_of_arrival: str = Field(alias="airportOfArrival")
     status: str
     bound_user_id: UUID = Field(alias="boundUserId")
+    supplier_id: UUID = Field(alias="supplierId")
+    supplier_name: str = Field(alias="supplierName")
+    supplier_version_number: int = Field(alias="supplierVersionNumber")
+    billable_unit_count: int = Field(alias="billableUnitCount")
+    unit_rate: Decimal = Field(alias="unitRate")
+    deducted_tax: Decimal = Field(alias="deductedTax")
+    balance_after: Decimal = Field(alias="balanceAfter")
+    validation_issue_count: int = Field(alias="validationIssueCount")
+    validation_issues: list[dict] = Field(alias="validationIssues")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -40,6 +49,10 @@ class WaybillUploadItem(BaseModel):
     id: UUID
     user_id: UUID = Field(alias="userId")
     uploaded_by_user_id: UUID | None = Field(default=None, alias="uploadedByUserId")
+    supplier_id: UUID = Field(alias="supplierId")
+    supplier_version_id: UUID = Field(alias="supplierVersionId")
+    supplier_name: str | None = Field(default=None, alias="supplierName")
+    supplier_version_number: int | None = Field(default=None, alias="supplierVersionNumber")
     shipment_type: str = Field(alias="shipmentType")
     air_waybill_number: str = Field(alias="airWaybillNumber")
     gross_weight_kg: Decimal = Field(alias="grossWeightKg")
@@ -48,6 +61,8 @@ class WaybillUploadItem(BaseModel):
     airport_of_departure: str | None = Field(default=None, alias="airportOfDeparture")
     airport_of_arrival: str | None = Field(default=None, alias="airportOfArrival")
     status: str
+    validation_issue_count: int = Field(alias="validationIssueCount")
+    validation_issues: list[dict] = Field(alias="validationIssues")
     reviewed_by_user_id: UUID | None = Field(default=None, alias="reviewedByUserId")
     reviewed_at: datetime | None = Field(default=None, alias="reviewedAt")
     created_at: datetime = Field(alias="createdAt")

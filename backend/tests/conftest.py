@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.models import Base
 from app.db.session import get_db
 from app.main import app
+from app.repositories.supplier_repository import SupplierRepository
 
 
 @pytest.fixture()
@@ -24,6 +25,8 @@ def db_session() -> Generator[Session, None, None]:
     Base.metadata.create_all(bind=engine)
 
     with TestingSessionLocal() as session:
+        SupplierRepository(session).ensure_defaults()
+        session.commit()
         yield session
 
     Base.metadata.drop_all(bind=engine)
@@ -38,4 +41,3 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-

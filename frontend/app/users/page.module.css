@@ -39,7 +39,7 @@
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 1.2fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr repeat(3, minmax(150px, 1fr)) auto;
   margin-bottom: 18px;
   padding: 14px;
 }
@@ -90,7 +90,7 @@
 
 .table {
   border-collapse: collapse;
-  min-width: 860px;
+  min-width: 1040px;
   width: 100%;
 }
 
@@ -137,6 +137,412 @@
   padding: 14px;
 }
 
+.emailLink {
+  background: none;
+  border: 0;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: #9fd3cc;
+  text-underline-offset: 3px;
+}
+
+.balanceCell {
+  color: #0b5d56;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.statusPill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 9px;
+}
+
+.statusPill[data-status="active"] {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.statusPill[data-status="disabled"] {
+  background: #f2f4f7;
+  color: #667085;
+}
+
+.modalBackdrop,
+.modalBackdropTop,
+.imageViewer {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 70;
+}
+
+.modalBackdropTop {
+  background: rgba(15, 23, 42, 0.62);
+  z-index: 80;
+}
+
+.userDetailModal {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
+  display: grid;
+  gap: 18px;
+  max-height: calc(100vh - 48px);
+  max-width: 1040px;
+  overflow: auto;
+  padding: 20px;
+  width: min(100%, 1040px);
+}
+
+.modalHeader,
+.billingToolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.modalHeader p {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+.modalHeader h3 {
+  color: var(--text);
+  font-size: 21px;
+  margin: 0;
+}
+
+.iconButton {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #667085;
+  cursor: pointer;
+  display: flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.userSummary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.userSummary > div {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.userSummary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.userSummary strong {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userSummary .summaryBalance {
+  background: #0b3b38;
+  border-color: #0b3b38;
+}
+
+.summaryBalance span {
+  color: #9fd3cc;
+}
+
+.summaryBalance strong {
+  color: #ffffff;
+  font-size: 20px;
+}
+
+.billingToolbar {
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.tabs {
+  background: #f2f4f7;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.tabs button,
+.rechargeButton {
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 0 13px;
+}
+
+.tabs button {
+  background: transparent;
+  border: 0;
+  color: #667085;
+}
+
+.tabs button[data-active="true"] {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  color: var(--text);
+}
+
+.rechargeButton {
+  align-items: center;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #ffffff;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.ledgerTableWrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.ledgerTableWrap table {
+  border-collapse: collapse;
+  min-width: 720px;
+  width: 100%;
+}
+
+.ledgerTableWrap th,
+.ledgerTableWrap td {
+  border-bottom: 1px solid var(--border);
+  color: #344054;
+  font-size: 13px;
+  padding: 12px;
+  text-align: left;
+}
+
+.ledgerTableWrap th {
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+}
+
+.deductionAmount,
+.rechargeAmount {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 900;
+  gap: 5px;
+}
+
+.deductionAmount {
+  color: #be123c;
+}
+
+.rechargeAmount {
+  color: #047857;
+}
+
+.receiptThumb {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  padding: 4px 8px 4px 4px;
+}
+
+.receiptThumb img {
+  border-radius: 5px;
+  height: 34px;
+  object-fit: cover;
+  width: 46px;
+}
+
+.noReceipt {
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.modalEmpty {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-height: 180px;
+  text-align: center;
+}
+
+.modalEmpty svg {
+  color: var(--accent-strong);
+}
+
+.modalEmpty strong {
+  color: var(--text);
+}
+
+.modalError {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  color: #be123c;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.rechargeModal {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.3);
+  display: grid;
+  gap: 16px;
+  max-width: 520px;
+  padding: 20px;
+  width: min(100%, 520px);
+}
+
+.rechargeModal > label {
+  color: #344054;
+  display: grid;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 8px;
+}
+
+.rechargeModal > label > input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 11px;
+}
+
+.rechargeModal .receiptUpload {
+  border: 1px dashed #b8c2d0;
+  border-radius: 8px;
+  color: #667085;
+  gap: 7px;
+  padding: 16px;
+}
+
+.receiptUpload svg {
+  color: var(--accent-strong);
+}
+
+.receiptUpload span,
+.receiptUpload small {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rechargeModal footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.rechargeModal footer button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.rechargeModal footer button:last-child {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.rechargeModal footer button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.imageViewer {
+  background: rgba(2, 6, 23, 0.86);
+  z-index: 90;
+}
+
+.imageViewer section {
+  background: #ffffff;
+  border-radius: 10px;
+  max-height: calc(100vh - 48px);
+  max-width: 1000px;
+  overflow: hidden;
+  width: min(100%, 1000px);
+}
+
+.imageViewer header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.imageViewer header button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.imageViewer section > img {
+  display: block;
+  max-height: calc(100vh - 120px);
+  object-fit: contain;
+  width: 100%;
+}
+
 @media (max-width: 920px) {
   .workspace {
     padding: 20px 14px 28px;
@@ -145,6 +551,37 @@
   .form,
   .resetPanel {
     align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .userSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .modalBackdrop,
+  .modalBackdropTop,
+  .imageViewer {
+    padding: 12px;
+  }
+
+  .userDetailModal {
+    max-height: calc(100vh - 24px);
+    padding: 14px;
+  }
+
+  .billingToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .userSummary {
     grid-template-columns: 1fr;
   }
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardList, LogOut, Package, UploadCloud, Users } from "lucide-react";
+import { ClipboardList, Factory, LogOut, Package, UploadCloud, Users, WalletCards } from "lucide-react";
 import type { AppUser } from "@/lib/types";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
@@ -16,7 +16,7 @@ export function AppShell({
   children
 }: {
   user: AppUser;
-  active: "waybills" | "uploads" | "upload-management" | "users";
+  active: "waybills" | "uploads" | "upload-management" | "users" | "billing" | "suppliers";
   messages: AppMessage[];
   unreadCount: number;
   isInfoOpen: boolean;
@@ -80,6 +80,28 @@ export function AppShell({
               <UploadCloud aria-hidden="true" size={18} />
               <span>Uploads</span>
             </Link>
+            {!isAdmin && (
+              <Link
+                aria-current={active === "billing" ? "page" : undefined}
+                className={styles.navItem}
+                data-active={active === "billing"}
+                href="/billing"
+              >
+                <WalletCards aria-hidden="true" size={18} />
+                <span>Billing</span>
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                aria-current={active === "suppliers" ? "page" : undefined}
+                className={styles.navItem}
+                data-active={active === "suppliers"}
+                href="/suppliers"
+              >
+                <Factory aria-hidden="true" size={18} />
+                <span>Supplier</span>
+              </Link>
+            )}
             {isAdmin && (
               <Link
                 aria-current={active === "upload-management" ? "page" : undefined}

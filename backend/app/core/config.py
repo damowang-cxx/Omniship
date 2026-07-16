@@ -23,6 +23,10 @@ class Settings(BaseSettings):
         default=BACKEND_DIR / "storage" / "uploads",
         alias="UPLOAD_STORAGE_DIR",
     )
+    billing_receipt_storage_dir: Path = Field(
+        default=BACKEND_DIR / "storage" / "billing-receipts",
+        alias="BILLING_RECEIPT_STORAGE_DIR",
+    )
 
     model_config = SettingsConfigDict(
         env_file=(PROJECT_ROOT / ".env", BACKEND_DIR / ".env"),

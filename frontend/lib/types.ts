@@ -7,6 +7,7 @@ export interface AppUser {
   username: string;
   role: UserRole;
   status: UserStatus;
+  balance: string;
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -24,6 +25,156 @@ export interface UserCreateRequest {
   email: string;
   username: string;
   password: string;
+}
+
+export interface BillingReceiptItem {
+  originalFilename: string;
+  contentType?: string | null;
+  sizeBytes: number;
+}
+
+export interface BillingEntryItem {
+  id: string;
+  entryType: "recharge" | "deduction";
+  amount: string;
+  currency: string;
+  balanceAfter: string;
+  waybillUploadId?: string | null;
+  waybillNumber?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierVersionNumber?: number | null;
+  arrivalAirport?: string | null;
+  billableUnitCount?: number | null;
+  unitRate?: string | null;
+  billingSource?: "upload" | "retroactive" | null;
+  createdByUserId?: string | null;
+  receipt?: BillingReceiptItem | null;
+  createdAt: string;
+}
+
+export interface BillingAccountResponse {
+  user: AppUser;
+  deductions: BillingEntryItem[];
+  recharges: BillingEntryItem[];
+}
+
+export interface BillingTaxEstimateResponse {
+  supplierId: string;
+  supplierName: string;
+  supplierVersionId: string;
+  supplierVersionNumber: number;
+  taxableAirport: boolean;
+  billableUnitCount: number;
+  unitRate: string;
+  estimatedTax: string;
+  warningCount: number;
+  warnings: SupplierValidationIssue[];
+  currency: "EUR";
+}
+
+export type SupplierSemanticField =
+  | "parcel_unit_number"
+  | "destination"
+  | "number_of_items"
+  | "weight_kg";
+
+export interface SupplierRuleConstraints {
+  minValue?: string | null;
+  maxValue?: string | null;
+  minLength?: number | null;
+  maxLength?: number | null;
+  pattern?: string | null;
+  allowedValues: string[];
+  unique: boolean;
+}
+
+export interface SupplierFieldRule {
+  key: string;
+  name: string;
+  semanticField?: SupplierSemanticField | null;
+  locatorMode: "column" | "header";
+  locatorValue: string;
+  valueType: "text" | "number" | "integer" | "country";
+  blankPolicy: "allow" | "required" | "skip_row";
+  caseInsensitive: boolean;
+  allowUnknownCountry: boolean;
+  countryAliases: Record<string, string>;
+  constraints: SupplierRuleConstraints;
+}
+
+export interface SupplierVersionConfig {
+  workbook: {
+    sheetMode: "first" | "named";
+    sheetName?: string | null;
+    headerRow: number;
+    dataStartRow: number;
+  };
+  fields: SupplierFieldRule[];
+  rowKeyFieldKey: string;
+  billingDistinctFieldKey: string;
+}
+
+export interface SupplierVersionItem {
+  id: string;
+  versionNumber: number;
+  config: SupplierVersionConfig;
+  createdByUserId?: string | null;
+  createdAt: string;
+}
+
+export interface SupplierItem {
+  id: string;
+  name: string;
+  status: "active" | "inactive";
+  currentVersionNumber: number;
+  currentVersion: SupplierVersionItem;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierListResponse {
+  items: SupplierItem[];
+}
+
+export interface BillingSettingsItem {
+  unitTaxEur: string;
+  taxableAirports: string[];
+  taxEffectiveDate: string;
+  updatedAt: string;
+}
+
+export interface RetroactiveBillingSuccessItem {
+  waybillNumber: string;
+  supplierName: string;
+  supplierVersionNumber: number;
+  billableUnitCount: number;
+  unitRate: string;
+  amount: string;
+  balanceAfter: string;
+  warningCount: number;
+}
+
+export interface RetroactiveBillingFailureItem {
+  waybillNumber: string;
+  reason: string;
+}
+
+export interface RetroactiveBillingResponse {
+  requestedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  succeeded: RetroactiveBillingSuccessItem[];
+  failed: RetroactiveBillingFailureItem[];
+}
+
+export interface SupplierValidationIssue {
+  ruleKey: string;
+  ruleName: string;
+  rowNumber: number;
+  column: string;
+  message: string;
+  rawValue: string;
 }
 
 export type ShipmentType = "Air" | "Road" | "Train";
@@ -63,6 +214,7 @@ export interface WaybillPreAlertUploadPayload {
   airportOfDeparture: string;
   airportOfArrival: string;
   targetUserId?: string;
+  supplierId: string;
   airWaybillDocuments: File[];
   preAlertFile: File;
 }
@@ -74,6 +226,15 @@ export interface WaybillPreAlertUploadResponse {
   airportOfArrival: string;
   status: WaybillUploadStatus;
   boundUserId: string;
+  supplierId: string;
+  supplierName: string;
+  supplierVersionNumber: number;
+  billableUnitCount: number;
+  unitRate: string;
+  deductedTax: string;
+  balanceAfter: string;
+  validationIssueCount: number;
+  validationIssues: SupplierValidationIssue[];
 }
 
 export interface WaybillUploadFileItem {
@@ -96,6 +257,10 @@ export interface WaybillUploadItem {
   id: string;
   userId: string;
   uploadedByUserId?: string | null;
+  supplierId: string;
+  supplierVersionId: string;
+  supplierName?: string | null;
+  supplierVersionNumber?: number | null;
   shipmentType: ShipmentType;
   airWaybillNumber: string;
   grossWeightKg: string;
@@ -104,6 +269,8 @@ export interface WaybillUploadItem {
   airportOfDeparture?: string | null;
   airportOfArrival?: string | null;
   status: WaybillUploadStatus;
+  validationIssueCount: number;
+  validationIssues: SupplierValidationIssue[];
   reviewedByUserId?: string | null;
   reviewedAt?: string | null;
   createdAt: string;
@@ -145,8 +312,8 @@ export interface WaybillParcelItem {
   id: string;
   parcelUnitNumber: string;
   status: WaybillParcelStatus;
-  numberOfItems: number;
-  weightKg: string;
+  numberOfItems?: number | null;
+  weightKg?: string | null;
   destinationRaw?: string | null;
   destinationCode?: string | null;
   destinationName?: string | null;
@@ -181,6 +348,8 @@ export interface WaybillItem {
   statusChangedAt: string;
   weightKg: string;
   pieces: number;
+  customsCartons?: number | null;
+  customsAmount?: string | null;
   receivedCount: number;
   receivedTotal: number;
   inWarehouseCount: number;
@@ -211,6 +380,8 @@ export interface WaybillFilters {
 
 export interface WaybillUpdatePayload {
   status?: WaybillTrackingStatus;
+  airportOfDeparture?: string;
+  airportOfArrival?: string;
   receivedCount?: number;
   receivedTotal?: number;
   inWarehouseCount?: number;

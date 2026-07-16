@@ -15,6 +15,7 @@ from app.schemas.waybill_upload import (
     WaybillUploadItem,
 )
 from app.services.waybill_upload_service import (
+    WaybillUploadInsufficientBalanceError,
     WaybillUploadPermissionError,
     WaybillUploadService,
     WaybillUploadValidationError,
@@ -57,6 +58,7 @@ async def _create_pre_alert_upload(
     airport_of_arrival: str,
     air_waybill_documents: list[UploadFile],
     pre_alert_file: UploadFile,
+    supplier_id: UUID,
     target_user_id: UUID | None,
 ) -> WaybillPreAlertUploadResponse:
     try:
@@ -72,10 +74,21 @@ async def _create_pre_alert_upload(
             airport_of_arrival=airport_of_arrival,
             air_waybill_documents=air_waybill_documents,
             pre_alert_file=pre_alert_file,
+            supplier_id=supplier_id,
             target_user_id=target_user_id,
         )
     except WaybillUploadPermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WaybillUploadInsufficientBalanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "code": "insufficient_balance",
+                "required": str(exc.required),
+                "balance": str(exc.balance),
+                "shortfall": str(exc.shortfall),
+            },
+        ) from exc
     except WaybillUploadValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -95,6 +108,7 @@ async def upload_pre_alert_file(
     airport_of_departure: str = Form(..., alias="airportOfDeparture"),
     airport_of_arrival: str = Form(..., alias="airportOfArrival"),
     target_user_id: UUID | None = Form(default=None, alias="targetUserId"),
+    supplier_id: UUID = Form(..., alias="supplierId"),
     air_waybill_documents: list[UploadFile] = File(..., alias="airWaybillDocuments"),
     pre_alert_file: UploadFile = File(..., alias="preAlertFile"),
     db: Session = Depends(get_db),
@@ -113,6 +127,7 @@ async def upload_pre_alert_file(
         airport_of_arrival=airport_of_arrival,
         air_waybill_documents=air_waybill_documents,
         pre_alert_file=pre_alert_file,
+        supplier_id=supplier_id,
         target_user_id=target_user_id,
     )
 
@@ -132,6 +147,7 @@ async def upload_pre_alert(
     airport_of_departure: str = Form(..., alias="airportOfDeparture"),
     airport_of_arrival: str = Form(..., alias="airportOfArrival"),
     target_user_id: UUID | None = Form(default=None, alias="targetUserId"),
+    supplier_id: UUID = Form(..., alias="supplierId"),
     air_waybill_documents: list[UploadFile] = File(..., alias="airWaybillDocuments"),
     pre_alert_file: UploadFile = File(..., alias="preAlertFile"),
     db: Session = Depends(get_db),
@@ -150,8 +166,26 @@ async def upload_pre_alert(
         airport_of_arrival=airport_of_arrival,
         air_waybill_documents=air_waybill_documents,
         pre_alert_file=pre_alert_file,
+        supplier_id=supplier_id,
         target_user_id=target_user_id,
     )
+
+
+@router.get("/{upload_id}", response_model=WaybillUploadItem)
+def get_waybill_upload(
+    upload_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> WaybillUploadItem:
+    try:
+        return WaybillUploadService(db).get_upload(
+            actor=current_user,
+            upload_id=upload_id,
+        )
+    except WaybillUploadPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WaybillUploadValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.patch("/{upload_id}/status", response_model=WaybillUploadItem)

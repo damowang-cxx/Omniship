@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import User, WaybillUpload, WaybillUploadFile
 from app.repositories.audit_log_repository import AuditLogRepository
+from app.repositories.billing_repository import BillingRepository
+from app.repositories.supplier_repository import SupplierRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_upload_repository import (
     WaybillUploadRepository,
@@ -24,14 +26,17 @@ from app.schemas.waybill_upload import (
     WaybillUploadItem,
     WaybillUploadListResponse,
 )
+from app.schemas.supplier import SupplierVersionConfig
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.waybill_service import WaybillService, WaybillValidationError
+from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 
 
 SHIPMENT_TYPES = {"Air", "Road", "Train"}
 UPLOAD_STATUSES = {"pending_review", "approved", "rejected"}
 PDF_MAX_BYTES = 10 * 1024 * 1024
 PDF_EXTENSIONS = {".pdf"}
+PRE_ALERT_EXTENSIONS = {".xls", ".xlsx"}
 AIRPORT_FIELD_MAX_LENGTH = 120
 
 logger = logging.getLogger(__name__)
@@ -45,12 +50,22 @@ class WaybillUploadPermissionError(PermissionError):
     pass
 
 
+class WaybillUploadInsufficientBalanceError(WaybillUploadValidationError):
+    def __init__(self, *, required: Decimal, balance: Decimal):
+        self.required = required
+        self.balance = balance
+        self.shortfall = required - balance
+        super().__init__("Insufficient account balance")
+
+
 class WaybillUploadService:
     def __init__(self, db: Session, settings: Settings | None = None):
         self.db = db
         self.settings = settings or get_settings()
         self.uploads = WaybillUploadRepository(db)
         self.users = UserRepository(db)
+        self.billing = BillingRepository(db)
+        self.suppliers = SupplierRepository(db)
         self.audit_logs = AuditLogRepository(db)
 
     def list_uploads(
@@ -81,6 +96,14 @@ class WaybillUploadService:
             items=[WaybillUploadItem.model_validate(upload) for upload in uploads]
         )
 
+    def get_upload(self, *, actor: User, upload_id: UUID) -> WaybillUploadItem:
+        upload = self.uploads.get_by_id(upload_id)
+        if upload is None:
+            raise WaybillUploadValidationError("Waybill upload not found")
+        if actor.role != "admin" and upload.user_id != actor.id:
+            raise WaybillUploadPermissionError("Cannot view another user's upload")
+        return WaybillUploadItem.model_validate(upload)
+
     async def create_pre_alert_upload(
         self,
         *,
@@ -95,6 +118,7 @@ class WaybillUploadService:
         airport_of_arrival: str,
         air_waybill_documents: list[UploadFile],
         pre_alert_file: UploadFile,
+        supplier_id: UUID,
         target_user_id: UUID | None = None,
     ) -> WaybillPreAlertUploadResponse:
         target_user = self._resolve_target_user(actor, target_user_id)
@@ -110,10 +134,16 @@ class WaybillUploadService:
             airport_of_departure,
             "Airport of Departure",
         )
-        airport_of_arrival = self._validate_plain_text(
-            airport_of_arrival,
-            "Airport of Arrival",
-        )
+        airport_of_arrival = self._validate_iata(airport_of_arrival)
+
+        supplier = self.suppliers.get(supplier_id)
+        if supplier is None:
+            raise WaybillUploadValidationError("Supplier not found")
+        if supplier.status != "active":
+            raise WaybillUploadValidationError("Supplier is inactive")
+        supplier_version = self.suppliers.get_current_version(supplier)
+        if supplier_version is None:
+            raise WaybillUploadValidationError("Supplier version not found")
 
         documents = await self._collect_files(
             air_waybill_documents,
@@ -125,15 +155,44 @@ class WaybillUploadService:
         pre_alert = await self._collect_files(
             [pre_alert_file],
             file_kind="customer_pre_alert",
-            allowed_extensions=None,
-            max_bytes=None,
+            allowed_extensions=PRE_ALERT_EXTENSIONS,
+            max_bytes=25 * 1024 * 1024,
             required=True,
-            allow_empty=True,
         )
+
+        try:
+            evaluation = SupplierRuleEngine().evaluate(
+                filename=pre_alert[0]["original_filename"],
+                content=pre_alert[0]["content"],
+                config=SupplierVersionConfig.model_validate(supplier_version.config),
+            )
+        except SupplierStructureError as exc:
+            raise WaybillUploadValidationError(str(exc)) from exc
+
+        settings = self.suppliers.get_settings()
+        unit_rate = Decimal(settings.unit_tax_eur)
+        taxable_airport = airport_of_arrival in settings.taxable_airports
+        deducted_tax = (
+            unit_rate * evaluation.distinct_count
+            if taxable_airport
+            else Decimal("0.00")
+        ).quantize(Decimal("0.01"))
+
+        locked_user = self.billing.get_user_for_update(target_user.id)
+        if locked_user is None:
+            raise WaybillUploadValidationError("Target user not found")
+        current_balance = Decimal(locked_user.balance)
+        if deducted_tax > current_balance:
+            raise WaybillUploadInsufficientBalanceError(
+                required=deducted_tax,
+                balance=current_balance,
+            )
 
         upload = self.uploads.create(
             user_id=target_user.id,
             uploaded_by_user_id=actor.id,
+            supplier_id=supplier.id,
+            supplier_version_id=supplier_version.id,
             shipment_type=shipment_type,
             air_waybill_number=air_waybill_number,
             gross_weight_kg=gross_weight,
@@ -141,6 +200,8 @@ class WaybillUploadService:
             arrival_flight_number=arrival_flight_number,
             airport_of_departure=airport_of_departure,
             airport_of_arrival=airport_of_arrival,
+            validation_issue_count=evaluation.issue_count,
+            validation_issues=[issue.as_dict() for issue in evaluation.issues],
         )
         saved_files = []
         try:
@@ -158,6 +219,25 @@ class WaybillUploadService:
                     sha256=saved_file["sha256"],
                 )
 
+            if deducted_tax > 0:
+                locked_user.balance = (current_balance - deducted_tax).quantize(
+                    Decimal("0.01")
+                )
+                self.billing.create_deduction(
+                    user_id=locked_user.id,
+                    amount=deducted_tax,
+                    balance_after=locked_user.balance,
+                    waybill_upload_id=upload.id,
+                    waybill_number=air_waybill_number,
+                    supplier_id=supplier.id,
+                    supplier_name=supplier.name,
+                    supplier_version_number=supplier_version.version_number,
+                    arrival_airport=airport_of_arrival,
+                    billable_unit_count=evaluation.distinct_count,
+                    unit_rate=unit_rate,
+                    created_by_user_id=actor.id,
+                )
+
             self.audit_logs.create(
                 "upload_pre_alert",
                 actor_user_id=actor.id,
@@ -171,6 +251,11 @@ class WaybillUploadService:
                     "shipmentType": shipment_type,
                     "airportOfDeparture": airport_of_departure,
                     "airportOfArrival": airport_of_arrival,
+                    "supplierId": str(supplier.id),
+                    "supplierVersion": supplier_version.version_number,
+                    "billableUnitCount": evaluation.distinct_count,
+                    "deductedTax": str(deducted_tax),
+                    "validationIssueCount": evaluation.issue_count,
                 },
             )
             self.db.commit()
@@ -183,7 +268,13 @@ class WaybillUploadService:
         refreshed_upload = self.uploads.get_by_id(upload.id)
         if refreshed_upload is None:
             raise WaybillUploadValidationError("Waybill upload not found")
-        return self._build_pre_alert_response(refreshed_upload)
+        return self._build_pre_alert_response(
+            refreshed_upload,
+            billable_unit_count=evaluation.distinct_count,
+            unit_rate=unit_rate,
+            deducted_tax=deducted_tax,
+            balance_after=Decimal(locked_user.balance),
+        )
 
     def update_status(
         self,
@@ -313,6 +404,11 @@ class WaybillUploadService:
     def _build_pre_alert_response(
         self,
         upload: WaybillUpload,
+        *,
+        billable_unit_count: int,
+        unit_rate: Decimal,
+        deducted_tax: Decimal,
+        balance_after: Decimal,
     ) -> WaybillPreAlertUploadResponse:
         return WaybillPreAlertUploadResponse(
             upload_id=upload.id,
@@ -321,6 +417,15 @@ class WaybillUploadService:
             airport_of_arrival=upload.airport_of_arrival or "",
             status=upload.status,
             bound_user_id=upload.user_id,
+            supplier_id=upload.supplier_id,
+            supplier_name=upload.supplier.name,
+            supplier_version_number=upload.supplier_version.version_number,
+            billable_unit_count=billable_unit_count,
+            unit_rate=unit_rate,
+            deducted_tax=deducted_tax,
+            balance_after=balance_after,
+            validation_issue_count=upload.validation_issue_count,
+            validation_issues=upload.validation_issues,
         )
 
     def _resolve_target_user(self, actor: User, target_user_id: UUID | None) -> User:
@@ -341,6 +446,14 @@ class WaybillUploadService:
         if shipment_type not in SHIPMENT_TYPES:
             raise WaybillUploadValidationError("Shipment Type is invalid")
         return shipment_type
+
+    def _validate_iata(self, value: str) -> str:
+        airport = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{3}", airport):
+            raise WaybillUploadValidationError(
+                "Airport of Arrival must be a three-letter IATA code"
+            )
+        return airport
 
     def _validate_air_waybill_number(self, value: str) -> str:
         number = value.strip()

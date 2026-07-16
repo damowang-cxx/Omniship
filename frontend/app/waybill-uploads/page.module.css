@@ -209,8 +209,99 @@
 }
 
 .formFooter {
+  align-items: stretch;
   border-top: 1px solid var(--border);
+  flex-direction: column;
   padding-top: 16px;
+}
+
+.billingFooter {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(190px, 0.75fr) minmax(230px, 1fr);
+  justify-content: end;
+}
+
+.billingFooter > button {
+  min-width: 174px;
+}
+
+.accountSnapshot,
+.taxSnapshot {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent-strong);
+  display: flex;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 12px;
+}
+
+.accountSnapshot span,
+.taxSnapshot span,
+.taxSnapshot small {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.validationWarning {
+  align-items: flex-start;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #c2410c;
+  display: flex;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.validationWarning strong,
+.validationWarning span {
+  display: block;
+}
+
+.validationWarning strong {
+  color: #9a3412;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.validationWarning span {
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.accountSnapshot strong,
+.taxSnapshot strong {
+  color: var(--text);
+  display: block;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.taxSnapshot[data-state="ready"] {
+  background: #eef8f6;
+  border-color: #b9ded8;
+}
+
+.taxSnapshot[data-state="error"] {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.taxSnapshot small {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .formFooter button,
@@ -503,7 +594,26 @@
   display: inline-flex;
   height: 32px;
   justify-content: center;
+  position: relative;
   width: 32px;
+}
+
+.warningBadge {
+  align-items: center;
+  background: #dc2626;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  color: #ffffff;
+  display: flex;
+  font-size: 9px;
+  font-weight: 900;
+  height: 16px;
+  justify-content: center;
+  line-height: 1;
+  position: absolute;
+  right: -6px;
+  top: -7px;
+  width: 16px;
 }
 
 .reviewActions button:hover:not(:disabled) {
@@ -534,6 +644,64 @@
   display: grid;
   gap: 14px;
   padding: 6px 0;
+}
+
+.validationIssuePanel {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.validationIssueHeader {
+  align-items: center;
+  color: #c2410c;
+  display: flex;
+  gap: 9px;
+}
+
+.validationIssueHeader strong,
+.validationIssueHeader span {
+  display: block;
+}
+
+.validationIssueHeader strong {
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.validationIssueHeader span,
+.validationIssuePanel small {
+  color: #b45309;
+  font-size: 12px;
+}
+
+.validationIssueList {
+  display: grid;
+  gap: 7px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.validationIssueList > div {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #fed7aa;
+  border-radius: 7px;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+}
+
+.validationIssueList strong {
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.validationIssueList span {
+  color: #b45309;
+  font-size: 12px;
 }
 
 .detailGrid {
@@ -604,6 +772,10 @@
   .fileGrid,
   .filterBar,
   .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .billingFooter {
     grid-template-columns: 1fr;
   }
 }

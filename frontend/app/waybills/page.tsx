@@ -55,6 +55,8 @@ const clearanceStatusOptions: { value: WaybillFycoStatus | ""; label: string }[]
 
 type EditForm = {
   status: WaybillTrackingStatus;
+  airportOfDeparture: string;
+  airportOfArrival: string;
   receivedCount: string;
   receivedTotal: string;
   inWarehouseCount: string;
@@ -91,6 +93,14 @@ function formatStatusAge(value: string) {
   return `${Math.max(1, Math.floor(hours / 24))} days ago`;
 }
 
+function formatCustoms(value?: string | null) {
+  if (value === null || value === undefined) return "-";
+  return new Intl.NumberFormat("en-IE", {
+    style: "currency",
+    currency: "EUR"
+  }).format(Number(value));
+}
+
 function formatProgress(count: number, pieces: number) {
   const percent = pieces > 0 ? (count / pieces) * 100 : 0;
   return `${percent.toFixed(2)}% (${count})`;
@@ -111,6 +121,20 @@ function parseNonNegativeInteger(value: string, label: string) {
     throw new Error(`${label} must be a non-negative integer`);
   }
   return Number(value.trim());
+}
+
+function parseDepartureAirport(value: string) {
+  const airport = value.trim().toUpperCase();
+  if (!airport) throw new Error("Airport of Departure is required");
+  return airport;
+}
+
+function parseArrivalAirport(value: string) {
+  const airport = value.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(airport)) {
+    throw new Error("Airport of Arrival must be a three-letter IATA code");
+  }
+  return airport;
 }
 
 export default function WaybillsPage() {
@@ -223,6 +247,8 @@ export default function WaybillsPage() {
     setEditingWaybill(waybill);
     setEditForm({
       status: waybill.status,
+      airportOfDeparture: waybill.airportOfDeparture ?? "",
+      airportOfArrival: waybill.airportOfArrival ?? "",
       receivedCount: String(waybill.receivedCount),
       receivedTotal: String(waybill.receivedTotal),
       inWarehouseCount: String(waybill.inWarehouseCount),
@@ -252,6 +278,8 @@ export default function WaybillsPage() {
       try {
         const updated = await updateWaybill(editingWaybill.publicCode, {
           status: editForm.status,
+          airportOfDeparture: parseDepartureAirport(editForm.airportOfDeparture),
+          airportOfArrival: parseArrivalAirport(editForm.airportOfArrival),
           receivedCount: parseNonNegativeInteger(
             editForm.receivedCount,
             "Received count"
@@ -443,6 +471,8 @@ export default function WaybillsPage() {
                     <th>Weight(kg)</th>
                     <th>Received</th>
                     <th>Parcels</th>
+                    <th>Cartons</th>
+                    <th>Customs</th>
                     <th>Pallet Count</th>
                     <th>In Warehouse</th>
                     <th>Clearance Status</th>
@@ -499,6 +529,8 @@ export default function WaybillsPage() {
                         <td>
                           <span className={styles.metricLink}>{waybill.pieces}</span>
                         </td>
+                        <td><span className={styles.cartonBadge}>{waybill.customsCartons ?? "-"}</span></td>
+                        <td><span className={styles.customsAmount}>{formatCustoms(waybill.customsAmount)}</span></td>
                         <td>{waybill.palletCount}</td>
                         <td>
                           <span className={styles[`metric${inWarehouseTone === "good" ? "Good" : inWarehouseTone === "warn" ? "Warn" : "Muted"}`]}>
@@ -575,6 +607,39 @@ export default function WaybillsPage() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className={styles.dialogField}>
+                Airport of Departure
+                <input
+                  aria-label="Edit Airport of Departure"
+                  maxLength={120}
+                  onChange={(event) =>
+                    setEditForm((current) =>
+                      current
+                        ? { ...current, airportOfDeparture: event.target.value.toUpperCase() }
+                        : current
+                    )
+                  }
+                  required
+                  value={editForm.airportOfDeparture}
+                />
+              </label>
+              <label className={styles.dialogField}>
+                Airport of Arrival
+                <input
+                  aria-label="Edit Airport of Arrival"
+                  maxLength={3}
+                  onChange={(event) =>
+                    setEditForm((current) =>
+                      current
+                        ? { ...current, airportOfArrival: event.target.value.toUpperCase() }
+                        : current
+                    )
+                  }
+                  pattern="[A-Za-z]{3}"
+                  required
+                  value={editForm.airportOfArrival}
+                />
               </label>
               <label className={styles.dialogField}>
                 Received Count

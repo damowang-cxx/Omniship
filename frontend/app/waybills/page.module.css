@@ -177,7 +177,7 @@
 
 .tableWrap table {
   border-collapse: collapse;
-  min-width: 1480px;
+  min-width: 1620px;
   width: 100%;
 }
 
@@ -292,6 +292,23 @@
 .metricLink {
   color: #1e90ff;
   font-weight: 800;
+}
+
+.cartonBadge {
+  background: #eef8f6;
+  border: 1px solid #cbe9e4;
+  border-radius: 999px;
+  color: #0b5d56;
+  display: inline-flex;
+  font-weight: 900;
+  justify-content: center;
+  min-width: 34px;
+  padding: 4px 8px;
+}
+
+.customsAmount {
+  color: #0b5d56;
+  font-weight: 900;
 }
 
 .metricMuted {
