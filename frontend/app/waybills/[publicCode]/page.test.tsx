@@ -136,6 +136,22 @@ describe("WaybillDetailPage", () => {
     expect(apiMock.listWaybillParcels).toHaveBeenCalledWith("A7K2P9QX");
   });
 
+  it("keeps the waybill detail available when optional parcel loading fails", async () => {
+    apiMock.listWaybillParcels.mockRejectedValueOnce(
+      new Error("Request failed with 404: Billing distinct field contains no valid values")
+    );
+
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByRole("heading", { name: "784-84063276" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Waybill loaded without parcel details. Request failed with 404: Billing distinct field contains no valid values"
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Parcels" })).toBeInTheDocument();
+  });
+
   it("shows Details and Parcels sections with parsed parcel columns", async () => {
     render(<WaybillDetailPage />);
 

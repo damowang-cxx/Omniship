@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.db.models import AuditLog, WaybillParcel, WaybillPodFile
+from app.db.models import AuditLog, WaybillParcel, WaybillPodFile, WaybillUpload
 from app.services.waybill_service import WaybillService
 from tests.auth_helpers import create_test_user, login
 from tests.test_waybill_uploads_api import (
@@ -326,6 +326,51 @@ def test_historical_approved_waybill_parcels_lazy_parse(client, db_session):
     assert parcels[0]["parcelUnitNumber"] == "CP149001196DE"
     assert parcels[0]["destinationCode"] == "HU"
     assert db_session.execute(select(WaybillParcel)).scalar_one_or_none() is not None
+
+
+def test_historical_waybill_detail_survives_unparseable_optional_parcels(
+    client,
+    db_session,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("UPLOAD_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        create_test_user(
+            db_session, email="admin@example.com", username="Admin", role="admin"
+        )
+        create_test_user(db_session, email="owner@example.com", username="Owner")
+
+        assert login(client, email="owner@example.com").status_code == 200
+        upload_response = _upload_pre_alert(client)
+        assert upload_response.status_code == 201
+
+        assert login(client, email="admin@example.com").status_code == 200
+        assert _approve_upload(client, upload_response.json()["uploadId"]).status_code == 200
+        public_code = client.get("/api/v1/waybills").json()["items"][0]["publicCode"]
+
+        upload = db_session.get(WaybillUpload, UUID(upload_response.json()["uploadId"]))
+        assert upload is not None
+        pre_alert_file = next(
+            file for file in upload.files if file.file_kind == "customer_pre_alert"
+        )
+        Path(pre_alert_file.storage_path).write_bytes(
+            pre_alert_workbook_bytes([{"parcel_unit_number": ""}])
+        )
+        for parcel in db_session.execute(select(WaybillParcel)).scalars().all():
+            db_session.delete(parcel)
+        db_session.commit()
+        db_session.expire_all()
+
+        detail_response = client.get(f"/api/v1/waybills/{public_code}")
+        parcels_response = client.get(f"/api/v1/waybills/{public_code}/parcels")
+
+        assert detail_response.status_code == 200
+        assert parcels_response.status_code == 200
+        assert parcels_response.json()["items"] == []
+    finally:
+        get_settings.cache_clear()
 
 
 def test_regular_user_cannot_update_or_read_another_waybill(client, db_session):

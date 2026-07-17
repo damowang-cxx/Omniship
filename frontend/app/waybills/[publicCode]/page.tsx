@@ -227,15 +227,39 @@ export default function WaybillDetailPage() {
   useEffect(() => {
     async function bootstrap() {
       try {
-        const [userResponse, waybillResponse, parcelResponse] = await Promise.all([
+        const [userResult, waybillResult, parcelResult] = await Promise.allSettled([
           getCurrentUser(),
           getWaybill(params.publicCode),
           listWaybillParcels(params.publicCode)
         ]);
-        setCurrentUser(userResponse.user);
-        setWaybill(waybillResponse);
-        setParcels(parcelResponse.items);
-        setMilestoneForm(buildMilestoneForm(waybillResponse));
+        if (userResult.status === "rejected") {
+          throw userResult.reason;
+        }
+        if (waybillResult.status === "rejected") {
+          throw waybillResult.reason;
+        }
+
+        setCurrentUser(userResult.value.user);
+        setWaybill(waybillResult.value);
+        setMilestoneForm(buildMilestoneForm(waybillResult.value));
+
+        if (parcelResult.status === "fulfilled") {
+          setParcels(parcelResult.value.items);
+        } else {
+          if (isUnauthorizedError(parcelResult.reason)) {
+            throw parcelResult.reason;
+          }
+          const message =
+            parcelResult.reason instanceof Error
+              ? parcelResult.reason.message
+              : "Unable to load parcel details";
+          setParcels([]);
+          setNotice({
+            tone: "error",
+            text: `Waybill loaded without parcel details. ${message}`
+          });
+          addMessage("Parcel details unavailable", message, "error");
+        }
       } catch (error) {
         if (isUnauthorizedError(error)) {
           router.replace("/");
@@ -248,7 +272,7 @@ export default function WaybillDetailPage() {
     }
 
     void bootstrap();
-  }, [params.publicCode, router]);
+  }, [addMessage, params.publicCode, router]);
 
   const handleLogout = useCallback(async () => {
     await logout();

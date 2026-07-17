@@ -363,6 +363,13 @@ class WaybillService:
                 config=SupplierVersionConfig.model_validate(supplier_version.config),
             )
         except SupplierStructureError as exc:
+            if not force:
+                logger.info(
+                    "Skipping optional parcel sync for historical upload %s: %s",
+                    record.upload_id,
+                    exc,
+                )
+                return False
             raise WaybillValidationError(str(exc)) from exc
 
         if not evaluation.parcels:
