@@ -66,6 +66,7 @@ class SupplierRuleEngine:
         indexes = self._resolve_indexes(header=header, config=config)
         field_map = {field.key: field for field in config.fields}
         row_key = field_map[config.row_key_field_key]
+        group_field = field_map[config.billing_group_field_key]
         distinct_field = field_map[config.billing_distinct_field_key]
 
         active_rows = [
@@ -73,19 +74,27 @@ class SupplierRuleEngine:
             for row_number, row in rows
             if self._text(self._cell(row, indexes[row_key.key]))
         ]
-        distinct_values = {
-            self._normalize_distinct(
+        cartons_by_group: dict[str, set[str]] = {}
+        for _, row in active_rows:
+            group_value = self._normalize_distinct(
+                self._cell(row, indexes[group_field.key]),
+                case_insensitive=group_field.case_insensitive,
+            )
+            if not group_value:
+                continue
+            cartons = cartons_by_group.setdefault(group_value, set())
+            carton_value = self._normalize_distinct(
                 self._cell(row, indexes[distinct_field.key]),
                 case_insensitive=distinct_field.case_insensitive,
             )
-            for _, row in active_rows
-            if self._normalize_distinct(
-                self._cell(row, indexes[distinct_field.key]),
-                case_insensitive=distinct_field.case_insensitive,
-            )
-        }
-        if not distinct_values:
-            raise SupplierStructureError("Billing distinct field contains no valid values")
+            if carton_value:
+                cartons.add(carton_value)
+        if not cartons_by_group:
+            raise SupplierStructureError("Billing group field contains no valid values")
+        billable_unit_count = sum(
+            max(1, len(distinct_cartons))
+            for distinct_cartons in cartons_by_group.values()
+        )
 
         issues: list[SupplierValidationIssue] = []
         issue_count = 0
@@ -140,7 +149,7 @@ class SupplierRuleEngine:
                 )
 
         return SupplierEvaluationResult(
-            distinct_count=len(distinct_values),
+            distinct_count=billable_unit_count,
             issue_count=issue_count,
             issues=issues,
             parcels=parcels,

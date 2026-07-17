@@ -62,6 +62,7 @@ const supplier = {
       workbook: { sheetMode: "first", headerRow: 1, dataStartRow: 2 },
       fields: [],
       rowKeyFieldKey: "parcel",
+      billingGroupFieldKey: "parcel",
       billingDistinctFieldKey: "parcel"
     },
     createdAt: "2026-07-16T10:00:00Z"

@@ -75,6 +75,7 @@ function emptyConfig(): SupplierVersionConfig {
     },
     fields: [first],
     rowKeyFieldKey: first.key,
+    billingGroupFieldKey: first.key,
     billingDistinctFieldKey: first.key
   };
 }
@@ -179,6 +180,7 @@ export default function SuppliersPage() {
         ...current,
         fields,
         rowKeyFieldKey: current.rowKeyFieldKey === removed.key ? fields[0].key : current.rowKeyFieldKey,
+        billingGroupFieldKey: current.billingGroupFieldKey === removed.key ? fields[0].key : current.billingGroupFieldKey,
         billingDistinctFieldKey: current.billingDistinctFieldKey === removed.key ? fields[0].key : current.billingDistinctFieldKey
       };
     });
@@ -288,12 +290,13 @@ export default function SuppliersPage() {
           <div className={styles.supplierGrid}>
             {suppliers.map((supplier) => {
               const config = supplier.currentVersion.config;
-              const billingRule = config.fields.find((rule) => rule.key === config.billingDistinctFieldKey);
+              const groupRule = config.fields.find((rule) => rule.key === config.billingGroupFieldKey);
+              const cartonRule = config.fields.find((rule) => rule.key === config.billingDistinctFieldKey);
               return (
                 <article className={styles.supplierCard} data-status={supplier.status} key={supplier.id}>
                   <div className={styles.cardTop}><span className={styles.supplierIcon}><Factory aria-hidden="true" size={20} /></span><span className={styles.status}>{supplier.status}</span></div>
                   <div><h4>{supplier.name}</h4><p>Version {supplier.currentVersionNumber} · {config.fields.length} rules</p></div>
-                  <dl><div><dt>Worksheet</dt><dd>{config.workbook.sheetMode === "first" ? "First sheet" : config.workbook.sheetName}</dd></div><div><dt>Billing field</dt><dd>{billingRule?.name || "-"} ({billingRule?.locatorValue || "-"})</dd></div><div><dt>Data starts</dt><dd>Row {config.workbook.dataStartRow}</dd></div></dl>
+                  <dl><div><dt>Worksheet</dt><dd>{config.workbook.sheetMode === "first" ? "First sheet" : config.workbook.sheetName}</dd></div><div><dt>Waybill grouping</dt><dd>{groupRule?.name || "-"} ({groupRule?.locatorValue || "-"})</dd></div><div><dt>Carton field</dt><dd>{cartonRule?.name || "-"} ({cartonRule?.locatorValue || "-"})</dd></div><div><dt>Data starts</dt><dd>Row {config.workbook.dataStartRow}</dd></div></dl>
                   <footer><button onClick={() => openEdit(supplier)} type="button">Edit & publish</button><button onClick={() => void toggleSupplier(supplier)} type="button">{supplier.status === "active" ? "Deactivate" : "Activate"}</button></footer>
                 </article>
               );
@@ -340,10 +343,10 @@ export default function SuppliersPage() {
               ))}
             </div></section>
 
-            <section className={styles.editorSection}><div className={styles.sectionTitle}><span>03</span><div><strong>Deduction logic</strong><small>Choose the active row and distinct billing fields</small></div></div><div className={styles.editorGrid}>
-              <label>Active row field<select onChange={(event) => { const key = event.target.value; setDraftConfig((current) => ({ ...current, rowKeyFieldKey: key, fields: current.fields.map((field) => ({ ...field, blankPolicy: field.key === key ? "skip_row" : field.blankPolicy === "skip_row" ? "allow" : field.blankPolicy })) })); }} value={draftConfig.rowKeyFieldKey}>{draftConfig.fields.map((rule) => <option key={rule.key} value={rule.key}>{rule.name} ({rule.locatorValue})</option>)}</select></label>
-              <label>Count unique values from<select onChange={(event) => setDraftConfig((current) => ({ ...current, billingDistinctFieldKey: event.target.value }))} value={draftConfig.billingDistinctFieldKey}>{draftConfig.fields.map((rule) => <option key={rule.key} value={rule.key}>{rule.name} ({rule.locatorValue})</option>)}</select></label>
-              <div className={styles.logicSummary}><CheckCircle2 size={18} /><span>Blank values are ignored. Leading and trailing spaces are removed before counting.</span></div>
+            <section className={styles.editorSection}><div className={styles.sectionTitle}><span>03</span><div><strong>Deduction logic</strong><small>Group rows by waybill, then count distinct cartons inside each group</small></div></div><div className={styles.editorGrid}>
+              <label>Waybill number field<select onChange={(event) => { const key = event.target.value; setDraftConfig((current) => ({ ...current, rowKeyFieldKey: key, billingGroupFieldKey: key, fields: current.fields.map((field) => ({ ...field, blankPolicy: field.key === key ? "skip_row" : field.blankPolicy === "skip_row" ? "allow" : field.blankPolicy })) })); }} value={draftConfig.billingGroupFieldKey}>{draftConfig.fields.map((rule) => <option key={rule.key} value={rule.key}>{rule.name} ({rule.locatorValue})</option>)}</select></label>
+              <label>Carton number field<select onChange={(event) => setDraftConfig((current) => ({ ...current, billingDistinctFieldKey: event.target.value }))} value={draftConfig.billingDistinctFieldKey}>{draftConfig.fields.map((rule) => <option key={rule.key} value={rule.key}>{rule.name} ({rule.locatorValue})</option>)}</select></label>
+              <div className={styles.logicSummary}><CheckCircle2 size={18} /><span>Each waybill contributes at least one carton. Repeated rows count the distinct carton values within that waybill only; cartons are never merged across different waybills.</span></div>
             </div></section>
 
             <footer className={styles.editorFooter}><span><AlertTriangle size={16} />Rule violations become review warnings; workbook structure errors block uploads.</span><div><button onClick={() => setEditing(null)} type="button">Cancel</button><button disabled={isSaving} type="submit"><FileSpreadsheet size={16} />{isSaving ? "Publishing..." : editing === "new" ? "Create supplier" : "Publish new version"}</button></div></footer>

@@ -117,9 +117,29 @@ class SupplierVersionConfig(BaseModel):
     workbook: SupplierWorkbookConfig = Field(default_factory=SupplierWorkbookConfig)
     fields: list[SupplierFieldRule] = Field(min_length=1, max_length=100)
     row_key_field_key: str = Field(alias="rowKeyFieldKey")
+    billing_group_field_key: str = Field(alias="billingGroupFieldKey")
     billing_distinct_field_key: str = Field(alias="billingDistinctFieldKey")
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def upgrade_legacy_billing_config(cls, value):
+        if not isinstance(value, dict):
+            return value
+        has_group_field = (
+            "billingGroupFieldKey" in value or "billing_group_field_key" in value
+        )
+        if has_group_field:
+            return value
+        distinct_field = value.get(
+            "billingDistinctFieldKey", value.get("billing_distinct_field_key")
+        )
+        if distinct_field is None:
+            return value
+        upgraded = dict(value)
+        upgraded["billingGroupFieldKey"] = distinct_field
+        return upgraded
 
     @model_validator(mode="after")
     def validate_fields(self):
@@ -132,6 +152,8 @@ class SupplierVersionConfig(BaseModel):
         field_map = {field.key: field for field in self.fields}
         if self.row_key_field_key not in field_map:
             raise ValueError("Row key field does not exist")
+        if self.billing_group_field_key not in field_map:
+            raise ValueError("Billing group field does not exist")
         if self.billing_distinct_field_key not in field_map:
             raise ValueError("Billing distinct field does not exist")
         if field_map[self.row_key_field_key].blank_policy != "skip_row":

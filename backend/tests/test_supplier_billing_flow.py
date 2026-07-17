@@ -7,7 +7,9 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.db.models import BillingEntry, WaybillUpload
+from app.schemas.supplier import SupplierVersionConfig
 from app.services.supplier_defaults import QLS_SUPPLIER_ID, QLS_VERSION_ID
+from app.services.supplier_rule_engine import SupplierRuleEngine
 from tests.auth_helpers import create_test_user, login
 
 
@@ -42,6 +44,63 @@ def rpl_workbook_bytes() -> bytes:
     workbook.save(output)
     workbook.close()
     return output.getvalue()
+
+
+def grouped_billing_workbook_bytes(rows: list[tuple[str, str]]) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([f"Column {index}" for index in range(1, 25)])
+    for waybill_number, carton_number in rows:
+        row = [""] * 24
+        row[2] = waybill_number
+        row[23] = carton_number
+        sheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def grouped_billing_config() -> dict:
+    return {
+        "workbook": {
+            "sheetMode": "first",
+            "sheetName": None,
+            "headerRow": 1,
+            "dataStartRow": 2,
+        },
+        "fields": [
+            {
+                "key": "waybill_number",
+                "name": "Waybill Number",
+                "semanticField": None,
+                "locatorMode": "column",
+                "locatorValue": "C",
+                "valueType": "text",
+                "blankPolicy": "skip_row",
+                "caseInsensitive": False,
+                "allowUnknownCountry": True,
+                "countryAliases": {},
+                "constraints": {"allowedValues": [], "unique": False},
+            },
+            {
+                "key": "carton_number",
+                "name": "Carton Number",
+                "semanticField": None,
+                "locatorMode": "column",
+                "locatorValue": "X",
+                "valueType": "text",
+                "blankPolicy": "allow",
+                "caseInsensitive": False,
+                "allowUnknownCountry": True,
+                "countryAliases": {},
+                "constraints": {"allowedValues": [], "unique": False},
+            },
+        ],
+        "rowKeyFieldKey": "waybill_number",
+        "billingGroupFieldKey": "waybill_number",
+        "billingDistinctFieldKey": "carton_number",
+    }
 
 
 def upload_files(content: bytes):
@@ -113,8 +172,53 @@ def rpl_config():
             },
         ],
         "rowKeyFieldKey": "tracking_reference",
+        "billingGroupFieldKey": "tracking_reference",
         "billingDistinctFieldKey": "tracking_reference",
     }
+
+
+def test_billing_groups_by_waybill_before_counting_distinct_cartons():
+    waybill_numbers = [
+        "00340434623845379560", "00340434623845432029", "00340434623845379539",
+        "00340434623845379508", "00340434623845379454", "CJ120942125DE",
+        "CJ120942085DE", "CJ120942099DE", "CJ120942068DE", "CJ120942045DE",
+        "CJ120941990DE", "CJ120942010DE", "CJ120941898DE", "CJ120941969DE",
+        "CJ120941938DE", "CJ120941875DE", "CJ120941955DE", "CJ120941853DE",
+        "CJ120941972DE", "CJ120941751DE", "CJ120941734DE", "CJ120941822DE",
+        "CJ120941782DE", "CJ120941703DE", "CJ120941836DE", "CJ120941589DE",
+        "00340434623845308515",
+    ]
+    carton_numbers = [
+        "610220", "610130", "610220", "610220", "640219", "610220",
+        "610130", "610220", "610220", "420221", "610220", "640219",
+        "610220", "610130", "610220", "610220", "610220", "640219",
+        "610130", "640219", "610130", "640219", "640219", "610220",
+        "481910", "610220", "610220",
+    ]
+    engine = SupplierRuleEngine()
+    config = SupplierVersionConfig.model_validate(grouped_billing_config())
+
+    example = engine.evaluate(
+        filename="grouped-billing.xlsx",
+        content=grouped_billing_workbook_bytes(list(zip(waybill_numbers, carton_numbers))),
+        config=config,
+    )
+    repeated = engine.evaluate(
+        filename="grouped-billing.xlsx",
+        content=grouped_billing_workbook_bytes(
+            [
+                ("TICKET-1", "BOX-A"),
+                ("TICKET-1", "BOX-A"),
+                ("TICKET-1", "BOX-B"),
+                ("TICKET-2", "BOX-A"),
+                ("TICKET-3", ""),
+            ]
+        ),
+        config=config,
+    )
+
+    assert example.distinct_count == 27
+    assert repeated.distinct_count == 4
 
 
 def test_warning_upload_deducts_distinct_units_atomically(client, db_session):

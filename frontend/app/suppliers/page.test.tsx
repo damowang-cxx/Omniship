@@ -56,6 +56,7 @@ const qls = {
         }
       ],
       rowKeyFieldKey: "parcel",
+      billingGroupFieldKey: "parcel",
       billingDistinctFieldKey: "parcel"
     },
     createdAt: "2026-07-16T10:00:00Z"
@@ -113,6 +114,8 @@ describe("SuppliersPage", () => {
     render(<SuppliersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Add supplier" }));
     fireEvent.change(screen.getByLabelText("Supplier name"), { target: { value: "RPL" } });
+    expect(screen.getByLabelText("Waybill number field")).toHaveValue("row_identifier");
+    expect(screen.getByLabelText("Carton number field")).toHaveValue("row_identifier");
     fireEvent.click(screen.getByRole("button", { name: "Create supplier" }));
 
     await waitFor(() => {
@@ -120,6 +123,7 @@ describe("SuppliersPage", () => {
         "RPL",
         expect.objectContaining({
           rowKeyFieldKey: "row_identifier",
+          billingGroupFieldKey: "row_identifier",
           billingDistinctFieldKey: "row_identifier"
         })
       );

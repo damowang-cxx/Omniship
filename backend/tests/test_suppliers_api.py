@@ -124,3 +124,26 @@ def test_supplier_config_rejects_unsafe_formula_shapes(client, db_session):
     )
 
     assert response.status_code == 422
+
+
+def test_legacy_single_billing_field_is_upgraded_without_rewriting_history(
+    client, db_session
+):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    assert login(client, email=admin.email).status_code == 200
+    legacy_config = deepcopy(QLS_CONFIG)
+    legacy_config.pop("billingGroupFieldKey")
+
+    response = client.post(
+        "/api/v1/suppliers",
+        json={"name": "Legacy", "config": legacy_config},
+    )
+
+    assert response.status_code == 201
+    config = response.json()["currentVersion"]["config"]
+    assert config["billingGroupFieldKey"] == config["billingDistinctFieldKey"]

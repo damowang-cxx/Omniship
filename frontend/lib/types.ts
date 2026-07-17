@@ -112,6 +112,7 @@ export interface SupplierVersionConfig {
   };
   fields: SupplierFieldRule[];
   rowKeyFieldKey: string;
+  billingGroupFieldKey: string;
   billingDistinctFieldKey: string;
 }
 
