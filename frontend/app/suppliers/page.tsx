@@ -45,7 +45,7 @@ function newRule(index: number): SupplierFieldRule {
     locatorMode: "column",
     locatorValue: "A",
     valueType: "text",
-    blankPolicy: index === 0 ? "skip_row" : "allow",
+    blankPolicy: "allow",
     caseInsensitive: false,
     allowUnknownCountry: true,
     countryAliases: {},
@@ -74,14 +74,60 @@ function emptyConfig(): SupplierVersionConfig {
       dataStartRow: 2
     },
     fields: [first],
-    rowKeyFieldKey: first.key,
-    billingGroupFieldKey: first.key,
-    billingDistinctFieldKey: first.key
+    billingGroupColumn: "A",
+    billingDistinctColumn: "A"
   };
 }
 
 function cloneConfig(config: SupplierVersionConfig): SupplierVersionConfig {
   return JSON.parse(JSON.stringify(config)) as SupplierVersionConfig;
+}
+
+function legacyBillingColumn(
+  config: SupplierVersionConfig,
+  fieldKey: string | null | undefined
+): string {
+  const field = config.fields.find((candidate) => candidate.key === fieldKey);
+  return field?.locatorMode === "column" ? field.locatorValue.toUpperCase() : "";
+}
+
+function independentDeductionConfig(
+  config: SupplierVersionConfig
+): SupplierVersionConfig {
+  const groupColumn = (
+    config.billingGroupColumn ||
+    legacyBillingColumn(config, config.billingGroupFieldKey) ||
+    legacyBillingColumn(config, config.rowKeyFieldKey)
+  ).trim().toUpperCase();
+  const distinctColumn = (
+    config.billingDistinctColumn ||
+    legacyBillingColumn(config, config.billingDistinctFieldKey) ||
+    groupColumn
+  ).trim().toUpperCase();
+  return {
+    workbook: config.workbook,
+    fields: config.fields,
+    billingGroupColumn: groupColumn,
+    billingDistinctColumn: distinctColumn
+  };
+}
+
+function billingColumnLabel(
+  config: SupplierVersionConfig,
+  kind: "group" | "distinct"
+): string {
+  const direct = kind === "group"
+    ? config.billingGroupColumn
+    : config.billingDistinctColumn;
+  if (direct) return `Column ${direct}`;
+  const legacyKey = kind === "group"
+    ? config.billingGroupFieldKey || config.rowKeyFieldKey
+    : config.billingDistinctFieldKey;
+  const legacyRule = config.fields.find((field) => field.key === legacyKey);
+  if (!legacyRule) return "-";
+  return legacyRule.locatorMode === "column"
+    ? `Column ${legacyRule.locatorValue} (legacy)`
+    : `Header ${legacyRule.locatorValue} (legacy)`;
 }
 
 function formula(rule: SupplierFieldRule) {
@@ -161,7 +207,7 @@ export default function SuppliersPage() {
   const openEdit = (supplier: SupplierItem) => {
     setEditing(supplier);
     setDraftName(supplier.name);
-    setDraftConfig(cloneConfig(supplier.currentVersion.config));
+    setDraftConfig(independentDeductionConfig(cloneConfig(supplier.currentVersion.config)));
   };
 
   const updateRule = (index: number, updater: (rule: SupplierFieldRule) => SupplierFieldRule) => {
@@ -174,15 +220,8 @@ export default function SuppliersPage() {
   const removeRule = (index: number) => {
     setDraftConfig((current) => {
       if (current.fields.length === 1) return current;
-      const removed = current.fields[index];
       const fields = current.fields.filter((_, ruleIndex) => ruleIndex !== index);
-      return {
-        ...current,
-        fields,
-        rowKeyFieldKey: current.rowKeyFieldKey === removed.key ? fields[0].key : current.rowKeyFieldKey,
-        billingGroupFieldKey: current.billingGroupFieldKey === removed.key ? fields[0].key : current.billingGroupFieldKey,
-        billingDistinctFieldKey: current.billingDistinctFieldKey === removed.key ? fields[0].key : current.billingDistinctFieldKey
-      };
+      return { ...current, fields };
     });
   };
 
@@ -230,14 +269,16 @@ export default function SuppliersPage() {
     if (!editing) return;
     setIsSaving(true);
     setNotice(null);
+    const normalizedConfig = independentDeductionConfig(draftConfig);
+    setDraftConfig(normalizedConfig);
     try {
       if (editing === "new") {
-        await createSupplier(draftName, draftConfig);
+        await createSupplier(draftName, normalizedConfig);
       } else {
         if (draftName.trim() !== editing.name) {
           await updateSupplier(editing.id, { name: draftName.trim() });
         }
-        await publishSupplierVersion(editing.id, draftConfig);
+        await publishSupplierVersion(editing.id, normalizedConfig);
       }
       setEditing(null);
       await load();
@@ -290,13 +331,11 @@ export default function SuppliersPage() {
           <div className={styles.supplierGrid}>
             {suppliers.map((supplier) => {
               const config = supplier.currentVersion.config;
-              const groupRule = config.fields.find((rule) => rule.key === config.billingGroupFieldKey);
-              const cartonRule = config.fields.find((rule) => rule.key === config.billingDistinctFieldKey);
               return (
                 <article className={styles.supplierCard} data-status={supplier.status} key={supplier.id}>
                   <div className={styles.cardTop}><span className={styles.supplierIcon}><Factory aria-hidden="true" size={20} /></span><span className={styles.status}>{supplier.status}</span></div>
                   <div><h4>{supplier.name}</h4><p>Version {supplier.currentVersionNumber} · {config.fields.length} rules</p></div>
-                  <dl><div><dt>Worksheet</dt><dd>{config.workbook.sheetMode === "first" ? "First sheet" : config.workbook.sheetName}</dd></div><div><dt>Waybill grouping</dt><dd>{groupRule?.name || "-"} ({groupRule?.locatorValue || "-"})</dd></div><div><dt>Carton field</dt><dd>{cartonRule?.name || "-"} ({cartonRule?.locatorValue || "-"})</dd></div><div><dt>Data starts</dt><dd>Row {config.workbook.dataStartRow}</dd></div></dl>
+                  <dl><div><dt>Worksheet</dt><dd>{config.workbook.sheetMode === "first" ? "First sheet" : config.workbook.sheetName}</dd></div><div><dt>Waybill column</dt><dd>{billingColumnLabel(config, "group")}</dd></div><div><dt>Carton column</dt><dd>{billingColumnLabel(config, "distinct")}</dd></div><div><dt>Data starts</dt><dd>Row {config.workbook.dataStartRow}</dd></div></dl>
                   <footer><button onClick={() => openEdit(supplier)} type="button">Edit & publish</button><button onClick={() => void toggleSupplier(supplier)} type="button">{supplier.status === "active" ? "Deactivate" : "Activate"}</button></footer>
                 </article>
               );
@@ -343,9 +382,9 @@ export default function SuppliersPage() {
               ))}
             </div></section>
 
-            <section className={styles.editorSection}><div className={styles.sectionTitle}><span>03</span><div><strong>Deduction logic</strong><small>Group rows by waybill, then count distinct cartons inside each group</small></div></div><div className={styles.editorGrid}>
-              <label>Waybill number field<select onChange={(event) => { const key = event.target.value; setDraftConfig((current) => ({ ...current, rowKeyFieldKey: key, billingGroupFieldKey: key, fields: current.fields.map((field) => ({ ...field, blankPolicy: field.key === key ? "skip_row" : field.blankPolicy === "skip_row" ? "allow" : field.blankPolicy })) })); }} value={draftConfig.billingGroupFieldKey}>{draftConfig.fields.map((rule) => <option key={rule.key} value={rule.key}>{rule.name} ({rule.locatorValue})</option>)}</select></label>
-              <label>Carton number field<select onChange={(event) => setDraftConfig((current) => ({ ...current, billingDistinctFieldKey: event.target.value }))} value={draftConfig.billingDistinctFieldKey}>{draftConfig.fields.map((rule) => <option key={rule.key} value={rule.key}>{rule.name} ({rule.locatorValue})</option>)}</select></label>
+            <section className={styles.editorSection}><div className={styles.sectionTitle}><span>03</span><div><strong>Deduction logic</strong><small>Independent Excel columns; not linked to Pre Alert field rules</small></div></div><div className={styles.editorGrid}>
+              <label>Waybill number column<input autoCapitalize="characters" maxLength={3} onChange={(event) => setDraftConfig((current) => ({ ...current, billingGroupColumn: event.target.value.toUpperCase() }))} pattern="[A-Za-z]{1,3}" placeholder="C" required value={draftConfig.billingGroupColumn || ""} /></label>
+              <label>Carton number column<input autoCapitalize="characters" maxLength={3} onChange={(event) => setDraftConfig((current) => ({ ...current, billingDistinctColumn: event.target.value.toUpperCase() }))} pattern="[A-Za-z]{1,3}" placeholder="X" required value={draftConfig.billingDistinctColumn || ""} /></label>
               <div className={styles.logicSummary}><CheckCircle2 size={18} /><span>Each waybill contributes at least one carton. Repeated rows count the distinct carton values within that waybill only; cartons are never merged across different waybills.</span></div>
             </div></section>
 

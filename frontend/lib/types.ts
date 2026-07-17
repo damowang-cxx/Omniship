@@ -111,9 +111,12 @@ export interface SupplierVersionConfig {
     dataStartRow: number;
   };
   fields: SupplierFieldRule[];
-  rowKeyFieldKey: string;
-  billingGroupFieldKey: string;
-  billingDistinctFieldKey: string;
+  billingGroupColumn?: string | null;
+  billingDistinctColumn?: string | null;
+  /** Legacy references returned by supplier versions published before direct columns. */
+  rowKeyFieldKey?: string | null;
+  billingGroupFieldKey?: string | null;
+  billingDistinctFieldKey?: string | null;
 }
 
 export interface SupplierVersionItem {

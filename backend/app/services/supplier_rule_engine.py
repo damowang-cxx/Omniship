@@ -64,28 +64,45 @@ class SupplierRuleEngine:
     ) -> SupplierEvaluationResult:
         header, rows = self._read_workbook(filename=filename, content=content, config=config)
         indexes = self._resolve_indexes(header=header, config=config)
-        field_map = {field.key: field for field in config.fields}
-        row_key = field_map[config.row_key_field_key]
-        group_field = field_map[config.billing_group_field_key]
-        distinct_field = field_map[config.billing_distinct_field_key]
+        if config.billing_group_column and config.billing_distinct_column:
+            group_index = self._column_index(config.billing_group_column)
+            distinct_index = self._column_index(config.billing_distinct_column)
+            group_case_insensitive = False
+            distinct_case_insensitive = False
+            active_rows = [
+                (row_number, row)
+                for row_number, row in rows
+                if self._text(self._cell(row, group_index))
+            ]
+        else:
+            # Historical versions referenced validation fields. Keep that path so
+            # old uploads remain auditable without rewriting their version JSON.
+            field_map = {field.key: field for field in config.fields}
+            row_key = field_map[config.row_key_field_key]
+            group_field = field_map[config.billing_group_field_key]
+            distinct_field = field_map[config.billing_distinct_field_key]
+            group_index = indexes[group_field.key]
+            distinct_index = indexes[distinct_field.key]
+            group_case_insensitive = group_field.case_insensitive
+            distinct_case_insensitive = distinct_field.case_insensitive
+            active_rows = [
+                (row_number, row)
+                for row_number, row in rows
+                if self._text(self._cell(row, indexes[row_key.key]))
+            ]
 
-        active_rows = [
-            (row_number, row)
-            for row_number, row in rows
-            if self._text(self._cell(row, indexes[row_key.key]))
-        ]
         cartons_by_group: dict[str, set[str]] = {}
         for _, row in active_rows:
             group_value = self._normalize_distinct(
-                self._cell(row, indexes[group_field.key]),
-                case_insensitive=group_field.case_insensitive,
+                self._cell(row, group_index),
+                case_insensitive=group_case_insensitive,
             )
             if not group_value:
                 continue
             cartons = cartons_by_group.setdefault(group_value, set())
             carton_value = self._normalize_distinct(
-                self._cell(row, indexes[distinct_field.key]),
-                case_insensitive=distinct_field.case_insensitive,
+                self._cell(row, distinct_index),
+                case_insensitive=distinct_case_insensitive,
             )
             if carton_value:
                 cartons.add(carton_value)

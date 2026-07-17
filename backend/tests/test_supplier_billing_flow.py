@@ -71,24 +71,11 @@ def grouped_billing_config() -> dict:
         },
         "fields": [
             {
-                "key": "waybill_number",
-                "name": "Waybill Number",
+                "key": "review_note",
+                "name": "Review Note",
                 "semanticField": None,
                 "locatorMode": "column",
-                "locatorValue": "C",
-                "valueType": "text",
-                "blankPolicy": "skip_row",
-                "caseInsensitive": False,
-                "allowUnknownCountry": True,
-                "countryAliases": {},
-                "constraints": {"allowedValues": [], "unique": False},
-            },
-            {
-                "key": "carton_number",
-                "name": "Carton Number",
-                "semanticField": None,
-                "locatorMode": "column",
-                "locatorValue": "X",
+                "locatorValue": "A",
                 "valueType": "text",
                 "blankPolicy": "allow",
                 "caseInsensitive": False,
@@ -97,9 +84,8 @@ def grouped_billing_config() -> dict:
                 "constraints": {"allowedValues": [], "unique": False},
             },
         ],
-        "rowKeyFieldKey": "waybill_number",
-        "billingGroupFieldKey": "waybill_number",
-        "billingDistinctFieldKey": "carton_number",
+        "billingGroupColumn": "C",
+        "billingDistinctColumn": "X",
     }
 
 

@@ -137,7 +137,11 @@ def test_legacy_single_billing_field_is_upgraded_without_rewriting_history(
     )
     assert login(client, email=admin.email).status_code == 200
     legacy_config = deepcopy(QLS_CONFIG)
-    legacy_config.pop("billingGroupFieldKey")
+    legacy_config.pop("billingGroupColumn")
+    legacy_config.pop("billingDistinctColumn")
+    legacy_config["rowKeyFieldKey"] = "parcel_unit_number"
+    legacy_config["billingDistinctFieldKey"] = "parcel_unit_number"
+    legacy_config.pop("billingGroupFieldKey", None)
 
     response = client.post(
         "/api/v1/suppliers",
@@ -147,3 +151,34 @@ def test_legacy_single_billing_field_is_upgraded_without_rewriting_history(
     assert response.status_code == 201
     config = response.json()["currentVersion"]["config"]
     assert config["billingGroupFieldKey"] == config["billingDistinctFieldKey"]
+
+
+def test_direct_billing_columns_do_not_change_field_blank_policy(client, db_session):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    assert login(client, email=admin.email).status_code == 200
+    config = deepcopy(QLS_CONFIG)
+    row_rule = next(
+        field for field in config["fields"] if field["key"] == "parcel_unit_number"
+    )
+    row_rule["blankPolicy"] = "allow"
+
+    response = client.post(
+        "/api/v1/suppliers",
+        json={"name": "Normalized", "config": config},
+    )
+
+    assert response.status_code == 201
+    saved_config = response.json()["currentVersion"]["config"]
+    saved_row_rule = next(
+        field
+        for field in saved_config["fields"]
+        if field["key"] == "parcel_unit_number"
+    )
+    assert saved_row_rule["blankPolicy"] == "allow"
+    assert saved_config["billingGroupColumn"] == "I"
+    assert saved_config["billingDistinctColumn"] == "I"

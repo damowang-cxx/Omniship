@@ -55,9 +55,8 @@ const qls = {
           constraints: { allowedValues: [], unique: false }
         }
       ],
-      rowKeyFieldKey: "parcel",
-      billingGroupFieldKey: "parcel",
-      billingDistinctFieldKey: "parcel"
+      billingGroupColumn: "I",
+      billingDistinctColumn: "I"
     },
     createdAt: "2026-07-16T10:00:00Z"
   },
@@ -99,6 +98,7 @@ describe("SuppliersPage", () => {
       failed: [{ waybillNumber: "MISSING-1", reason: "Waybill upload was not found" }]
     });
     apiMock.createSupplier.mockResolvedValue({ ...qls, id: "rpl-id", name: "RPL" });
+    apiMock.publishSupplierVersion.mockResolvedValue(qls);
   });
 
   it("shows billing policy and current suppliers", async () => {
@@ -114,20 +114,68 @@ describe("SuppliersPage", () => {
     render(<SuppliersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Add supplier" }));
     fireEvent.change(screen.getByLabelText("Supplier name"), { target: { value: "RPL" } });
-    expect(screen.getByLabelText("Waybill number field")).toHaveValue("row_identifier");
-    expect(screen.getByLabelText("Carton number field")).toHaveValue("row_identifier");
+    fireEvent.change(screen.getByLabelText("Waybill number column"), { target: { value: "c" } });
+    fireEvent.change(screen.getByLabelText("Carton number column"), { target: { value: "x" } });
+    expect(screen.getByLabelText("Waybill number column")).toHaveValue("C");
+    expect(screen.getByLabelText("Carton number column")).toHaveValue("X");
+    expect(screen.getByLabelText(/Blank handling/)).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Create supplier" }));
 
     await waitFor(() => {
       expect(apiMock.createSupplier).toHaveBeenCalledWith(
         "RPL",
         expect.objectContaining({
-          rowKeyFieldKey: "row_identifier",
-          billingGroupFieldKey: "row_identifier",
-          billingDistinctFieldKey: "row_identifier"
+          billingGroupColumn: "C",
+          billingDistinctColumn: "X"
         })
       );
     });
+  });
+
+  it("keeps deduction columns independent from field-rule blank handling", async () => {
+    const legacy = {
+      ...qls,
+      currentVersion: {
+        ...qls.currentVersion,
+        config: {
+          workbook: qls.currentVersion.config.workbook,
+          fields: qls.currentVersion.config.fields.map((field) => ({
+            ...field,
+            blankPolicy: "allow"
+          })),
+          rowKeyFieldKey: "parcel",
+          billingGroupFieldKey: "parcel",
+          billingDistinctFieldKey: "parcel"
+        }
+      }
+    };
+    apiMock.listSuppliers.mockResolvedValueOnce({ items: [legacy] });
+
+    render(<SuppliersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+
+    expect(screen.getByLabelText("Waybill number column")).toHaveValue("I");
+    expect(screen.getByLabelText("Carton number column")).toHaveValue("I");
+    expect(screen.getByLabelText(/Blank handling/)).toHaveValue("allow");
+    expect(screen.getByLabelText(/Blank handling/)).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+
+    await waitFor(() => {
+      expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith(
+        "supplier-id",
+        expect.objectContaining({
+          billingGroupColumn: "I",
+          billingDistinctColumn: "I",
+          fields: [
+            expect.objectContaining({ key: "parcel", blankPolicy: "allow" })
+          ]
+        })
+      );
+    });
+    const published = apiMock.publishSupplierVersion.mock.calls[0][1];
+    expect(published).not.toHaveProperty("rowKeyFieldKey");
+    expect(published).not.toHaveProperty("billingGroupFieldKey");
+    expect(published).not.toHaveProperty("billingDistinctFieldKey");
   });
 
   it("processes and summarizes retroactive customs deductions", async () => {

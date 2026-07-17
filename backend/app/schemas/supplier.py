@@ -116,9 +116,19 @@ class SupplierFieldRule(BaseModel):
 class SupplierVersionConfig(BaseModel):
     workbook: SupplierWorkbookConfig = Field(default_factory=SupplierWorkbookConfig)
     fields: list[SupplierFieldRule] = Field(min_length=1, max_length=100)
-    row_key_field_key: str = Field(alias="rowKeyFieldKey")
-    billing_group_field_key: str = Field(alias="billingGroupFieldKey")
-    billing_distinct_field_key: str = Field(alias="billingDistinctFieldKey")
+    billing_group_column: str | None = Field(default=None, alias="billingGroupColumn")
+    billing_distinct_column: str | None = Field(
+        default=None, alias="billingDistinctColumn"
+    )
+    # Retained only so historical supplier versions continue to parse. New versions
+    # use the independent Excel columns above and do not need field-rule references.
+    row_key_field_key: str | None = Field(default=None, alias="rowKeyFieldKey")
+    billing_group_field_key: str | None = Field(
+        default=None, alias="billingGroupFieldKey"
+    )
+    billing_distinct_field_key: str | None = Field(
+        default=None, alias="billingDistinctFieldKey"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -127,19 +137,49 @@ class SupplierVersionConfig(BaseModel):
     def upgrade_legacy_billing_config(cls, value):
         if not isinstance(value, dict):
             return value
+        upgraded = dict(value)
+        has_direct_columns = bool(
+            value.get("billingGroupColumn", value.get("billing_group_column"))
+            or value.get(
+                "billingDistinctColumn", value.get("billing_distinct_column")
+            )
+        )
+        if has_direct_columns:
+            return upgraded
+
         has_group_field = (
             "billingGroupFieldKey" in value or "billing_group_field_key" in value
         )
-        if has_group_field:
-            return value
-        distinct_field = value.get(
-            "billingDistinctFieldKey", value.get("billing_distinct_field_key")
-        )
-        if distinct_field is None:
-            return value
-        upgraded = dict(value)
-        upgraded["billingGroupFieldKey"] = distinct_field
+        if not has_group_field:
+            distinct_field = value.get(
+                "billingDistinctFieldKey", value.get("billing_distinct_field_key")
+            )
+            if distinct_field is not None:
+                upgraded["billingGroupFieldKey"] = distinct_field
+
+        row_key = upgraded.get("rowKeyFieldKey", upgraded.get("row_key_field_key"))
+        fields = upgraded.get("fields")
+        if row_key and isinstance(fields, list):
+            normalized_fields = []
+            for field in fields:
+                if isinstance(field, dict) and field.get("key") == row_key:
+                    normalized_field = dict(field)
+                    normalized_field["blankPolicy"] = "skip_row"
+                    normalized_fields.append(normalized_field)
+                else:
+                    normalized_fields.append(field)
+            upgraded["fields"] = normalized_fields
         return upgraded
+
+    @field_validator("billing_group_column", "billing_distinct_column")
+    @classmethod
+    def normalize_billing_column(cls, value: str | None):
+        if value is None:
+            return None
+        column = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{1,3}", column):
+            raise ValueError("Excel billing column must contain one to three letters")
+        return column
 
     @model_validator(mode="after")
     def validate_fields(self):
@@ -149,12 +189,30 @@ class SupplierVersionConfig(BaseModel):
         semantic_fields = [field.semantic_field for field in self.fields if field.semantic_field]
         if len(semantic_fields) != len(set(semantic_fields)):
             raise ValueError("Each system field can only be mapped once")
+
+        has_group_column = self.billing_group_column is not None
+        has_distinct_column = self.billing_distinct_column is not None
+        if has_group_column or has_distinct_column:
+            if not (has_group_column and has_distinct_column):
+                raise ValueError(
+                    "Both waybill and carton billing columns must be configured"
+                )
+            return self
+
+        # Legacy field-rule mode is read-only compatibility for versions that were
+        # published before deduction columns became independent inputs.
         field_map = {field.key: field for field in self.fields}
-        if self.row_key_field_key not in field_map:
+        if not self.row_key_field_key or self.row_key_field_key not in field_map:
             raise ValueError("Row key field does not exist")
-        if self.billing_group_field_key not in field_map:
+        if (
+            not self.billing_group_field_key
+            or self.billing_group_field_key not in field_map
+        ):
             raise ValueError("Billing group field does not exist")
-        if self.billing_distinct_field_key not in field_map:
+        if (
+            not self.billing_distinct_field_key
+            or self.billing_distinct_field_key not in field_map
+        ):
             raise ValueError("Billing distinct field does not exist")
         if field_map[self.row_key_field_key].blank_policy != "skip_row":
             raise ValueError("Row key field must use the skip-row blank policy")

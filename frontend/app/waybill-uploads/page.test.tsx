@@ -61,9 +61,8 @@ const supplier = {
     config: {
       workbook: { sheetMode: "first", headerRow: 1, dataStartRow: 2 },
       fields: [],
-      rowKeyFieldKey: "parcel",
-      billingGroupFieldKey: "parcel",
-      billingDistinctFieldKey: "parcel"
+      billingGroupColumn: "I",
+      billingDistinctColumn: "I"
     },
     createdAt: "2026-07-16T10:00:00Z"
   },

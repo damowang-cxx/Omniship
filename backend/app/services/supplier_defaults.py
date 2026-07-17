@@ -78,7 +78,6 @@ QLS_CONFIG = {
             },
         },
     ],
-    "rowKeyFieldKey": "parcel_unit_number",
-    "billingGroupFieldKey": "parcel_unit_number",
-    "billingDistinctFieldKey": "parcel_unit_number",
+    "billingGroupColumn": "I",
+    "billingDistinctColumn": "I",
 }
