@@ -2,6 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WaybillsPage from "./page";
+import {
+  WAYBILL_REFRESH_INTERVAL_MS,
+  writeAccountCache,
+  writeWaybillCache
+} from "@/lib/client-cache";
+import type { AppUser, WaybillItem } from "@/lib/types";
 
 const routerMock = vi.hoisted(() => ({
   replace: vi.fn()
@@ -39,17 +45,18 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => apiMock);
 
-const regularUser = {
+const regularUser: AppUser = {
   id: "user-id",
   email: "user@example.com",
   username: "User",
   role: "user",
   status: "active",
+  balance: "0.00",
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z"
 };
 
-const adminUser = {
+const adminUser: AppUser = {
   ...regularUser,
   id: "admin-id",
   email: "admin@example.com",
@@ -57,7 +64,7 @@ const adminUser = {
   role: "admin"
 };
 
-const waybillItem = {
+const waybillItem: WaybillItem = {
   id: "waybill-id",
   publicCode: "A7K2P9QX",
   uploadId: "upload-id",
@@ -80,6 +87,7 @@ const waybillItem = {
   outboundCount: 0,
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
+  podFiles: [],
   user: {
     id: "user-id",
     email: "user@example.com",
@@ -89,6 +97,7 @@ const waybillItem = {
 
 describe("WaybillsPage", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
     apiMock.listUsers.mockResolvedValue({ items: [adminUser, regularUser] });
@@ -103,6 +112,78 @@ describe("WaybillsPage", () => {
       releasedCount: 2,
       outboundCount: 1
     });
+  });
+
+  it("renders a fresh cached list immediately without refetching waybills", async () => {
+    writeAccountCache(adminUser);
+    writeWaybillCache(adminUser, {}, [waybillItem]);
+
+    render(<WaybillsPage />);
+
+    expect(screen.queryByText("Loading account information...")).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "784-84063276" })).toBeInTheDocument();
+    await waitFor(() => expect(apiMock.getCurrentUser).toHaveBeenCalledTimes(1));
+    expect(apiMock.listWaybills).not.toHaveBeenCalled();
+  });
+
+  it("shows a container skeleton when the account is ready but waybills are not", async () => {
+    let resolveWaybills: ((value: { items: Array<typeof waybillItem> }) => void) | undefined;
+    apiMock.listWaybills.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveWaybills = resolve;
+      })
+    );
+
+    render(<WaybillsPage />);
+
+    expect(await screen.findByRole("heading", { name: "Waybills" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading waybills")).toBeInTheDocument();
+    resolveWaybills?.({ items: [waybillItem] });
+    expect(await screen.findByRole("link", { name: "784-84063276" })).toBeInTheDocument();
+  });
+
+  it("keeps stale cached rows visible while refreshing them in the background", async () => {
+    let resolveWaybills: ((value: { items: WaybillItem[] }) => void) | undefined;
+    writeAccountCache(adminUser);
+    writeWaybillCache(
+      adminUser,
+      {},
+      [waybillItem],
+      Date.now() - WAYBILL_REFRESH_INTERVAL_MS - 1
+    );
+    apiMock.listWaybills.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveWaybills = resolve;
+      })
+    );
+
+    render(<WaybillsPage />);
+
+    expect(await screen.findByRole("link", { name: "784-84063276" })).toBeInTheDocument();
+    expect(screen.getByText("AMS")).toBeInTheDocument();
+    expect(screen.getByText("Updating")).toBeInTheDocument();
+    resolveWaybills?.({
+      items: [{ ...waybillItem, airportOfArrival: "CDG" }]
+    });
+    expect(await screen.findByText("CDG")).toBeInTheDocument();
+    expect(screen.queryByText("Updating")).not.toBeInTheDocument();
+  });
+
+  it("retains cached rows and reports a non-blocking error when refresh fails", async () => {
+    writeAccountCache(adminUser);
+    writeWaybillCache(
+      adminUser,
+      {},
+      [waybillItem],
+      Date.now() - WAYBILL_REFRESH_INTERVAL_MS - 1
+    );
+    apiMock.listWaybills.mockRejectedValueOnce(new Error("Network unavailable"));
+
+    render(<WaybillsPage />);
+
+    expect(await screen.findByRole("link", { name: "784-84063276" })).toBeInTheDocument();
+    expect(await screen.findByText("Showing cached waybills. Network unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Waybills could not be loaded")).not.toBeInTheDocument();
   });
 
   it("renders approved waybills without an Actions column", async () => {

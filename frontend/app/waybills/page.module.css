@@ -8,6 +8,27 @@
   min-height: 100vh;
 }
 
+.pageSkeleton { background: #f3f6fa; min-height: 100vh; }
+.pageSkeleton > header { align-items: center; background: #0b3b38; color: #fff; display: flex; height: 64px; justify-content: space-between; padding: 0 24px; }
+.pageSkeleton > header strong { font-size: 21px; letter-spacing: .08em; }
+.skeletonBody { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100vh - 64px); }
+.skeletonBody aside { align-content: start; background: #fff; border-right: 1px solid var(--border); display: grid; gap: 18px; padding: 26px 22px; }
+.skeletonBody > section { display: grid; gap: 22px; padding: 30px; }
+.skeletonAvatar { background: #dbe8e6; border-radius: 14px; height: 72px; width: 72px; }
+.skeletonLine, .skeletonTitle span, .skeletonPanel span { animation: skeletonPulse 1.45s ease-in-out infinite; background: linear-gradient(90deg, #e8eef2 20%, #f7f9fb 45%, #e8eef2 70%); background-size: 220% 100%; border-radius: 7px; display: block; height: 13px; }
+.pageSkeleton > header .skeletonLine { background: rgba(255,255,255,.16); width: 130px; }
+.skeletonTitle { display: grid; gap: 10px; width: 230px; }
+.skeletonTitle span:first-child { height: 12px; width: 90px; }
+.skeletonTitle span:last-child { height: 30px; }
+.skeletonPanel { align-content: start; background: #fff; border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 18px; min-height: 420px; padding: 22px; }
+.skeletonPanel span:first-child { height: 34px; width: 180px; }
+.skeletonPanel span:not(:first-child) { height: 58px; }
+
+@keyframes skeletonPulse {
+  from { background-position: 100% 0; }
+  to { background-position: -120% 0; }
+}
+
 .workspace {
   display: grid;
   gap: 18px;
@@ -45,6 +66,15 @@
 
 .listHeader h3 {
   font-size: 20px;
+}
+
+.refreshCluster { align-items: center; display: flex; gap: 10px; }
+.refreshCluster > span { color: var(--muted); font-size: 11px; font-weight: 800; }
+.refreshCluster .updatingDot { align-items: center; color: #0b5d56; display: inline-flex; gap: 6px; }
+.updatingDot::before { animation: updatePulse 1s ease-in-out infinite; background: #14b8a6; border-radius: 999px; content: ""; height: 7px; width: 7px; }
+
+@keyframes updatePulse {
+  50% { box-shadow: 0 0 0 5px rgba(20,184,166,.12); opacity: .6; }
 }
 
 .accountTag {
@@ -357,6 +387,13 @@
   justify-content: center;
   min-height: 140px;
 }
+
+.tableSkeleton { display: grid; gap: 9px; padding: 2px 0; }
+.tableSkeleton span { animation: skeletonPulse 1.45s ease-in-out infinite; background: linear-gradient(90deg, #edf2f5 20%, #fafbfc 45%, #edf2f5 70%); background-size: 220% 100%; border-radius: 7px; height: 48px; }
+.tableSkeleton span:nth-child(2n) { animation-delay: .12s; }
+.containerError { align-items: center; background: #fff7f7; border: 1px solid #fecaca; border-radius: 9px; color: #991b1b; display: grid; gap: 6px; justify-items: center; min-height: 170px; padding: 24px; text-align: center; }
+.containerError span { color: #7f1d1d; font-size: 12px; }
+.containerError button { background: #fff; border: 1px solid #fca5a5; border-radius: 8px; color: #991b1b; cursor: pointer; font-weight: 900; margin-top: 5px; min-height: 36px; padding: 0 14px; }
 
 .dialogBackdrop {
   align-items: center;
@@ -938,6 +975,10 @@
 }
 
 @media (max-width: 640px) {
+  .skeletonBody { grid-template-columns: 1fr; }
+  .skeletonBody aside { display: none; }
+  .skeletonBody > section { padding: 20px 14px; }
+
   .workspace {
     padding: 18px 14px;
   }
@@ -950,6 +991,8 @@
     align-items: stretch;
     flex-direction: column;
   }
+
+  .refreshCluster { align-items: flex-start; flex-wrap: wrap; }
 
   .detailPanel,
   .parcelSection {

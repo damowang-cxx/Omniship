@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -21,6 +21,15 @@ import type {
   WaybillItem,
   WaybillTrackingStatus
 } from "@/lib/types";
+import {
+  isCacheFresh,
+  readAccountCache,
+  readUsersCache,
+  readWaybillCache,
+  WAYBILL_REFRESH_INTERVAL_MS,
+  writeUsersCache,
+  writeWaybillCache
+} from "@/lib/client-cache";
 import styles from "./page.module.css";
 
 const statusOptions: { value: WaybillTrackingStatus; label: string }[] = [
@@ -137,21 +146,69 @@ function parseArrivalAirport(value: string) {
   return airport;
 }
 
+function toWaybillFilters(
+  actor: AppUser,
+  filterValues: typeof initialFilters
+): WaybillFilters {
+  const requestFilters: WaybillFilters = {};
+  if (actor.role === "admin" && filterValues.userId) {
+    requestFilters.userId = filterValues.userId;
+  }
+  if (filterValues.status) requestFilters.status = filterValues.status;
+  if (filterValues.q.trim()) requestFilters.q = filterValues.q.trim();
+  return requestFilters;
+}
+
+function formatUpdatedTime(value: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }).format(new Date(value));
+}
+
+function WaybillsPageSkeleton() {
+  return (
+    <main className={styles.pageSkeleton} aria-label="Loading account workspace">
+      <header><strong>EPIX</strong><span className={styles.skeletonLine} /></header>
+      <div className={styles.skeletonBody}>
+        <aside>
+          <span className={styles.skeletonAvatar} />
+          <span className={styles.skeletonLine} />
+          <span className={styles.skeletonLine} />
+          <span className={styles.skeletonLine} />
+        </aside>
+        <section>
+          <div className={styles.skeletonTitle}><span /><span /></div>
+          <div className={styles.skeletonPanel}><span /><span /><span /><span /></div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 export default function WaybillsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [waybills, setWaybills] = useState<WaybillItem[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isAccountLoading, setIsAccountLoading] = useState(true);
   const [isLoadingWaybills, setIsLoadingWaybills] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [hasWaybillData, setHasWaybillData] = useState(false);
+  const [waybillLoadError, setWaybillLoadError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [filters, setFilters] = useState(initialFilters);
+  const [appliedFilters, setAppliedFilters] = useState(initialFilters);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [messages, setMessages] = useState<AppMessage[]>([]);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [editingWaybill, setEditingWaybill] = useState<WaybillItem | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const requestSequence = useRef(0);
+  const activeRequestKey = useRef<string | null>(null);
 
   const isAdmin = currentUser?.role === "admin";
 
@@ -169,79 +226,201 @@ export default function WaybillsPage() {
     ]);
   }, []);
 
-  const buildFilters = useCallback(
-    (filterValues: typeof initialFilters = filters): WaybillFilters => {
-      const requestFilters: WaybillFilters = {};
-      if (filterValues.userId && isAdmin) {
-        requestFilters.userId = filterValues.userId;
-      }
-      if (filterValues.status) {
-        requestFilters.status = filterValues.status;
-      }
-      if (filterValues.q.trim()) {
-        requestFilters.q = filterValues.q.trim();
-      }
-      return requestFilters;
-    },
-    [filters, isAdmin]
-  );
+  const loadWaybillsFor = useCallback(
+    async (
+      actor: AppUser,
+      filterValues: typeof initialFilters,
+      options: { force?: boolean } = {}
+    ) => {
+      const requestFilters = toWaybillFilters(actor, filterValues);
+      const requestKey = `${actor.id}:${JSON.stringify(requestFilters)}`;
+      if (activeRequestKey.current === requestKey) return;
+      const sequence = ++requestSequence.current;
+      const cached = readWaybillCache(actor, requestFilters);
 
-  const refreshWaybills = useCallback(
-    async (filterOverride?: typeof initialFilters) => {
+      if (cached) {
+        setWaybills(cached.data);
+        setHasWaybillData(true);
+        setLastUpdatedAt(cached.storedAt);
+        setWaybillLoadError(null);
+        setNotice((current) =>
+          current?.text.startsWith("Showing cached waybills.") ? null : current
+        );
+        if (!options.force && isCacheFresh(cached)) {
+          setIsLoadingWaybills(false);
+          return;
+        }
+      } else {
+        setWaybills([]);
+        setHasWaybillData(false);
+        setLastUpdatedAt(null);
+        setWaybillLoadError(null);
+      }
+
+      activeRequestKey.current = requestKey;
       setIsLoadingWaybills(true);
       try {
-        const response = await listWaybills(buildFilters(filterOverride));
+        const response = await listWaybills(requestFilters);
+        if (sequence !== requestSequence.current) return;
+        const storedAt = Date.now();
+        writeWaybillCache(actor, requestFilters, response.items, storedAt);
         setWaybills(response.items);
+        setHasWaybillData(true);
+        setLastUpdatedAt(storedAt);
+        setWaybillLoadError(null);
+        setNotice((current) =>
+          current?.text.startsWith("Showing cached waybills.") ? null : current
+        );
       } catch (error) {
+        if (sequence !== requestSequence.current) return;
         if (isUnauthorizedError(error)) {
           router.replace("/");
           return;
         }
         const message = error instanceof Error ? error.message : "Unable to load waybills";
-        setNotice({ tone: "error", text: message });
+        if (cached) {
+          setNotice({ tone: "error", text: `Showing cached waybills. ${message}` });
+        } else {
+          setWaybillLoadError(message);
+        }
         addMessage("Waybills failed", message);
       } finally {
-        setIsLoadingWaybills(false);
+        if (activeRequestKey.current === requestKey) activeRequestKey.current = null;
+        if (sequence === requestSequence.current) setIsLoadingWaybills(false);
       }
     },
-    [addMessage, buildFilters, router]
+    [addMessage, router]
+  );
+
+  const loadUsersFor = useCallback(
+    async (actor: AppUser) => {
+      if (actor.role !== "admin") {
+        setUsers([]);
+        return;
+      }
+      const cached = readUsersCache(actor.id);
+      if (cached) {
+        setUsers(cached.data);
+        if (isCacheFresh(cached)) return;
+      }
+      setIsLoadingUsers(true);
+      try {
+        const response = await listUsers();
+        setUsers(response.items);
+        writeUsersCache(actor.id, response.items);
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          router.replace("/");
+          return;
+        }
+        if (!cached) {
+          setNotice({
+            tone: "error",
+            text: error instanceof Error ? error.message : "Unable to load users"
+          });
+        }
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    },
+    [router]
   );
 
   useEffect(() => {
-    async function bootstrap() {
-      try {
-        const response = await getCurrentUser();
-        setCurrentUser(response.user);
-        const requests: [Promise<{ items: WaybillItem[] }>, Promise<{ items: AppUser[] }> | null] = [
-          listWaybills({}),
-          response.user.role === "admin" ? listUsers() : null
-        ];
-        const [waybillsResponse, usersResponse] = await Promise.all(requests);
-        setWaybills(waybillsResponse.items);
-        if (usersResponse) {
-          setUsers(usersResponse.items);
-        }
-      } catch (error) {
-        setAuthError(
-          error instanceof Error ? error.message : "Unable to load account information"
-        );
-        router.replace("/");
-      } finally {
-        setIsLoading(false);
+    let mounted = true;
+    const cachedAccount = readAccountCache();
+    if (cachedAccount) {
+      setCurrentUser(cachedAccount.data);
+      setIsAccountLoading(false);
+      const cachedWaybills = readWaybillCache(cachedAccount.data, {});
+      if (cachedWaybills) {
+        setWaybills(cachedWaybills.data);
+        setHasWaybillData(true);
+        setLastUpdatedAt(cachedWaybills.storedAt);
+      }
+      const cachedUsers = readUsersCache(cachedAccount.data.id);
+      if (cachedAccount.data.role === "admin" && cachedUsers) {
+        setUsers(cachedUsers.data);
       }
     }
 
-    void bootstrap();
-  }, [router]);
+    async function validateAccount() {
+      try {
+        const response = await getCurrentUser();
+        if (!mounted) return;
+        const accountChanged = cachedAccount && cachedAccount.data.id !== response.user.id;
+        setCurrentUser(response.user);
+        setIsAccountLoading(false);
+        if (accountChanged) {
+          setWaybills([]);
+          setHasWaybillData(false);
+          setLastUpdatedAt(null);
+          setUsers([]);
+          setFilters(initialFilters);
+          setAppliedFilters(initialFilters);
+        }
+        void loadWaybillsFor(response.user, initialFilters);
+        void loadUsersFor(response.user);
+      } catch (error) {
+        if (!mounted) return;
+        if (cachedAccount && !isUnauthorizedError(error)) {
+          const message =
+            error instanceof Error ? error.message : "Unable to refresh account information";
+          setNotice({ tone: "error", text: `Using cached account. ${message}` });
+          addMessage("Account refresh failed", message);
+          setIsAccountLoading(false);
+          return;
+        }
+        setAuthError(
+          error instanceof Error ? error.message : "Unable to load account information"
+        );
+        setIsAccountLoading(false);
+        router.replace("/");
+      }
+    }
+
+    void validateAccount();
+    return () => {
+      mounted = false;
+      requestSequence.current += 1;
+    };
+  }, [addMessage, loadUsersFor, loadWaybillsFor, router]);
+
+  useEffect(() => {
+    if (!currentUser || isAccountLoading) return;
+    const refreshIfStale = () => {
+      if (document.visibilityState !== "visible") return;
+      const requestFilters = toWaybillFilters(currentUser, appliedFilters);
+      const cached = readWaybillCache(currentUser, requestFilters);
+      if (!cached || !isCacheFresh(cached)) {
+        void loadWaybillsFor(currentUser, appliedFilters, { force: true });
+      }
+    };
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadWaybillsFor(currentUser, appliedFilters, { force: true });
+      }
+    }, WAYBILL_REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", refreshIfStale);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshIfStale);
+    };
+  }, [appliedFilters, currentUser, isAccountLoading, loadWaybillsFor]);
 
   const handleApplyFilters = useCallback(async () => {
-    await refreshWaybills();
-  }, [refreshWaybills]);
+    if (!currentUser) return;
+    const next = { ...filters };
+    setAppliedFilters(next);
+    await loadWaybillsFor(currentUser, next);
+  }, [currentUser, filters, loadWaybillsFor]);
 
   const handleResetFilters = useCallback(async () => {
+    if (!currentUser) return;
     setFilters(initialFilters);
-    await refreshWaybills(initialFilters);
-  }, [refreshWaybills]);
+    setAppliedFilters(initialFilters);
+    await loadWaybillsFor(currentUser, initialFilters);
+  }, [currentUser, loadWaybillsFor]);
 
   const openEditDialog = useCallback((waybill: WaybillItem) => {
     setEditingWaybill(waybill);
@@ -336,8 +515,8 @@ export default function WaybillsPage() {
     [messages]
   );
 
-  if (isLoading) {
-    return <main className={styles.loadingPage}>Loading account information...</main>;
+  if (isAccountLoading && !currentUser) {
+    return <WaybillsPageSkeleton />;
   }
 
   if (authError || !currentUser) {
@@ -382,9 +561,13 @@ export default function WaybillsPage() {
               <p className={styles.eyebrow}>Operational status</p>
               <h3>Approved waybills</h3>
             </div>
-            <button disabled={isLoadingWaybills} onClick={() => void refreshWaybills()} type="button">
-              Refresh
-            </button>
+            <div className={styles.refreshCluster}>
+              {lastUpdatedAt && <span>Updated {formatUpdatedTime(lastUpdatedAt)}</span>}
+              {isLoadingWaybills && hasWaybillData && <span className={styles.updatingDot}>Updating</span>}
+              <button disabled={isLoadingWaybills} onClick={() => currentUser && void loadWaybillsFor(currentUser, appliedFilters, { force: true })} type="button">
+                Refresh
+              </button>
+            </div>
           </div>
 
           {notice && (
@@ -403,12 +586,14 @@ export default function WaybillsPage() {
                 User
                 <select
                   aria-label="Filter User"
+                  disabled={isLoadingUsers && users.length === 0}
                   onChange={(event) =>
                     setFilters((current) => ({ ...current, userId: event.target.value }))
                   }
                   value={filters.userId}
                 >
                   <option value="">All users</option>
+                  {isLoadingUsers && users.length === 0 && <option value="">Loading users...</option>}
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.email}
@@ -458,7 +643,17 @@ export default function WaybillsPage() {
             </div>
           </div>
 
-          {waybills.length ? (
+          {!hasWaybillData && isLoadingWaybills ? (
+            <div className={styles.tableSkeleton} aria-label="Loading waybills">
+              {Array.from({ length: 6 }, (_, index) => <span key={index} />)}
+            </div>
+          ) : !hasWaybillData && waybillLoadError ? (
+            <div className={styles.containerError} role="alert">
+              <strong>Waybills could not be loaded</strong>
+              <span>{waybillLoadError}</span>
+              <button onClick={() => currentUser && void loadWaybillsFor(currentUser, appliedFilters, { force: true })} type="button">Retry</button>
+            </div>
+          ) : waybills.length ? (
             <div className={styles.tableWrap}>
               <table>
                 <thead>
@@ -560,7 +755,7 @@ export default function WaybillsPage() {
             </div>
           ) : (
             <div className={styles.emptyState}>
-              {isLoadingWaybills ? "Loading waybills..." : "No approved waybills yet"}
+              No approved waybills yet
             </div>
           )}
         </section>

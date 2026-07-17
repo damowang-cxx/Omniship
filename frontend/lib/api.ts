@@ -25,6 +25,12 @@ import type {
   WaybillUploadStatus,
   WaybillUpdatePayload
 } from "./types";
+import {
+  clearClientCache,
+  invalidateWaybillCaches,
+  updateWaybillInCache,
+  writeAccountCache
+} from "./client-cache";
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const AUTH_REQUEST_TIMEOUT_MS = 5_000;
@@ -148,6 +154,7 @@ async function requestJson<T>(path: string, init?: JsonRequestInit): Promise<T> 
   }
 
   if (!response.ok) {
+    if (response.status === 401) clearClientCache();
     const detail = await response.text();
     const parsedDetail = parseErrorDetail(detail);
     throw new Error(
@@ -158,25 +165,33 @@ async function requestJson<T>(path: string, init?: JsonRequestInit): Promise<T> 
   return response.json() as Promise<T>;
 }
 
-export function login(email: string, password: string): Promise<AuthUserResponse> {
-  return requestJson<AuthUserResponse>("/api/v1/auth/login", {
+export async function login(email: string, password: string): Promise<AuthUserResponse> {
+  const response = await requestJson<AuthUserResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password })
   });
+  writeAccountCache(response.user);
+  return response;
 }
 
-export function logout(): Promise<{ status: string }> {
-  return requestJson<{ status: string }>("/api/v1/auth/logout", {
-    method: "POST"
-  });
+export async function logout(): Promise<{ status: string }> {
+  try {
+    return await requestJson<{ status: string }>("/api/v1/auth/logout", {
+      method: "POST"
+    });
+  } finally {
+    clearClientCache();
+  }
 }
 
-export function getCurrentUser(): Promise<AuthUserResponse> {
-  return requestJson<AuthUserResponse>("/api/v1/auth/me", {
+export async function getCurrentUser(): Promise<AuthUserResponse> {
+  const response = await requestJson<AuthUserResponse>("/api/v1/auth/me", {
     timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
     timeoutMessage:
       "Account information request timed out. Please check whether the backend is running."
   });
+  writeAccountCache(response.user);
+  return response;
 }
 
 export function listUsers(): Promise<UserListResponse> {
@@ -265,15 +280,17 @@ export function updateBillingSettings(
   });
 }
 
-export function applyRetroactiveBilling(
+export async function applyRetroactiveBilling(
   waybillNumbers: string[]
 ): Promise<RetroactiveBillingResponse> {
-  return requestJson<RetroactiveBillingResponse>("/api/v1/billing/retroactive", {
+  const response = await requestJson<RetroactiveBillingResponse>("/api/v1/billing/retroactive", {
     method: "POST",
     body: JSON.stringify({ waybillNumbers }),
     timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
     timeoutMessage: "Retroactive customs processing timed out. Please retry the batch."
   });
+  invalidateWaybillCaches();
+  return response;
 }
 
 export function getMyBillingAccount(): Promise<BillingAccountResponse> {
@@ -385,28 +402,32 @@ export function uploadPreAlertFile(
   });
 }
 
-export function updateWaybillUploadStatus(
+export async function updateWaybillUploadStatus(
   uploadId: string,
   status: WaybillUploadStatus
 ): Promise<WaybillUploadItem> {
-  return requestJson<WaybillUploadItem>(
+  const response = await requestJson<WaybillUploadItem>(
     `/api/v1/waybill-uploads/${uploadId}/status`,
     {
       method: "PATCH",
       body: JSON.stringify({ status })
     }
   );
+  invalidateWaybillCaches();
+  return response;
 }
 
-export function deleteWaybillUpload(
+export async function deleteWaybillUpload(
   uploadId: string
 ): Promise<WaybillUploadDeleteResponse> {
-  return requestJson<WaybillUploadDeleteResponse>(
+  const response = await requestJson<WaybillUploadDeleteResponse>(
     `/api/v1/waybill-uploads/${uploadId}`,
     {
       method: "DELETE"
     }
   );
+  invalidateWaybillCaches();
+  return response;
 }
 
 export function getWaybillUploadFileDownloadUrl(
@@ -461,14 +482,16 @@ export function updateWaybillParcels(
   );
 }
 
-export function updateWaybill(
+export async function updateWaybill(
   publicCode: string,
   payload: WaybillUpdatePayload
 ): Promise<WaybillItem> {
-  return requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}`, {
+  const response = await requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}`, {
     method: "PATCH",
     body: JSON.stringify(payload)
   });
+  updateWaybillInCache(response);
+  return response;
 }
 
 export function uploadWaybillPodFile(
