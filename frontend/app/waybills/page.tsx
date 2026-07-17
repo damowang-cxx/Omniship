@@ -722,9 +722,9 @@ export default function WaybillsPage() {
                           {waybill.receivedCount} / {waybill.receivedTotal}
                         </td>
                         <td>
-                          <span className={styles.metricLink}>{waybill.pieces}</span>
+                          <span className={styles.metricLink}>{waybill.customsCartons ?? "-"}</span>
                         </td>
-                        <td><span className={styles.cartonBadge}>{waybill.customsCartons ?? "-"}</span></td>
+                        <td><span className={styles.cartonBadge}>{waybill.pieces}</span></td>
                         <td><span className={styles.customsAmount}>{formatCustoms(waybill.customsAmount)}</span></td>
                         <td>{waybill.palletCount}</td>
                         <td>

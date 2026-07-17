@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WaybillsPage from "./page";
@@ -202,6 +202,11 @@ describe("WaybillsPage", () => {
     expect(screen.getByRole("columnheader", { name: "Pallet Count" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Cartons" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Customs" })).toBeInTheDocument();
+    const waybillRow = screen.getByRole("link", { name: "784-84063276" }).closest("tr");
+    expect(waybillRow).not.toBeNull();
+    const cells = within(waybillRow as HTMLTableRowElement).getAllByRole("cell");
+    expect(cells[7]).toHaveTextContent("5");
+    expect(cells[8]).toHaveTextContent("8");
     expect(screen.getByText("€15.00")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Clearance Status" })).toBeInTheDocument();
