@@ -40,6 +40,17 @@ describe("BillingPage", () => {
           waybillNumber: "784-84063276",
           billingSource: "retroactive",
           createdAt: "2026-07-16T10:00:00Z"
+        },
+        {
+          id: "reversal-id",
+          entryType: "deduction_reversal",
+          amount: "6.00",
+          currency: "EUR",
+          balanceAfter: "100.00",
+          waybillNumber: "784-84063276",
+          billingSource: "cancellation",
+          reversalOfEntryId: "deduction-id",
+          createdAt: "2026-07-17T10:00:00Z"
         }
       ],
       recharges: []
@@ -51,8 +62,10 @@ describe("BillingPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Billing" })).toBeInTheDocument();
     expect(screen.getAllByText("€94.00").length).toBeGreaterThan(0);
-    expect(screen.getByText("784-84063276")).toBeInTheDocument();
+    expect(screen.getAllByText("784-84063276")).toHaveLength(2);
     expect(screen.getByText("Tax backfill")).toBeInTheDocument();
+    expect(screen.getByText("Tax cancellation")).toBeInTheDocument();
+    expect(screen.getByText("Tax cancelled")).toBeInTheDocument();
     expect(screen.getByText("€6.00")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/billing");
   });

@@ -430,6 +430,13 @@ class BillingEntry(Base):
     billable_unit_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     unit_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     billing_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reversal_of_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("billing_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

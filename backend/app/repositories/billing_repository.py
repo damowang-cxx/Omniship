@@ -26,6 +26,21 @@ class BillingRepository:
     def get_entry(self, entry_id: UUID) -> BillingEntry | None:
         return self.db.get(BillingEntry, entry_id)
 
+    def get_entry_for_update(self, entry_id: UUID) -> BillingEntry | None:
+        statement = (
+            select(BillingEntry)
+            .where(BillingEntry.id == entry_id)
+            .with_for_update()
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
+    def get_reversal_for_entry(self, entry_id: UUID) -> BillingEntry | None:
+        statement = select(BillingEntry).where(
+            BillingEntry.reversal_of_entry_id == entry_id,
+            BillingEntry.entry_type == "deduction_reversal",
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
     def get_deduction_for_upload(self, upload_id: UUID) -> BillingEntry | None:
         statement = select(BillingEntry).where(
             BillingEntry.waybill_upload_id == upload_id,
@@ -85,6 +100,34 @@ class BillingRepository:
             billable_unit_count=billable_unit_count,
             unit_rate=unit_rate,
             billing_source=billing_source,
+            created_by_user_id=created_by_user_id,
+        )
+        self.db.add(entry)
+        self.db.flush()
+        return entry
+
+    def create_deduction_reversal(
+        self,
+        *,
+        original: BillingEntry,
+        balance_after: Decimal,
+        created_by_user_id: UUID,
+    ) -> BillingEntry:
+        entry = BillingEntry(
+            user_id=original.user_id,
+            entry_type="deduction_reversal",
+            amount=original.amount,
+            currency=original.currency,
+            balance_after=balance_after,
+            waybill_number=original.waybill_number,
+            supplier_id=original.supplier_id,
+            supplier_name=original.supplier_name,
+            supplier_version_number=original.supplier_version_number,
+            arrival_airport=original.arrival_airport,
+            billable_unit_count=original.billable_unit_count,
+            unit_rate=original.unit_rate,
+            billing_source="cancellation",
+            reversal_of_entry_id=original.id,
             created_by_user_id=created_by_user_id,
         )
         self.db.add(entry)

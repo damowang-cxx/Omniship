@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownRight, ReceiptText, RefreshCw, WalletCards } from "lucide-react";
+import { ArrowDownRight, ArrowUpLeft, ReceiptText, RefreshCw, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
   getMyBillingAccount,
@@ -133,14 +133,16 @@ export default function BillingPage() {
                     <th>Supplier</th>
                     <th>Source</th>
                     <th>Calculation</th>
-                    <th>Deducted At</th>
+                    <th>Recorded At</th>
                     <th>Amount</th>
                     <th>Balance After</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {deductions.map((entry) => (
-                    <tr key={entry.id}>
+                  {deductions.map((entry) => {
+                    const isReversal = entry.entryType === "deduction_reversal";
+                    return (
+                    <tr className={isReversal ? styles.reversalRow : undefined} key={entry.id}>
                       <td>
                         <span className={styles.waybillCell}>
                           <ReceiptText aria-hidden="true" size={16} />
@@ -148,18 +150,27 @@ export default function BillingPage() {
                         </span>
                       </td>
                       <td>{entry.supplierName ? `${entry.supplierName} v${entry.supplierVersionNumber}` : "-"}</td>
-                      <td>{entry.billingSource === "retroactive" ? "Tax backfill" : "Upload"}</td>
+                      <td>{isReversal ? "Tax cancellation" : entry.billingSource === "retroactive" ? "Tax backfill" : "Upload"}</td>
                       <td>{entry.billableUnitCount != null && entry.unitRate ? `${entry.billableUnitCount} × ${formatEuro(entry.unitRate)}` : "-"}</td>
                       <td>{formatDateTime(entry.createdAt)}</td>
                       <td>
-                        <span className={styles.chargeAmount}>
-                          <ArrowDownRight aria-hidden="true" size={15} />
-                          {formatEuro(entry.amount)}
-                        </span>
+                        {isReversal ? (
+                          <span className={styles.refundAmount}>
+                            <ArrowUpLeft aria-hidden="true" size={15} />
+                            +{formatEuro(entry.amount)}
+                            <small>Tax cancelled</small>
+                          </span>
+                        ) : (
+                          <span className={styles.chargeAmount}>
+                            <ArrowDownRight aria-hidden="true" size={15} />
+                            {formatEuro(entry.amount)}
+                          </span>
+                        )}
                       </td>
                       <td>{formatEuro(entry.balanceAfter)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

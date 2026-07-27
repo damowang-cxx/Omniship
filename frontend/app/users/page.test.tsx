@@ -5,6 +5,7 @@ import UsersPage from "./page";
 const routerMock = vi.hoisted(() => ({ replace: vi.fn() }));
 
 const apiMock = vi.hoisted(() => ({
+  cancelDeduction: vi.fn(),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
   getCurrentUser: vi.fn(),
@@ -70,6 +71,42 @@ describe("UsersPage", () => {
           createdAt: "2026-07-16T10:00:00Z"
         }
       ]
+    });
+    apiMock.cancelDeduction.mockResolvedValue({
+      user: { ...operatorUser, balance: "20.00" },
+      deductions: [
+        {
+          id: "reversal-id",
+          entryType: "deduction_reversal",
+          amount: "15.00",
+          currency: "EUR",
+          balanceAfter: "20.00",
+          waybillNumber: "784-84063276",
+          supplierName: "QLS",
+          supplierVersionNumber: 2,
+          billableUnitCount: 5,
+          unitRate: "3.00",
+          billingSource: "cancellation",
+          reversalOfEntryId: "deduction-id",
+          createdAt: "2026-07-27T11:00:00Z"
+        },
+        {
+          id: "deduction-id",
+          entryType: "deduction",
+          amount: "15.00",
+          currency: "EUR",
+          balanceAfter: "5.00",
+          waybillNumber: "784-84063276",
+          supplierName: "QLS",
+          supplierVersionNumber: 2,
+          billableUnitCount: 5,
+          unitRate: "3.00",
+          billingSource: "upload",
+          reversedByEntryId: "reversal-id",
+          createdAt: "2026-07-27T10:00:00Z"
+        }
+      ],
+      recharges: []
     });
     apiMock.createUser.mockResolvedValue({ id: "new-user" });
     apiMock.deleteUser.mockResolvedValue({ status: "deleted" });
@@ -139,6 +176,48 @@ describe("UsersPage", () => {
       expect(apiMock.rechargeUser).toHaveBeenCalledWith("user-id", "25.00", null);
     });
     expect(await screen.findByText("+€25.00")).toBeInTheDocument();
+  });
+
+  it("cancels a deduction and displays the refund as an audit entry", async () => {
+    const deduction = {
+      id: "deduction-id",
+      entryType: "deduction",
+      amount: "15.00",
+      currency: "EUR",
+      balanceAfter: "5.00",
+      waybillNumber: "784-84063276",
+      supplierName: "QLS",
+      supplierVersionNumber: 2,
+      billableUnitCount: 5,
+      unitRate: "3.00",
+      billingSource: "upload",
+      createdAt: "2026-07-27T10:00:00Z"
+    };
+    apiMock.getUserBillingAccount.mockResolvedValueOnce({
+      user: { ...operatorUser, balance: "5.00" },
+      deductions: [deduction],
+      recharges: []
+    });
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<UsersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "operator@example.com" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel tax" }));
+
+    await waitFor(() => {
+      expect(apiMock.cancelDeduction).toHaveBeenCalledWith(
+        "user-id",
+        "deduction-id"
+      );
+    });
+    expect(confirmMock).toHaveBeenCalledWith(
+      "Cancel customs tax for 784-84063276? €15.00 will be returned to the customer balance."
+    );
+    expect(await screen.findByText("Tax cancelled")).toBeInTheDocument();
+    expect(screen.getByText("+€15.00")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel tax" })).not.toBeInTheDocument();
+    confirmMock.mockRestore();
   });
 
   it("redirects unauthenticated users to the public landing page", async () => {

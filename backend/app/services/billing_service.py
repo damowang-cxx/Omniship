@@ -47,6 +47,10 @@ class BillingPermissionError(PermissionError):
     pass
 
 
+class BillingConflictError(BillingValidationError):
+    pass
+
+
 class BillingService:
     def __init__(self, db: Session, settings: Settings | None = None):
         self.db = db
@@ -66,7 +70,20 @@ class BillingService:
         if user is None:
             raise BillingValidationError("User not found")
         entries = self.billing.list_for_user(user.id)
-        deductions = [self._build_entry(entry) for entry in entries if entry.entry_type == "deduction"]
+        reversed_by_entry = {
+            entry.reversal_of_entry_id: entry.id
+            for entry in entries
+            if entry.entry_type == "deduction_reversal"
+            and entry.reversal_of_entry_id is not None
+        }
+        deductions = [
+            self._build_entry(
+                entry,
+                reversed_by_entry_id=reversed_by_entry.get(entry.id),
+            )
+            for entry in entries
+            if entry.entry_type in {"deduction", "deduction_reversal"}
+        ]
         recharges = [self._build_entry(entry) for entry in entries if entry.entry_type == "recharge"]
         return BillingAccountResponse(
             user=UserPublic.model_validate(user),
@@ -130,6 +147,66 @@ class BillingService:
             self.db.rollback()
             if saved_path is not None:
                 saved_path.unlink(missing_ok=True)
+            raise
+
+        return self.get_account(actor=actor, user_id=user.id)
+
+    def cancel_deduction(
+        self,
+        *,
+        actor: User,
+        user_id: UUID,
+        entry_id: UUID,
+        request: Request,
+    ) -> BillingAccountResponse:
+        if actor.role != "admin":
+            raise BillingPermissionError("Admin permission required")
+
+        user = self.billing.get_user_for_update(user_id)
+        if user is None:
+            raise BillingValidationError("User not found")
+        deduction = self.billing.get_entry_for_update(entry_id)
+        if deduction is None or deduction.user_id != user.id:
+            raise BillingValidationError("Deduction record not found")
+        if deduction.entry_type != "deduction":
+            raise BillingValidationError("Only deduction entries can be cancelled")
+        if self.billing.get_reversal_for_entry(deduction.id) is not None:
+            raise BillingConflictError("Customs tax has already been cancelled")
+
+        refund_amount = Decimal(deduction.amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if refund_amount <= 0:
+            raise BillingValidationError("Deduction amount must be greater than zero")
+        user.balance = (Decimal(user.balance) + refund_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        try:
+            reversal = self.billing.create_deduction_reversal(
+                original=deduction,
+                balance_after=user.balance,
+                created_by_user_id=actor.id,
+            )
+            self.audit_logs.create(
+                "cancel_customs_tax",
+                actor_user_id=actor.id,
+                target_type="billing_entry",
+                target_id=str(deduction.id),
+                ip_address=get_request_ip(request),
+                user_agent=get_request_user_agent(request),
+                metadata={
+                    "reversalEntryId": str(reversal.id),
+                    "userId": str(user.id),
+                    "waybillNumber": deduction.waybill_number,
+                    "amount": str(refund_amount),
+                    "currency": deduction.currency,
+                    "balanceAfter": str(user.balance),
+                },
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
             raise
 
         return self.get_account(actor=actor, user_id=user.id)
@@ -458,7 +535,12 @@ class BillingService:
             return len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
         return False
 
-    def _build_entry(self, entry: BillingEntry) -> BillingEntryItem:
+    def _build_entry(
+        self,
+        entry: BillingEntry,
+        *,
+        reversed_by_entry_id: UUID | None = None,
+    ) -> BillingEntryItem:
         receipt = None
         if (
             entry.receipt_original_filename
@@ -484,6 +566,8 @@ class BillingService:
             billable_unit_count=entry.billable_unit_count,
             unit_rate=entry.unit_rate,
             billing_source=entry.billing_source,
+            reversal_of_entry_id=entry.reversal_of_entry_id,
+            reversed_by_entry_id=reversed_by_entry_id,
             created_by_user_id=entry.created_by_user_id,
             receipt=receipt,
             created_at=entry.created_at,

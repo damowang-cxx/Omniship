@@ -123,6 +123,88 @@ def test_recharge_validates_amount_and_image(client, db_session):
     assert "valid image" in invalid_image.text
 
 
+def test_admin_cancels_customs_tax_once_and_keeps_an_audit_entry(
+    client, db_session
+):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    user = create_test_user(
+        db_session,
+        email="user@example.com",
+        username="User",
+        balance="5.00",
+    )
+    deduction = BillingEntry(
+        user_id=user.id,
+        entry_type="deduction",
+        amount="15.00",
+        currency="EUR",
+        balance_after="5.00",
+        waybill_number="784-84063276",
+        supplier_name="QLS",
+        supplier_version_number=2,
+        arrival_airport="AMS",
+        billable_unit_count=5,
+        unit_rate="3.00",
+        billing_source="upload",
+        created_by_user_id=admin.id,
+    )
+    db_session.add(deduction)
+    db_session.commit()
+
+    assert login(client, email=admin.email).status_code == 200
+    response = client.post(
+        f"/api/v1/billing/users/{user.id}/deductions/{deduction.id}/cancel"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user"]["balance"] == "20.00"
+    assert len(body["deductions"]) == 2
+    reversal = next(
+        entry
+        for entry in body["deductions"]
+        if entry["entryType"] == "deduction_reversal"
+    )
+    original = next(
+        entry for entry in body["deductions"] if entry["entryType"] == "deduction"
+    )
+    assert reversal["amount"] == "15.00"
+    assert reversal["balanceAfter"] == "20.00"
+    assert reversal["billingSource"] == "cancellation"
+    assert reversal["reversalOfEntryId"] == str(deduction.id)
+    assert reversal["waybillNumber"] == "784-84063276"
+    assert original["reversedByEntryId"] == reversal["id"]
+
+    duplicate = client.post(
+        f"/api/v1/billing/users/{user.id}/deductions/{deduction.id}/cancel"
+    )
+    assert duplicate.status_code == 409
+    assert "already been cancelled" in duplicate.text
+
+    db_session.expire_all()
+    entries = db_session.execute(select(BillingEntry)).scalars().all()
+    assert len(entries) == 2
+    assert str(user.balance) == "20.00"
+    actions = {
+        row.action for row in db_session.execute(select(AuditLog)).scalars().all()
+    }
+    assert "cancel_customs_tax" in actions
+
+    assert login(client, email=user.email).status_code == 200
+    account = client.get("/api/v1/billing/me")
+    assert account.status_code == 200
+    assert len(account.json()["deductions"]) == 2
+    forbidden = client.post(
+        f"/api/v1/billing/users/{user.id}/deductions/{deduction.id}/cancel"
+    )
+    assert forbidden.status_code == 403
+
+
 def test_estimates_three_euros_for_each_eu_shipment(client, db_session):
     user = create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email=user.email).status_code == 200

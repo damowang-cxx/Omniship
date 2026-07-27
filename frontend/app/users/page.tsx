@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownRight,
+  ArrowUpLeft,
   Eye,
   ImageIcon,
   Plus,
@@ -15,6 +16,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
+  cancelDeduction,
   createUser,
   deleteUser,
   getCurrentUser,
@@ -27,7 +29,7 @@ import {
   resetUserPassword,
   updateUserStatus
 } from "@/lib/api";
-import type { AppUser, BillingAccountResponse } from "@/lib/types";
+import type { AppUser, BillingAccountResponse, BillingEntryItem } from "@/lib/types";
 import styles from "./page.module.css";
 
 function formatEuro(value: string | undefined) {
@@ -67,6 +69,7 @@ export default function UsersPage() {
   const [rechargeAmount, setRechargeAmount] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecharging, setIsRecharging] = useState(false);
+  const [cancellingDeductionId, setCancellingDeductionId] = useState<string | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
 
   const addMessage = useCallback((title: string, body: string) => {
@@ -209,6 +212,35 @@ export default function UsersPage() {
     }
   }
 
+  async function handleCancelDeduction(entry: BillingEntryItem) {
+    if (!detailUser || entry.entryType !== "deduction" || entry.reversedByEntryId) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Cancel customs tax for ${entry.waybillNumber || "this waybill"}? ${formatEuro(entry.amount)} will be returned to the customer balance.`
+    );
+    if (!confirmed) return;
+
+    setCancellingDeductionId(entry.id);
+    setDetailError(null);
+    try {
+      const account = await cancelDeduction(detailUser.id, entry.id);
+      setBilling(account);
+      setDetailUser(account.user);
+      await refreshUsers();
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        router.replace("/");
+        return;
+      }
+      setDetailError(
+        error instanceof Error ? error.message : "Unable to cancel customs tax"
+      );
+    } finally {
+      setCancellingDeductionId(null);
+    }
+  }
+
   const unreadCount = messages.filter((message) => !message.read).length;
 
   if (isLoading) {
@@ -345,8 +377,46 @@ export default function UsersPage() {
             ) : billingTab === "deductions" ? (
               billing?.deductions.length ? (
                 <div className={styles.ledgerTableWrap}>
-                  <table><thead><tr><th>Air Waybill Number</th><th>Supplier</th><th>Source</th><th>Calculation</th><th>Deducted At</th><th>Amount</th><th>Balance After</th></tr></thead><tbody>
-                    {billing.deductions.map((entry) => <tr key={entry.id}><td>{entry.waybillNumber || "-"}</td><td>{entry.supplierName ? `${entry.supplierName} v${entry.supplierVersionNumber}` : "-"}</td><td>{entry.billingSource === "retroactive" ? "Tax backfill" : "Upload"}</td><td>{entry.billableUnitCount != null && entry.unitRate ? `${entry.billableUnitCount} × ${formatEuro(entry.unitRate)}` : "-"}</td><td>{formatDateTime(entry.createdAt)}</td><td><span className={styles.deductionAmount}><ArrowDownRight aria-hidden="true" size={14} />{formatEuro(entry.amount)}</span></td><td>{formatEuro(entry.balanceAfter)}</td></tr>)}
+                  <table><thead><tr><th>Air Waybill Number</th><th>Supplier</th><th>Source</th><th>Calculation</th><th>Recorded At</th><th>Amount</th><th>Balance After</th><th>Action</th></tr></thead><tbody>
+                    {billing.deductions.map((entry) => {
+                      const isReversal = entry.entryType === "deduction_reversal";
+                      return (
+                        <tr className={isReversal ? styles.reversalRow : undefined} key={entry.id}>
+                          <td>{entry.waybillNumber || "-"}</td>
+                          <td>{entry.supplierName ? `${entry.supplierName} v${entry.supplierVersionNumber}` : "-"}</td>
+                          <td>{isReversal ? "Tax cancellation" : entry.billingSource === "retroactive" ? "Tax backfill" : "Upload"}</td>
+                          <td>{entry.billableUnitCount != null && entry.unitRate ? `${entry.billableUnitCount} × ${formatEuro(entry.unitRate)}` : "-"}</td>
+                          <td>{formatDateTime(entry.createdAt)}</td>
+                          <td>
+                            {isReversal ? (
+                              <div className={styles.cancellationAmountWrap}>
+                                <span className={styles.cancellationAmount}><ArrowUpLeft aria-hidden="true" size={14} />+{formatEuro(entry.amount)}</span>
+                                <span className={styles.cancellationTag}>Tax cancelled</span>
+                              </div>
+                            ) : (
+                              <span className={styles.deductionAmount}><ArrowDownRight aria-hidden="true" size={14} />{formatEuro(entry.amount)}</span>
+                            )}
+                          </td>
+                          <td>{formatEuro(entry.balanceAfter)}</td>
+                          <td>
+                            {isReversal ? (
+                              <span className={styles.ledgerNote}>Refund record</span>
+                            ) : entry.reversedByEntryId ? (
+                              <span className={styles.cancelledTag}>Cancelled</span>
+                            ) : (
+                              <button
+                                className={styles.cancelTaxButton}
+                                disabled={cancellingDeductionId === entry.id}
+                                onClick={() => void handleCancelDeduction(entry)}
+                                type="button"
+                              >
+                                {cancellingDeductionId === entry.id ? "Cancelling..." : "Cancel tax"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody></table>
                 </div>
               ) : <div className={styles.modalEmpty}><ReceiptText aria-hidden="true" size={26} /><strong>No deduction entries</strong><span>Posted waybill tax charges will appear here.</span></div>

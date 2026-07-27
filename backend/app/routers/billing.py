@@ -15,6 +15,7 @@ from app.schemas.billing import (
 )
 from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest
 from app.services.billing_service import (
+    BillingConflictError,
     BillingPermissionError,
     BillingService,
     BillingValidationError,
@@ -28,9 +29,17 @@ router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 def _billing_error(exc: Exception) -> HTTPException:
     if isinstance(exc, BillingPermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, BillingConflictError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     code = (
         status.HTTP_404_NOT_FOUND
-        if str(exc) in {"User not found", "Recharge record not found", "Receipt image not found"}
+        if str(exc)
+        in {
+            "User not found",
+            "Recharge record not found",
+            "Receipt image not found",
+            "Deduction record not found",
+        }
         else status.HTTP_400_BAD_REQUEST
     )
     return HTTPException(status_code=code, detail=str(exc))
@@ -71,6 +80,28 @@ async def recharge_user(
             user_id=user_id,
             amount=amount,
             receipt=receipt,
+            request=request,
+        )
+    except (BillingPermissionError, BillingValidationError) as exc:
+        raise _billing_error(exc) from exc
+
+
+@router.post(
+    "/users/{user_id}/deductions/{entry_id}/cancel",
+    response_model=BillingAccountResponse,
+)
+def cancel_customs_tax(
+    user_id: UUID,
+    entry_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> BillingAccountResponse:
+    try:
+        return BillingService(db).cancel_deduction(
+            actor=current_user,
+            user_id=user_id,
+            entry_id=entry_id,
             request=request,
         )
     except (BillingPermissionError, BillingValidationError) as exc:

@@ -30,6 +30,12 @@ class BillingEntryItem(BaseModel):
     billable_unit_count: int | None = Field(default=None, alias="billableUnitCount")
     unit_rate: Decimal | None = Field(default=None, alias="unitRate")
     billing_source: str | None = Field(default=None, alias="billingSource")
+    reversal_of_entry_id: UUID | None = Field(
+        default=None, alias="reversalOfEntryId"
+    )
+    reversed_by_entry_id: UUID | None = Field(
+        default=None, alias="reversedByEntryId"
+    )
     created_by_user_id: UUID | None = Field(default=None, alias="createdByUserId")
     receipt: BillingReceiptItem | None = None
     created_at: datetime = Field(alias="createdAt")

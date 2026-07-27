@@ -337,7 +337,7 @@
 
 .ledgerTableWrap table {
   border-collapse: collapse;
-  min-width: 720px;
+  min-width: 980px;
   width: 100%;
 }
 
@@ -360,19 +360,78 @@
 }
 
 .deductionAmount,
-.rechargeAmount {
+.rechargeAmount,
+.cancellationAmount {
   align-items: center;
   display: inline-flex;
   font-weight: 900;
   gap: 5px;
+  white-space: nowrap;
 }
 
-.deductionAmount {
+.deductionAmount,
+.cancellationAmount {
   color: #be123c;
 }
 
 .rechargeAmount {
   color: #047857;
+}
+
+.reversalRow {
+  background: #fff8f8;
+}
+
+.cancellationAmountWrap {
+  align-items: flex-start;
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+}
+
+.cancellationTag,
+.cancelledTag {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 999px;
+  color: #be123c;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  padding: 3px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cancelTaxButton {
+  background: #ffffff;
+  border: 1px solid #fda4af;
+  border-radius: 7px;
+  color: #be123c;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.cancelTaxButton:hover:not(:disabled) {
+  background: #fff1f2;
+  border-color: #fb7185;
+}
+
+.cancelTaxButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.ledgerNote {
+  color: #98a2b3;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .receiptThumb {

@@ -35,7 +35,7 @@ export interface BillingReceiptItem {
 
 export interface BillingEntryItem {
   id: string;
-  entryType: "recharge" | "deduction";
+  entryType: "recharge" | "deduction" | "deduction_reversal";
   amount: string;
   currency: string;
   balanceAfter: string;
@@ -47,7 +47,9 @@ export interface BillingEntryItem {
   arrivalAirport?: string | null;
   billableUnitCount?: number | null;
   unitRate?: string | null;
-  billingSource?: "upload" | "retroactive" | null;
+  billingSource?: "upload" | "retroactive" | "cancellation" | null;
+  reversalOfEntryId?: string | null;
+  reversedByEntryId?: string | null;
   createdByUserId?: string | null;
   receipt?: BillingReceiptItem | null;
   createdAt: string;
