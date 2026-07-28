@@ -14,6 +14,7 @@ from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import User, WaybillUpload, WaybillUploadFile
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.billing_repository import BillingRepository
+from app.repositories.cancelled_waybill_repository import CancelledWaybillRepository
 from app.repositories.supplier_repository import SupplierRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_upload_repository import (
@@ -25,6 +26,10 @@ from app.schemas.waybill_upload import (
     WaybillUploadDeleteResponse,
     WaybillUploadItem,
     WaybillUploadListResponse,
+)
+from app.schemas.cancelled_waybill import (
+    CancelWaybillResponse,
+    CancelledWaybillItem,
 )
 from app.schemas.supplier import SupplierVersionConfig
 from app.services.request_context import get_request_ip, get_request_user_agent
@@ -65,6 +70,7 @@ class WaybillUploadService:
         self.uploads = WaybillUploadRepository(db)
         self.users = UserRepository(db)
         self.billing = BillingRepository(db)
+        self.cancelled_waybills = CancelledWaybillRepository(db)
         self.suppliers = SupplierRepository(db)
         self.audit_logs = AuditLogRepository(db)
 
@@ -340,6 +346,10 @@ class WaybillUploadService:
             raise WaybillUploadValidationError("Waybill upload not found")
         if actor.role != "admin" and upload.user_id != actor.id:
             raise WaybillUploadPermissionError("Cannot delete another user's upload")
+        if self.billing.get_deduction_for_upload(upload.id) is not None:
+            raise WaybillUploadValidationError(
+                "Billed waybill uploads must be cancelled by an administrator"
+            )
 
         file_paths = [file.storage_path for file in upload.files]
 
@@ -362,6 +372,96 @@ class WaybillUploadService:
         return WaybillUploadDeleteResponse(
             status="deleted",
             upload_id=upload_id,
+        )
+
+    def cancel_upload(
+        self,
+        *,
+        actor: User,
+        upload_id: UUID,
+        reason: str,
+        request: Request,
+    ) -> CancelWaybillResponse:
+        if actor.role != "admin":
+            raise WaybillUploadPermissionError("Admin permission required")
+
+        upload = self.uploads.get_by_id_for_update(upload_id)
+        if upload is None:
+            raise WaybillUploadValidationError("Waybill upload not found")
+
+        deduction = self.billing.get_deduction_for_upload_for_update(upload.id)
+        reversal = (
+            self.billing.get_reversal_for_entry_for_update(deduction.id)
+            if deduction is not None
+            else None
+        )
+        owner = self.billing.get_user_for_update(upload.user_id)
+        if owner is None:
+            raise WaybillUploadValidationError("Waybill owner not found")
+        tax_amount_deleted = (
+            Decimal(deduction.amount).quantize(Decimal("0.01"))
+            if deduction is not None
+            else Decimal("0.00")
+        )
+        refunded_amount = (
+            tax_amount_deleted if deduction is not None and reversal is None
+            else Decimal("0.00")
+        )
+        current_balance = Decimal(owner.balance)
+        balance_after_refund = (current_balance + refunded_amount).quantize(
+            Decimal("0.01")
+        )
+        file_paths = [file.storage_path for file in upload.files]
+
+        try:
+            owner.balance = balance_after_refund
+            record = self.cancelled_waybills.create(
+                upload=upload,
+                owner=owner,
+                actor=actor,
+                reason=reason,
+                tax_amount_deleted=tax_amount_deleted,
+                refunded_amount=refunded_amount,
+                balance_after_refund=balance_after_refund,
+            )
+
+            if reversal is not None:
+                self.billing.delete_entry(reversal)
+            if deduction is not None:
+                self.billing.delete_entry(deduction)
+            self.db.flush()
+
+            self.audit_logs.create(
+                "cancel_waybill_upload",
+                actor_user_id=actor.id,
+                target_type="cancelled_waybill",
+                target_id=str(record.id),
+                ip_address=get_request_ip(request),
+                user_agent=get_request_user_agent(request),
+                metadata={
+                    "originalUploadId": str(upload.id),
+                    "airWaybillNumber": upload.air_waybill_number,
+                    "boundUserId": str(owner.id),
+                    "reason": reason,
+                    "taxAmountDeleted": str(tax_amount_deleted),
+                    "refundedAmount": str(refunded_amount),
+                    "balanceAfterRefund": str(balance_after_refund),
+                    "previouslyReversed": reversal is not None,
+                },
+            )
+            self.uploads.delete(upload)
+            self.db.commit()
+            self.db.refresh(record)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        self._delete_upload_storage(upload_id, file_paths)
+        return CancelWaybillResponse(
+            uploadId=upload_id,
+            refundedAmount=refunded_amount,
+            balanceAfterRefund=balance_after_refund,
+            record=CancelledWaybillItem.model_validate(record),
         )
 
     def get_download_file(

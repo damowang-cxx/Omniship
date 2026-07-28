@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.routers.auth import router as auth_router
 from app.routers.billing import router as billing_router
+from app.routers.cancelled_waybills import router as cancelled_waybills_router
 from app.routers.suppliers import router as suppliers_router
 from app.routers.users import router as users_router
 from app.routers.waybills import router as waybills_router
@@ -35,6 +36,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(billing_router)
+app.include_router(cancelled_waybills_router)
 app.include_router(suppliers_router)
 app.include_router(users_router)
 app.include_router(waybills_router)

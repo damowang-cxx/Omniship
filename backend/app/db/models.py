@@ -352,6 +352,77 @@ class WaybillParcel(Base):
     )
 
 
+class CancelledWaybill(Base):
+    __tablename__ = "cancelled_waybills"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    original_upload_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False, unique=True, index=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(String(120), nullable=False)
+    uploaded_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("suppliers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    supplier_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    supplier_version_number: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    shipment_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    air_waybill_number: Mapped[str] = mapped_column(String(255), nullable=False)
+    gross_weight_kg: Mapped[Decimal] = mapped_column(
+        Numeric(12, 3), nullable=False
+    )
+    pieces: Mapped[int] = mapped_column(Integer, nullable=False)
+    arrival_flight_number: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    airport_of_departure: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    airport_of_arrival: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    original_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tax_amount_deleted: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00")
+    )
+    refunded_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00")
+    )
+    balance_after_refund: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    cancelled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    cancelled_by_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    cancelled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, index=True
+    )
+
+
 class User(Base):
     __tablename__ = "users"
 

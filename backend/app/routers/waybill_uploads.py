@@ -14,6 +14,7 @@ from app.schemas.waybill_upload import (
     WaybillUploadStatusUpdateRequest,
     WaybillUploadItem,
 )
+from app.schemas.cancelled_waybill import CancelWaybillRequest, CancelWaybillResponse
 from app.services.waybill_upload_service import (
     WaybillUploadInsufficientBalanceError,
     WaybillUploadPermissionError,
@@ -245,6 +246,32 @@ def delete_waybill_upload(
         return WaybillUploadService(db).delete_upload(
             actor=current_user,
             upload_id=upload_id,
+            request=request,
+        )
+    except WaybillUploadPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WaybillUploadValidationError as exc:
+        response_status = (
+            status.HTTP_409_CONFLICT
+            if "must be cancelled" in str(exc)
+            else status.HTTP_404_NOT_FOUND
+        )
+        raise HTTPException(status_code=response_status, detail=str(exc)) from exc
+
+
+@router.post("/{upload_id}/cancel", response_model=CancelWaybillResponse)
+def cancel_waybill_upload(
+    upload_id: UUID,
+    payload: CancelWaybillRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> CancelWaybillResponse:
+    try:
+        return WaybillUploadService(db).cancel_upload(
+            actor=current_user,
+            upload_id=upload_id,
+            reason=payload.reason,
             request=request,
         )
     except WaybillUploadPermissionError as exc:

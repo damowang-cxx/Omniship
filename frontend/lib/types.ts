@@ -301,6 +301,48 @@ export interface WaybillUploadDeleteResponse {
   uploadId: string;
 }
 
+export interface CancelledWaybillItem {
+  id: string;
+  originalUploadId: string;
+  userId?: string | null;
+  userEmail: string;
+  username: string;
+  uploadedByEmail?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierVersionNumber?: number | null;
+  shipmentType: ShipmentType;
+  airWaybillNumber: string;
+  grossWeightKg: string;
+  pieces: number;
+  arrivalFlightNumber?: string | null;
+  airportOfDeparture?: string | null;
+  airportOfArrival?: string | null;
+  originalStatus: WaybillUploadStatus;
+  uploadedAt: string;
+  fileCount: number;
+  taxAmountDeleted: string;
+  refundedAmount: string;
+  balanceAfterRefund?: string | null;
+  currency: string;
+  reason: string;
+  cancelledByUserId?: string | null;
+  cancelledByEmail: string;
+  cancelledAt: string;
+}
+
+export interface CancelledWaybillListResponse {
+  items: CancelledWaybillItem[];
+}
+
+export interface CancelWaybillResponse {
+  status: "cancelled";
+  uploadId: string;
+  refundedAmount: string;
+  balanceAfterRefund: string;
+  record: CancelledWaybillItem;
+}
+
 export interface WaybillPodFileItem {
   id: string;
   originalFilename: string;

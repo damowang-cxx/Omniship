@@ -7,7 +7,7 @@ const routerMock = vi.hoisted(() => ({
 }));
 
 const apiMock = vi.hoisted(() => ({
-  deleteWaybillUpload: vi.fn(),
+  cancelWaybillUpload: vi.fn(),
   getWaybillUploadFileDownloadUrl: vi.fn(
     (uploadId: string, fileId: string) =>
       `/backend/v1/waybill-uploads/${uploadId}/files/${fileId}/download`
@@ -98,11 +98,13 @@ describe("WaybillUploadManagementPage", () => {
       ...uploadItem,
       status: "approved"
     });
-    apiMock.deleteWaybillUpload.mockResolvedValue({
-      status: "deleted",
-      uploadId: "upload-id"
+    apiMock.cancelWaybillUpload.mockResolvedValue({
+      status: "cancelled",
+      uploadId: "upload-id",
+      refundedAmount: "15.00",
+      balanceAfterRefund: "35.00",
+      record: {}
     });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
   it("renders submitted waybills for admins", async () => {
@@ -198,19 +200,30 @@ describe("WaybillUploadManagementPage", () => {
     });
   });
 
-  it("deletes upload records", async () => {
+  it("cancels uploads with an audit reason and reports the refund", async () => {
     render(<WaybillUploadManagementPage />);
 
     expect(await screen.findByText("784-84063276")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Delete local upload 784-84063276"
+        name: "Cancel waybill 784-84063276"
       })
     );
+    expect(
+      await screen.findByRole("dialog", { name: "Cancel 784-84063276" })
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Cancellation reason"), {
+      target: { value: "Incorrect Pre Alert file" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm cancellation" }));
 
     await waitFor(() => {
-      expect(apiMock.deleteWaybillUpload).toHaveBeenCalledWith("upload-id");
+      expect(apiMock.cancelWaybillUpload).toHaveBeenCalledWith(
+        "upload-id",
+        "Incorrect Pre Alert file"
+      );
     });
+    expect(await screen.findByText(/€15.00 returned/)).toBeInTheDocument();
   });
 
   it("redirects regular users back to uploads", async () => {

@@ -1,0 +1,268 @@
+.loadingPage {
+  align-items: center;
+  background: #f3f6fa;
+  color: #667085;
+  display: flex;
+  font-weight: 800;
+  gap: 10px;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.workspace {
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  max-width: 1440px;
+  padding: 28px;
+}
+
+.pageHeader,
+.recordHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.pageHeader h2,
+.recordHeader h3 {
+  color: var(--text);
+  margin: 0;
+}
+
+.pageHeader h2 {
+  font-size: 28px;
+}
+
+.pageHeader > div > p:last-child {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 6px 0 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.pageHeader button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 900;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 15px;
+}
+
+.pageHeader button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.summaryGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summaryGrid article {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  min-height: 88px;
+  padding: 16px;
+}
+
+.summaryIcon {
+  align-items: center;
+  background: #fff1f2;
+  border: 1px solid #ffe4e6;
+  border-radius: 8px;
+  color: #be123c;
+  display: inline-flex;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.summaryGrid small,
+.summaryGrid strong {
+  display: block;
+}
+
+.summaryGrid small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.summaryGrid strong {
+  color: var(--text);
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+.errorBanner {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  color: #be123c;
+  font-weight: 800;
+  padding: 12px 14px;
+}
+
+.recordCard {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.recordHeader h3 {
+  font-size: 20px;
+}
+
+.recordHeader > span {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  border-collapse: collapse;
+  min-width: 1420px;
+  width: 100%;
+}
+
+.tableWrap th,
+.tableWrap td {
+  border-bottom: 1px solid #eaecf0;
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tableWrap th {
+  background: #f8fafc;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tableWrap td {
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tableWrap td strong,
+.tableWrap td small,
+.tableWrap td span {
+  display: block;
+}
+
+.tableWrap td small {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.routeArrow {
+  color: #98a2b3;
+  display: inline !important;
+  margin: 0 5px;
+}
+
+.statusPill {
+  background: #f2f4f7;
+  border-radius: 999px;
+  color: #475467;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 5px 8px;
+  text-transform: capitalize;
+  width: fit-content;
+}
+
+.refundValue {
+  color: #047857 !important;
+  white-space: nowrap;
+}
+
+.reason {
+  line-height: 1.45;
+  max-width: 250px;
+  min-width: 170px;
+  overflow-wrap: anywhere;
+}
+
+.emptyState {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-height: 240px;
+  text-align: center;
+}
+
+.emptyState svg {
+  color: #be123c;
+  margin-bottom: 4px;
+}
+
+.emptyState strong {
+  color: var(--text);
+}
+
+.emptyState span {
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    padding: 18px 14px;
+  }
+
+  .pageHeader {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .pageHeader button {
+    justify-content: center;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}

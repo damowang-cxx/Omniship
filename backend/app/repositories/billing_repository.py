@@ -41,12 +41,41 @@ class BillingRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
+    def get_reversal_for_entry_for_update(
+        self, entry_id: UUID
+    ) -> BillingEntry | None:
+        statement = (
+            select(BillingEntry)
+            .where(
+                BillingEntry.reversal_of_entry_id == entry_id,
+                BillingEntry.entry_type == "deduction_reversal",
+            )
+            .with_for_update()
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
     def get_deduction_for_upload(self, upload_id: UUID) -> BillingEntry | None:
         statement = select(BillingEntry).where(
             BillingEntry.waybill_upload_id == upload_id,
             BillingEntry.entry_type == "deduction",
         )
         return self.db.execute(statement).scalar_one_or_none()
+
+    def get_deduction_for_upload_for_update(
+        self, upload_id: UUID
+    ) -> BillingEntry | None:
+        statement = (
+            select(BillingEntry)
+            .where(
+                BillingEntry.waybill_upload_id == upload_id,
+                BillingEntry.entry_type == "deduction",
+            )
+            .with_for_update()
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
+    def delete_entry(self, entry: BillingEntry) -> None:
+        self.db.delete(entry)
 
     def create_recharge(
         self,

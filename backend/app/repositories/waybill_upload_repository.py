@@ -32,6 +32,21 @@ class WaybillUploadRepository:
         )
         return self.db.execute(statement).unique().scalar_one_or_none()
 
+    def get_by_id_for_update(self, upload_id: UUID) -> WaybillUpload | None:
+        statement = (
+            select(WaybillUpload)
+            .options(
+                joinedload(WaybillUpload.files),
+                joinedload(WaybillUpload.user),
+                joinedload(WaybillUpload.uploaded_by),
+                joinedload(WaybillUpload.supplier),
+                joinedload(WaybillUpload.supplier_version),
+            )
+            .where(WaybillUpload.id == upload_id)
+            .with_for_update(of=WaybillUpload)
+        )
+        return self.db.execute(statement).unique().scalar_one_or_none()
+
     def find_for_retroactive_billing(self, number: str) -> list[WaybillUpload]:
         normalized = normalize_waybill_number(number)
         statement = (

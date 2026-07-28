@@ -245,6 +245,7 @@ describe("WaybillUploadsPage", () => {
     expect(await screen.findByRole("heading", { name: "Upload Pre Alert" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Target User")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Waybill Management/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Cancelled Waybills/ })).not.toBeInTheDocument();
   });
 
   it("shows target user and management navigation for admins", async () => {
@@ -256,6 +257,10 @@ describe("WaybillUploadsPage", () => {
     expect(screen.getByRole("link", { name: /Waybill Management/ })).toHaveAttribute(
       "href",
       "/waybill-upload-management"
+    );
+    expect(screen.getByRole("link", { name: /Cancelled Waybills/ })).toHaveAttribute(
+      "href",
+      "/cancelled-waybills"
     );
     expect(screen.getByText("Manage submitted waybills")).toBeInTheDocument();
     expect(apiMock.listWaybillUploads).not.toHaveBeenCalled();

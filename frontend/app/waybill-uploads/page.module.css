@@ -373,6 +373,114 @@
   width: min(100%, 620px);
 }
 
+.cancelDialog {
+  background: #ffffff;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+  display: grid;
+  gap: 18px;
+  max-width: 620px;
+  padding: 20px;
+  width: min(100%, 620px);
+}
+
+.cancelImpact {
+  align-items: flex-start;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #c2410c;
+  display: flex;
+  gap: 11px;
+  padding: 13px;
+}
+
+.cancelImpact svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.cancelImpact strong,
+.cancelImpact span {
+  display: block;
+}
+
+.cancelImpact strong {
+  color: #9a3412;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.cancelImpact span {
+  color: #b45309;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cancelReasonField {
+  color: #344054;
+  display: grid;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 8px;
+}
+
+.cancelReasonField textarea {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 11px;
+  resize: vertical;
+}
+
+.cancelReasonField textarea:focus {
+  border-color: #e11d48;
+  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.1);
+  outline: 0;
+}
+
+.cancelReasonField small {
+  color: var(--muted);
+  font-weight: 700;
+  justify-self: end;
+}
+
+.cancelDialogFooter {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.cancelDialogFooter button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.cancelDialogFooter button:first-child {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: #475467;
+}
+
+.cancelDialogFooter button:last-child {
+  background: #be123c;
+  border: 1px solid #be123c;
+  color: #ffffff;
+}
+
+.cancelDialogFooter button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .dialogHeader {
   align-items: center;
   display: grid;

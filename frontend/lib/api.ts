@@ -4,6 +4,8 @@ import type {
   BillingAccountResponse,
   BillingSettingsItem,
   BillingTaxEstimateResponse,
+  CancelledWaybillListResponse,
+  CancelWaybillResponse,
   RetroactiveBillingResponse,
   SupplierItem,
   SupplierListResponse,
@@ -438,6 +440,25 @@ export async function deleteWaybillUpload(
   );
   invalidateWaybillCaches();
   return response;
+}
+
+export async function cancelWaybillUpload(
+  uploadId: string,
+  reason: string
+): Promise<CancelWaybillResponse> {
+  const response = await requestJson<CancelWaybillResponse>(
+    `/api/v1/waybill-uploads/${uploadId}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    }
+  );
+  invalidateWaybillCaches();
+  return response;
+}
+
+export function listCancelledWaybills(): Promise<CancelledWaybillListResponse> {
+  return requestJson<CancelledWaybillListResponse>("/api/v1/cancelled-waybills");
 }
 
 export function getWaybillUploadFileDownloadUrl(

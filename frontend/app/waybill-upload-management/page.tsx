@@ -2,11 +2,11 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, Download, Eye, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArchiveX, Check, Download, Eye, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
-  deleteWaybillUpload,
+  cancelWaybillUpload,
   getCurrentUser,
   getWaybillUploadFileDownloadUrl,
   isUnauthorizedError,
@@ -74,7 +74,9 @@ export default function WaybillUploadManagementPage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingUploads, setIsLoadingUploads] = useState(false);
-  const [deletingUploadId, setDeletingUploadId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<WaybillUploadItem | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
   const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -184,36 +186,39 @@ export default function WaybillUploadManagementPage() {
     [addMessage, refreshUploads]
   );
 
-  const handleDelete = useCallback(
-    async (upload: WaybillUploadItem) => {
-      const confirmed = window.confirm(
-        `Delete upload record for ${upload.airWaybillNumber}?`
-      );
-      if (!confirmed) {
+  const handleCancelWaybill = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!cancelTarget || !cancellationReason.trim()) {
         return;
       }
 
-      setDeletingUploadId(upload.id);
+      setIsCancelling(true);
       try {
-        await deleteWaybillUpload(upload.id);
+        const response = await cancelWaybillUpload(
+          cancelTarget.id,
+          cancellationReason.trim()
+        );
         setNotice({
           tone: "success",
-          text: `Upload deleted for ${upload.airWaybillNumber}`
+          text: `Waybill ${cancelTarget.airWaybillNumber} cancelled. €${response.refundedAmount} returned to the customer.`
         });
+        setCancelTarget(null);
+        setCancellationReason("");
         await refreshUploads();
       } catch (error) {
         if (isUnauthorizedError(error)) {
           router.replace("/");
           return;
         }
-        const message = error instanceof Error ? error.message : "Unable to delete upload";
+        const message = error instanceof Error ? error.message : "Unable to cancel waybill";
         setNotice({ tone: "error", text: message });
-        addMessage("Delete failed", message);
+        addMessage("Waybill cancellation failed", message);
       } finally {
-        setDeletingUploadId(null);
+        setIsCancelling(false);
       }
     },
-    [addMessage, refreshUploads, router]
+    [addMessage, cancelTarget, cancellationReason, refreshUploads, router]
   );
 
   const handleLogout = useCallback(async () => {
@@ -420,13 +425,16 @@ export default function WaybillUploadManagementPage() {
                               <X aria-hidden="true" size={15} />
                             </button>
                             <button
-                              aria-label={`Delete local upload ${upload.airWaybillNumber}`}
+                              aria-label={`Cancel waybill ${upload.airWaybillNumber}`}
                               className={styles.dangerButton}
-                              disabled={deletingUploadId === upload.id}
-                              onClick={() => handleDelete(upload)}
+                              disabled={isCancelling}
+                              onClick={() => {
+                                setCancelTarget(upload);
+                                setCancellationReason("");
+                              }}
                               type="button"
                             >
-                              <Trash2 aria-hidden="true" size={15} />
+                              <ArchiveX aria-hidden="true" size={15} />
                             </button>
                           </div>
                         </td>
@@ -519,6 +527,89 @@ export default function WaybillUploadManagementPage() {
           )}
         </section>
       </section>
+
+      {cancelTarget && (
+        <div
+          className={styles.dialogBackdrop}
+          onMouseDown={() => {
+            if (!isCancelling) setCancelTarget(null);
+          }}
+          role="presentation"
+        >
+          <form
+            aria-labelledby="cancel-waybill-title"
+            aria-modal="true"
+            className={styles.cancelDialog}
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={handleCancelWaybill}
+            role="dialog"
+          >
+            <div className={styles.dialogHeader}>
+              <span className={styles.dialogIcon}>
+                <ArchiveX aria-hidden="true" size={20} />
+              </span>
+              <div>
+                <p className={styles.eyebrow}>Permanent business cancellation</p>
+                <h3 id="cancel-waybill-title">
+                  Cancel {cancelTarget.airWaybillNumber}
+                </h3>
+              </div>
+              <button
+                aria-label="Close cancellation dialog"
+                className={styles.dialogClose}
+                disabled={isCancelling}
+                onClick={() => setCancelTarget(null)}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
+
+            <div className={styles.cancelImpact}>
+              <AlertTriangle aria-hidden="true" size={19} />
+              <div>
+                <strong>This action cannot be undone.</strong>
+                <span>
+                  The waybill, tracking data and files will be removed. Its customs
+                  deduction records will be deleted and any tax not already reversed
+                  will be returned to {cancelTarget.user?.email ?? "the customer"}.
+                </span>
+              </div>
+            </div>
+
+            <label className={styles.cancelReasonField}>
+              Cancellation reason
+              <textarea
+                aria-label="Cancellation reason"
+                autoFocus
+                maxLength={500}
+                onChange={(event) => setCancellationReason(event.target.value)}
+                placeholder="Describe the upload error or reason for cancellation"
+                required
+                rows={4}
+                value={cancellationReason}
+              />
+              <small>{cancellationReason.length}/500</small>
+            </label>
+
+            <div className={styles.cancelDialogFooter}>
+              <button
+                disabled={isCancelling}
+                onClick={() => setCancelTarget(null)}
+                type="button"
+              >
+                Keep waybill
+              </button>
+              <button
+                disabled={isCancelling || !cancellationReason.trim()}
+                type="submit"
+              >
+                {isCancelling ? "Cancelling..." : "Confirm cancellation"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </AppShell>
   );
 }

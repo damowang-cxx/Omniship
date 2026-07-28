@@ -1,6 +1,9 @@
 from io import BytesIO
 
-from app.db.models import AuditLog
+from decimal import Decimal
+from uuid import UUID
+
+from app.db.models import AuditLog, BillingEntry, CancelledWaybill, WaybillUpload
 from sqlalchemy import select
 
 from tests.auth_helpers import create_test_user, login
@@ -531,7 +534,7 @@ def test_user_can_delete_local_upload(client, db_session):
 
     upload_response = client.post(
         "/api/v1/waybill-uploads/file",
-        data=pre_alert_data(),
+        data=pre_alert_data(airportOfArrival="LHR"),
         files=pre_alert_files(),
     )
     assert upload_response.status_code == 201
@@ -553,6 +556,139 @@ def test_user_can_delete_local_upload(client, db_session):
         for row in db_session.execute(select(AuditLog)).scalars().all()
     }
     assert "delete_waybill_upload" in actions
+
+
+def test_admin_cancels_billed_waybill_refunds_and_archives_it(client, db_session):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    user = create_test_user(
+        db_session,
+        email="user@example.com",
+        username="User",
+        balance="50.00",
+    )
+    assert login(client, email=user.email).status_code == 200
+
+    upload_response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(),
+        files=pre_alert_files(),
+    )
+    assert upload_response.status_code == 201
+    upload_id = upload_response.json()["uploadId"]
+    assert upload_response.json()["deductedTax"] == "3.00"
+
+    blocked_delete = client.delete(f"/api/v1/waybill-uploads/{upload_id}")
+    assert blocked_delete.status_code == 409
+    assert "must be cancelled" in blocked_delete.text
+
+    assert login(client, email=admin.email).status_code == 200
+    approve_response = client.patch(
+        f"/api/v1/waybill-uploads/{upload_id}/status",
+        json={"status": "approved"},
+    )
+    assert approve_response.status_code == 200
+
+    cancel_response = client.post(
+        f"/api/v1/waybill-uploads/{upload_id}/cancel",
+        json={"reason": "Incorrect Pre Alert file"},
+    )
+    assert cancel_response.status_code == 200
+    body = cancel_response.json()
+    assert body["status"] == "cancelled"
+    assert body["uploadId"] == upload_id
+    assert body["refundedAmount"] == "3.00"
+    assert body["balanceAfterRefund"] == "50.00"
+    assert body["record"]["airWaybillNumber"] == "784-84063276"
+    assert body["record"]["taxAmountDeleted"] == "3.00"
+    assert body["record"]["reason"] == "Incorrect Pre Alert file"
+
+    db_session.expire_all()
+    assert db_session.get(WaybillUpload, UUID(upload_id)) is None
+    assert db_session.execute(select(BillingEntry)).scalars().all() == []
+    db_session.refresh(user)
+    assert user.balance == Decimal("50.00")
+
+    archived = db_session.execute(select(CancelledWaybill)).scalar_one()
+    assert archived.original_upload_id == UUID(upload_id)
+    assert archived.original_status == "approved"
+    assert archived.user_email == user.email
+    assert archived.cancelled_by_email == admin.email
+    assert archived.refunded_amount == Decimal("3.00")
+
+    list_response = client.get("/api/v1/cancelled-waybills")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["originalUploadId"] == upload_id
+
+    actions = {
+        row.action
+        for row in db_session.execute(select(AuditLog)).scalars().all()
+    }
+    assert "cancel_waybill_upload" in actions
+
+    assert login(client, email=user.email).status_code == 200
+    assert client.get("/api/v1/cancelled-waybills").status_code == 403
+    assert (
+        client.post(
+            f"/api/v1/waybill-uploads/{upload_id}/cancel",
+            json={"reason": "Not authorized"},
+        ).status_code
+        == 403
+    )
+
+
+def test_waybill_cancellation_does_not_refund_tax_twice(client, db_session):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    user = create_test_user(
+        db_session,
+        email="user@example.com",
+        username="User",
+        balance="50.00",
+    )
+    assert login(client, email=user.email).status_code == 200
+    upload_response = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=pre_alert_data(airWaybillNumber="176-28780776"),
+        files=pre_alert_files(),
+    )
+    assert upload_response.status_code == 201
+    upload_id = upload_response.json()["uploadId"]
+
+    deduction = db_session.execute(
+        select(BillingEntry).where(BillingEntry.waybill_upload_id == UUID(upload_id))
+    ).scalar_one()
+    assert login(client, email=admin.email).status_code == 200
+    reversal_response = client.post(
+        f"/api/v1/billing/users/{user.id}/deductions/{deduction.id}/cancel"
+    )
+    assert reversal_response.status_code == 200
+    db_session.refresh(user)
+    assert user.balance == Decimal("50.00")
+
+    cancel_response = client.post(
+        f"/api/v1/waybill-uploads/{upload_id}/cancel",
+        json={"reason": "Duplicate upload"},
+    )
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["refundedAmount"] == "0.00"
+    assert cancel_response.json()["balanceAfterRefund"] == "50.00"
+
+    db_session.expire_all()
+    db_session.refresh(user)
+    assert user.balance == Decimal("50.00")
+    assert db_session.execute(select(BillingEntry)).scalars().all() == []
+    archived = db_session.execute(select(CancelledWaybill)).scalar_one()
+    assert archived.tax_amount_deleted == Decimal("3.00")
+    assert archived.refunded_amount == Decimal("0.00")
 
 
 def test_admin_filters_uploads_and_users_cannot_filter_into_other_users(
