@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownRight, ArrowUpLeft, ReceiptText, RefreshCw, WalletCards } from "lucide-react";
+import { ArrowDownRight, ArrowUpLeft, FileDown, ReceiptText, RefreshCw, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
+  exportBillingAccount,
   getMyBillingAccount,
   isUnauthorizedError,
   logout
@@ -33,6 +34,7 @@ export default function BillingPage() {
   const [deductions, setDeductions] = useState<BillingEntryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const loadAccount = useCallback(async () => {
     setIsLoading(true);
@@ -61,6 +63,26 @@ export default function BillingPage() {
   useEffect(() => {
     void loadAccount();
   }, [loadAccount]);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    setError(null);
+    try {
+      await exportBillingAccount();
+    } catch (exportError) {
+      if (isUnauthorizedError(exportError)) {
+        router.replace("/");
+        return;
+      }
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : "Unable to export billing details"
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }, [router]);
 
   if (isLoading && !user) {
     return <main className={styles.loadingPage}>Loading billing account...</main>;
@@ -121,7 +143,17 @@ export default function BillingPage() {
               <p>Customer billing</p>
               <h3>Deduction entries</h3>
             </div>
-            <span>{deductions.length} records</span>
+            <div className={styles.ledgerActions}>
+              <span>{deductions.length} records</span>
+              <button
+                disabled={isExporting}
+                onClick={() => void handleExport()}
+                type="button"
+              >
+                <FileDown aria-hidden="true" size={16} />
+                {isExporting ? "Exporting..." : "Export Excel"}
+              </button>
+            </div>
           </div>
 
           {deductions.length ? (

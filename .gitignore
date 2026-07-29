@@ -16,6 +16,7 @@ venv/
 node_modules/
 .next/
 out/
+outputs/
 coverage/
 playwright-report/
 test-results/

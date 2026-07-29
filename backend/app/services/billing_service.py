@@ -2,7 +2,7 @@ import hashlib
 import logging
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from uuid import UUID
@@ -30,6 +30,7 @@ from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.user import UserPublic
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
+from app.services.billing_export_service import build_billing_workbook
 
 
 RECEIPT_MAX_BYTES = 10 * 1024 * 1024
@@ -90,6 +91,39 @@ class BillingService:
             deductions=deductions,
             recharges=recharges,
         )
+
+    def export_account(
+        self,
+        *,
+        actor: User,
+        request: Request,
+        user_id: UUID | None = None,
+    ) -> tuple[bytes, str]:
+        account = self.get_account(actor=actor, user_id=user_id)
+        content = build_billing_workbook(account)
+        safe_name = re.sub(
+            r"[^a-zA-Z0-9_-]+",
+            "-",
+            account.user.email.split("@", 1)[0],
+        ).strip("-") or "customer"
+        filename = (
+            f"epix-billing-{safe_name}-"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+        )
+        self.audit_logs.create(
+            "export_billing_excel",
+            actor_user_id=actor.id,
+            target_type="user",
+            target_id=str(account.user.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={
+                "recordCount": len(account.deductions),
+                "filename": filename,
+            },
+        )
+        self.db.commit()
+        return content, filename
 
     async def recharge(
         self,

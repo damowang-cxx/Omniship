@@ -4,6 +4,7 @@ import BillingPage from "./page";
 
 const routerMock = vi.hoisted(() => ({ replace: vi.fn() }));
 const apiMock = vi.hoisted(() => ({
+  exportBillingAccount: vi.fn(),
   getMyBillingAccount: vi.fn(),
   isUnauthorizedError: vi.fn((error: unknown) =>
     error instanceof Error && error.message.includes("401")
@@ -55,6 +56,9 @@ describe("BillingPage", () => {
       ],
       recharges: []
     });
+    apiMock.exportBillingAccount.mockResolvedValue(
+      "epix-billing-user-20260729.xlsx"
+    );
   });
 
   it("shows balance and deduction entries for a customer", async () => {
@@ -74,5 +78,14 @@ describe("BillingPage", () => {
     render(<BillingPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(apiMock.getMyBillingAccount).toHaveBeenCalledTimes(2));
+  });
+
+  it("exports the signed-in customer's billing workbook", async () => {
+    render(<BillingPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Export Excel" }));
+    await waitFor(() => {
+      expect(apiMock.exportBillingAccount).toHaveBeenCalledWith();
+    });
   });
 });

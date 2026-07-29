@@ -8,6 +8,7 @@ const apiMock = vi.hoisted(() => ({
   cancelDeduction: vi.fn(),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
+  exportBillingAccount: vi.fn(),
   getCurrentUser: vi.fn(),
   getRechargeReceiptUrl: vi.fn(
     (userId: string, entryId: string) => `/receipt/${userId}/${entryId}`
@@ -58,6 +59,9 @@ describe("UsersPage", () => {
       deductions: [],
       recharges: []
     });
+    apiMock.exportBillingAccount.mockResolvedValue(
+      "epix-billing-operator-20260729.xlsx"
+    );
     apiMock.rechargeUser.mockResolvedValue({
       user: { ...operatorUser, balance: "25.00" },
       deductions: [],
@@ -176,6 +180,17 @@ describe("UsersPage", () => {
       expect(apiMock.rechargeUser).toHaveBeenCalledWith("user-id", "25.00", null);
     });
     expect(await screen.findByText("+€25.00")).toBeInTheDocument();
+  });
+
+  it("exports the selected customer's deduction entries", async () => {
+    render(<UsersPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "operator@example.com" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export Excel" }));
+
+    await waitFor(() => {
+      expect(apiMock.exportBillingAccount).toHaveBeenCalledWith("user-id");
+    });
   });
 
   it("cancels a deduction and displays the refund as an audit entry", async () => {

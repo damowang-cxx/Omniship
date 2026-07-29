@@ -1,5 +1,6 @@
 from io import BytesIO
 
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -9,8 +10,6 @@ from app.services.supplier_defaults import QLS_SUPPLIER_ID
 
 
 def pre_alert_estimate_workbook() -> bytes:
-    from openpyxl import Workbook
-
     workbook = Workbook()
     sheet = workbook.active
     sheet.append([f"Column {index}" for index in range(1, 24)])
@@ -203,6 +202,97 @@ def test_admin_cancels_customs_tax_once_and_keeps_an_audit_entry(
         f"/api/v1/billing/users/{user.id}/deductions/{deduction.id}/cancel"
     )
     assert forbidden.status_code == 403
+
+
+def test_users_and_admins_export_customer_billing_as_excel(client, db_session):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    user = create_test_user(
+        db_session,
+        email="customer@example.com",
+        username="Customer",
+        balance="20.00",
+    )
+    deduction = BillingEntry(
+        user_id=user.id,
+        entry_type="deduction",
+        amount="15.00",
+        currency="EUR",
+        balance_after="5.00",
+        waybill_number="784-84063276",
+        supplier_name="QLS",
+        supplier_version_number=3,
+        arrival_airport="AMS",
+        billable_unit_count=5,
+        unit_rate="3.00",
+        billing_source="upload",
+        created_by_user_id=admin.id,
+    )
+    db_session.add(deduction)
+    db_session.flush()
+    reversal = BillingEntry(
+        user_id=user.id,
+        entry_type="deduction_reversal",
+        amount="15.00",
+        currency="EUR",
+        balance_after="20.00",
+        waybill_number="784-84063276",
+        supplier_name="QLS",
+        supplier_version_number=3,
+        arrival_airport="AMS",
+        billable_unit_count=5,
+        unit_rate="3.00",
+        billing_source="cancellation",
+        reversal_of_entry_id=deduction.id,
+        created_by_user_id=admin.id,
+    )
+    db_session.add(reversal)
+    db_session.commit()
+
+    assert login(client, email=user.email).status_code == 200
+    own_export = client.get("/api/v1/billing/me/export")
+    assert own_export.status_code == 200
+    assert own_export.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "epix-billing-customer-" in own_export.headers["content-disposition"]
+
+    workbook = load_workbook(BytesIO(own_export.content), data_only=False)
+    sheet = workbook["Customer Billing"]
+    assert sheet["A1"].value == "EPIX · CUSTOMER BILLING"
+    assert sheet["A5"].value == "Customer"
+    assert sheet["D5"].value == "customer@example.com"
+    assert sheet["H5"].value == 20
+    assert sheet.freeze_panes == "A9"
+    assert sheet.auto_filter.ref == "A8:M10"
+    rows_by_entry = {
+        sheet.cell(row=row_number, column=3).value: row_number
+        for row_number in (9, 10)
+    }
+    reversal_row = rows_by_entry["Tax cancellation"]
+    deduction_row = rows_by_entry["Customs tax deduction"]
+    assert sheet.cell(row=reversal_row, column=2).value == "784-84063276"
+    assert sheet.cell(row=reversal_row, column=11).value == 15
+    assert sheet.cell(row=deduction_row, column=4).value == "Cancelled"
+    assert sheet.cell(row=deduction_row, column=11).value == -15
+    workbook.close()
+
+    forbidden = client.get(f"/api/v1/billing/users/{admin.id}/export")
+    assert forbidden.status_code == 403
+
+    assert login(client, email=admin.email).status_code == 200
+    admin_export = client.get(f"/api/v1/billing/users/{user.id}/export")
+    assert admin_export.status_code == 200
+    assert admin_export.content == own_export.content or len(admin_export.content) > 1000
+
+    actions = {
+        row.action for row in db_session.execute(select(AuditLog)).scalars().all()
+    }
+    assert "export_billing_excel" in actions
 
 
 def test_estimates_three_euros_for_each_eu_shipment(client, db_session):

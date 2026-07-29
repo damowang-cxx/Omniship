@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowDownRight,
   ArrowUpLeft,
+  FileDown,
   Eye,
   ImageIcon,
   Plus,
@@ -19,6 +20,7 @@ import {
   cancelDeduction,
   createUser,
   deleteUser,
+  exportBillingAccount,
   getCurrentUser,
   getRechargeReceiptUrl,
   getUserBillingAccount,
@@ -70,6 +72,7 @@ export default function UsersPage() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecharging, setIsRecharging] = useState(false);
   const [cancellingDeductionId, setCancellingDeductionId] = useState<string | null>(null);
+  const [isExportingBilling, setIsExportingBilling] = useState(false);
   const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
 
   const addMessage = useCallback((title: string, body: string) => {
@@ -118,6 +121,25 @@ export default function UsersPage() {
       setIsDetailLoading(false);
     }
   }, [router]);
+
+  const handleExportBilling = useCallback(async () => {
+    if (!detailUser) return;
+    setIsExportingBilling(true);
+    setDetailError(null);
+    try {
+      await exportBillingAccount(detailUser.id);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        router.replace("/");
+        return;
+      }
+      setDetailError(
+        error instanceof Error ? error.message : "Unable to export billing details"
+      );
+    } finally {
+      setIsExportingBilling(false);
+    }
+  }, [detailUser, router]);
 
   useEffect(() => {
     async function bootstrap() {
@@ -368,6 +390,17 @@ export default function UsersPage() {
               </div>
               {billingTab === "recharges" && (
                 <button className={styles.rechargeButton} onClick={() => setIsRechargeOpen(true)} type="button"><Plus aria-hidden="true" size={16} />Recharge</button>
+              )}
+              {billingTab === "deductions" && (
+                <button
+                  className={styles.exportButton}
+                  disabled={isExportingBilling}
+                  onClick={() => void handleExportBilling()}
+                  type="button"
+                >
+                  <FileDown aria-hidden="true" size={16} />
+                  {isExportingBilling ? "Exporting..." : "Export Excel"}
+                </button>
               )}
             </div>
 

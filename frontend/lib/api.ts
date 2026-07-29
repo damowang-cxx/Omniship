@@ -305,6 +305,37 @@ export function getUserBillingAccount(
   return requestJson<BillingAccountResponse>(`/api/v1/billing/users/${userId}`);
 }
 
+export async function exportBillingAccount(userId?: string): Promise<string> {
+  const path = userId
+    ? `/api/v1/billing/users/${userId}/export`
+    : "/api/v1/billing/me/export";
+  const response = await fetch(getRequestUrl(path), {
+    credentials: "include"
+  });
+  if (!response.ok) {
+    if (response.status === 401) clearClientCache();
+    const detail = await response.text();
+    const parsedDetail = parseErrorDetail(detail);
+    throw new Error(
+      `Request failed with ${response.status}${parsedDetail ? `: ${parsedDetail}` : ""}`
+    );
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+  const filename = filenameMatch?.[1] ?? "epix-customer-billing.xlsx";
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return filename;
+}
+
 export function rechargeUser(
   userId: string,
   amount: string,

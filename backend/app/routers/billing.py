@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_admin
@@ -53,6 +53,25 @@ def get_my_billing_account(
     return BillingService(db).get_account(actor=current_user)
 
 
+@router.get("/me/export")
+def export_my_billing_account(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    content, filename = BillingService(db).export_account(
+        actor=current_user,
+        request=request,
+    )
+    return Response(
+        content=content,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/users/{user_id}", response_model=BillingAccountResponse)
 def get_user_billing_account(
     user_id: UUID,
@@ -63,6 +82,30 @@ def get_user_billing_account(
         return BillingService(db).get_account(actor=current_user, user_id=user_id)
     except (BillingPermissionError, BillingValidationError) as exc:
         raise _billing_error(exc) from exc
+
+
+@router.get("/users/{user_id}/export")
+def export_user_billing_account(
+    user_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    try:
+        content, filename = BillingService(db).export_account(
+            actor=current_user,
+            request=request,
+            user_id=user_id,
+        )
+    except (BillingPermissionError, BillingValidationError) as exc:
+        raise _billing_error(exc) from exc
+    return Response(
+        content=content,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/users/{user_id}/recharges", response_model=BillingAccountResponse)
