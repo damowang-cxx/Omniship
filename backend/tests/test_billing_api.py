@@ -122,6 +122,80 @@ def test_recharge_validates_amount_and_image(client, db_session):
     assert "valid image" in invalid_image.text
 
 
+def test_admin_cancels_recharge_once_and_allows_negative_balance(
+    client, db_session
+):
+    admin = create_test_user(
+        db_session,
+        email="admin@example.com",
+        username="Admin",
+        role="admin",
+    )
+    user = create_test_user(
+        db_session,
+        email="user@example.com",
+        username="User",
+        balance="5.00",
+    )
+    recharge = BillingEntry(
+        user_id=user.id,
+        entry_type="recharge",
+        amount="25.00",
+        currency="EUR",
+        balance_after="25.00",
+        created_by_user_id=admin.id,
+    )
+    db_session.add(recharge)
+    db_session.commit()
+
+    assert login(client, email=admin.email).status_code == 200
+    response = client.post(
+        f"/api/v1/billing/users/{user.id}/recharges/{recharge.id}/cancel"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user"]["balance"] == "-20.00"
+    assert body["deductions"] == []
+    assert len(body["recharges"]) == 2
+    reversal = next(
+        entry
+        for entry in body["recharges"]
+        if entry["entryType"] == "recharge_reversal"
+    )
+    original = next(
+        entry for entry in body["recharges"] if entry["entryType"] == "recharge"
+    )
+    assert reversal["amount"] == "25.00"
+    assert reversal["balanceAfter"] == "-20.00"
+    assert reversal["billingSource"] == "cancellation"
+    assert reversal["reversalOfEntryId"] == str(recharge.id)
+    assert reversal["receipt"] is None
+    assert original["reversedByEntryId"] == reversal["id"]
+
+    duplicate = client.post(
+        f"/api/v1/billing/users/{user.id}/recharges/{recharge.id}/cancel"
+    )
+    assert duplicate.status_code == 409
+    assert "already been cancelled" in duplicate.text
+
+    db_session.expire_all()
+    db_session.refresh(user)
+    assert str(user.balance) == "-20.00"
+    entries = db_session.execute(select(BillingEntry)).scalars().all()
+    assert len(entries) == 2
+    actions = {
+        row.action for row in db_session.execute(select(AuditLog)).scalars().all()
+    }
+    assert "cancel_recharge" in actions
+
+    assert login(client, email=user.email).status_code == 200
+    forbidden = client.post(
+        f"/api/v1/billing/users/{user.id}/recharges/{recharge.id}/cancel"
+    )
+    assert forbidden.status_code == 403
+
+
 def test_admin_cancels_customs_tax_once_and_keeps_an_audit_entry(
     client, db_session
 ):

@@ -18,6 +18,7 @@ import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   cancelDeduction,
+  cancelRecharge,
   createUser,
   deleteUser,
   exportBillingAccount,
@@ -72,6 +73,7 @@ export default function UsersPage() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecharging, setIsRecharging] = useState(false);
   const [cancellingDeductionId, setCancellingDeductionId] = useState<string | null>(null);
+  const [cancellingRechargeId, setCancellingRechargeId] = useState<string | null>(null);
   const [isExportingBilling, setIsExportingBilling] = useState(false);
   const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
 
@@ -260,6 +262,36 @@ export default function UsersPage() {
       );
     } finally {
       setCancellingDeductionId(null);
+    }
+  }
+
+  async function handleCancelRecharge(entry: BillingEntryItem) {
+    if (!detailUser || entry.entryType !== "recharge" || entry.reversedByEntryId) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Cancel this recharge of ${formatEuro(entry.amount)}? The amount will be deducted from the customer balance and the balance may become negative.`
+    );
+    if (!confirmed) return;
+
+    setCancellingRechargeId(entry.id);
+    setDetailError(null);
+    try {
+      const account = await cancelRecharge(detailUser.id, entry.id);
+      setBilling(account);
+      setDetailUser(account.user);
+      setBillingTab("recharges");
+      await refreshUsers();
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        router.replace("/");
+        return;
+      }
+      setDetailError(
+        error instanceof Error ? error.message : "Unable to cancel recharge"
+      );
+    } finally {
+      setCancellingRechargeId(null);
     }
   }
 
@@ -455,12 +487,49 @@ export default function UsersPage() {
               ) : <div className={styles.modalEmpty}><ReceiptText aria-hidden="true" size={26} /><strong>No deduction entries</strong><span>Posted waybill tax charges will appear here.</span></div>
             ) : billing?.recharges.length ? (
               <div className={styles.ledgerTableWrap}>
-                <table><thead><tr><th>Recharge Time</th><th>Amount</th><th>Balance After</th><th>Receipt</th></tr></thead><tbody>
-                  {billing.recharges.map((entry) => (
-                    <tr key={entry.id}><td>{formatDateTime(entry.createdAt)}</td><td><span className={styles.rechargeAmount}>+{formatEuro(entry.amount)}</span></td><td>{formatEuro(entry.balanceAfter)}</td><td>
-                      {entry.receipt ? <button className={styles.receiptThumb} onClick={() => setReceiptPreview({ url: getRechargeReceiptUrl(detailUser.id, entry.id), name: entry.receipt?.originalFilename || "Receipt" })} type="button"><img alt={entry.receipt.originalFilename} src={getRechargeReceiptUrl(detailUser.id, entry.id)} /><Eye aria-hidden="true" size={14} /></button> : <span className={styles.noReceipt}>No receipt</span>}
-                    </td></tr>
-                  ))}
+                <table><thead><tr><th>Recharge Time</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Receipt</th><th>Action</th></tr></thead><tbody>
+                  {billing.recharges.map((entry) => {
+                    const isReversal = entry.entryType === "recharge_reversal";
+                    return (
+                      <tr className={isReversal ? styles.rechargeReversalRow : undefined} key={entry.id}>
+                        <td>{formatDateTime(entry.createdAt)}</td>
+                        <td>{isReversal ? <span className={styles.rechargeCancellationTag}>Recharge cancellation</span> : "Recharge"}</td>
+                        <td>
+                          {isReversal ? (
+                            <span className={styles.rechargeReversalAmount}><ArrowDownRight aria-hidden="true" size={14} />-{formatEuro(entry.amount)}</span>
+                          ) : (
+                            <span className={styles.rechargeAmount}>+{formatEuro(entry.amount)}</span>
+                          )}
+                        </td>
+                        <td>{formatEuro(entry.balanceAfter)}</td>
+                        <td>
+                          {isReversal ? (
+                            <span className={styles.ledgerNote}>Correction record</span>
+                          ) : entry.receipt ? (
+                            <button className={styles.receiptThumb} onClick={() => setReceiptPreview({ url: getRechargeReceiptUrl(detailUser.id, entry.id), name: entry.receipt?.originalFilename || "Receipt" })} type="button"><img alt={entry.receipt.originalFilename} src={getRechargeReceiptUrl(detailUser.id, entry.id)} /><Eye aria-hidden="true" size={14} /></button>
+                          ) : (
+                            <span className={styles.noReceipt}>No receipt</span>
+                          )}
+                        </td>
+                        <td>
+                          {isReversal ? (
+                            <span className={styles.ledgerNote}>Reversal record</span>
+                          ) : entry.reversedByEntryId ? (
+                            <span className={styles.cancelledTag}>Cancelled</span>
+                          ) : (
+                            <button
+                              className={styles.cancelTaxButton}
+                              disabled={cancellingRechargeId === entry.id}
+                              onClick={() => void handleCancelRecharge(entry)}
+                              type="button"
+                            >
+                              {cancellingRechargeId === entry.id ? "Cancelling..." : "Cancel recharge"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody></table>
               </div>
             ) : <div className={styles.modalEmpty}><WalletCards aria-hidden="true" size={26} /><strong>No recharge records</strong><span>Add the first account recharge for this customer.</span></div>}

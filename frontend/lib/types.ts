@@ -35,7 +35,7 @@ export interface BillingReceiptItem {
 
 export interface BillingEntryItem {
   id: string;
-  entryType: "recharge" | "deduction" | "deduction_reversal";
+  entryType: "recharge" | "recharge_reversal" | "deduction" | "deduction_reversal";
   amount: string;
   currency: string;
   balanceAfter: string;

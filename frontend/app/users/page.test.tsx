@@ -6,6 +6,7 @@ const routerMock = vi.hoisted(() => ({ replace: vi.fn() }));
 
 const apiMock = vi.hoisted(() => ({
   cancelDeduction: vi.fn(),
+  cancelRecharge: vi.fn(),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
   exportBillingAccount: vi.fn(),
@@ -112,6 +113,31 @@ describe("UsersPage", () => {
       ],
       recharges: []
     });
+    apiMock.cancelRecharge.mockResolvedValue({
+      user: { ...operatorUser, balance: "-15.00" },
+      deductions: [],
+      recharges: [
+        {
+          id: "recharge-reversal-id",
+          entryType: "recharge_reversal",
+          amount: "25.00",
+          currency: "EUR",
+          balanceAfter: "-15.00",
+          billingSource: "cancellation",
+          reversalOfEntryId: "recharge-id",
+          createdAt: "2026-08-03T11:00:00Z"
+        },
+        {
+          id: "recharge-id",
+          entryType: "recharge",
+          amount: "25.00",
+          currency: "EUR",
+          balanceAfter: "25.00",
+          reversedByEntryId: "recharge-reversal-id",
+          createdAt: "2026-08-03T10:00:00Z"
+        }
+      ]
+    });
     apiMock.createUser.mockResolvedValue({ id: "new-user" });
     apiMock.deleteUser.mockResolvedValue({ status: "deleted" });
     apiMock.updateUserStatus.mockResolvedValue({ id: "user-id" });
@@ -191,6 +217,41 @@ describe("UsersPage", () => {
     await waitFor(() => {
       expect(apiMock.exportBillingAccount).toHaveBeenCalledWith("user-id");
     });
+  });
+
+  it("cancels a recharge and displays the correcting ledger entry", async () => {
+    apiMock.getUserBillingAccount.mockResolvedValueOnce({
+      user: { ...operatorUser, balance: "10.00" },
+      deductions: [],
+      recharges: [
+        {
+          id: "recharge-id",
+          entryType: "recharge",
+          amount: "25.00",
+          currency: "EUR",
+          balanceAfter: "25.00",
+          createdAt: "2026-08-03T10:00:00Z"
+        }
+      ]
+    });
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<UsersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "operator@example.com" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Recharge records" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel recharge" }));
+
+    await waitFor(() => {
+      expect(apiMock.cancelRecharge).toHaveBeenCalledWith("user-id", "recharge-id");
+    });
+    expect(confirmMock).toHaveBeenCalledWith(
+      "Cancel this recharge of €25.00? The amount will be deducted from the customer balance and the balance may become negative."
+    );
+    expect(await screen.findByText("Recharge cancellation")).toBeInTheDocument();
+    expect(screen.getByText("-€25.00")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel recharge" })).not.toBeInTheDocument();
+    confirmMock.mockRestore();
   });
 
   it("cancels a deduction and displays the refund as an audit entry", async () => {

@@ -398,6 +398,33 @@
   color: #047857;
 }
 
+.rechargeReversalAmount {
+  align-items: center;
+  color: #be123c;
+  display: inline-flex;
+  font-weight: 900;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.rechargeReversalRow {
+  background: #fff8f8;
+}
+
+.rechargeCancellationTag {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 999px;
+  color: #be123c;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  padding: 3px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .reversalRow {
   background: #fff8f8;
 }

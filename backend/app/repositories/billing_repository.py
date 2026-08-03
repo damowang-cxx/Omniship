@@ -54,6 +54,15 @@ class BillingRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
+    def get_recharge_reversal_for_entry(
+        self, entry_id: UUID
+    ) -> BillingEntry | None:
+        statement = select(BillingEntry).where(
+            BillingEntry.reversal_of_entry_id == entry_id,
+            BillingEntry.entry_type == "recharge_reversal",
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
     def get_deduction_for_upload(self, upload_id: UUID) -> BillingEntry | None:
         statement = select(BillingEntry).where(
             BillingEntry.waybill_upload_id == upload_id,
@@ -91,6 +100,27 @@ class BillingRepository:
             amount=amount,
             currency="EUR",
             balance_after=balance_after,
+            created_by_user_id=created_by_user_id,
+        )
+        self.db.add(entry)
+        self.db.flush()
+        return entry
+
+    def create_recharge_reversal(
+        self,
+        *,
+        original: BillingEntry,
+        balance_after: Decimal,
+        created_by_user_id: UUID,
+    ) -> BillingEntry:
+        entry = BillingEntry(
+            user_id=original.user_id,
+            entry_type="recharge_reversal",
+            amount=original.amount,
+            currency=original.currency,
+            balance_after=balance_after,
+            billing_source="cancellation",
+            reversal_of_entry_id=original.id,
             created_by_user_id=created_by_user_id,
         )
         self.db.add(entry)

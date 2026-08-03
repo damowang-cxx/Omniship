@@ -130,6 +130,28 @@ async def recharge_user(
 
 
 @router.post(
+    "/users/{user_id}/recharges/{entry_id}/cancel",
+    response_model=BillingAccountResponse,
+)
+def cancel_recharge(
+    user_id: UUID,
+    entry_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> BillingAccountResponse:
+    try:
+        return BillingService(db).cancel_recharge(
+            actor=current_user,
+            user_id=user_id,
+            entry_id=entry_id,
+            request=request,
+        )
+    except (BillingPermissionError, BillingValidationError) as exc:
+        raise _billing_error(exc) from exc
+
+
+@router.post(
     "/users/{user_id}/deductions/{entry_id}/cancel",
     response_model=BillingAccountResponse,
 )

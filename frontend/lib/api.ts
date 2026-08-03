@@ -357,6 +357,16 @@ export function rechargeUser(
   );
 }
 
+export function cancelRecharge(
+  userId: string,
+  entryId: string
+): Promise<BillingAccountResponse> {
+  return requestJson<BillingAccountResponse>(
+    `/api/v1/billing/users/${userId}/recharges/${entryId}/cancel`,
+    { method: "POST" }
+  );
+}
+
 export function cancelDeduction(
   userId: string,
   entryId: string

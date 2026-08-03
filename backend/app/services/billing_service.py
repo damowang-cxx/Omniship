@@ -74,7 +74,7 @@ class BillingService:
         reversed_by_entry = {
             entry.reversal_of_entry_id: entry.id
             for entry in entries
-            if entry.entry_type == "deduction_reversal"
+            if entry.entry_type in {"deduction_reversal", "recharge_reversal"}
             and entry.reversal_of_entry_id is not None
         }
         deductions = [
@@ -85,7 +85,14 @@ class BillingService:
             for entry in entries
             if entry.entry_type in {"deduction", "deduction_reversal"}
         ]
-        recharges = [self._build_entry(entry) for entry in entries if entry.entry_type == "recharge"]
+        recharges = [
+            self._build_entry(
+                entry,
+                reversed_by_entry_id=reversed_by_entry.get(entry.id),
+            )
+            for entry in entries
+            if entry.entry_type in {"recharge", "recharge_reversal"}
+        ]
         return BillingAccountResponse(
             user=UserPublic.model_validate(user),
             deductions=deductions,
@@ -181,6 +188,65 @@ class BillingService:
             self.db.rollback()
             if saved_path is not None:
                 saved_path.unlink(missing_ok=True)
+            raise
+
+        return self.get_account(actor=actor, user_id=user.id)
+
+    def cancel_recharge(
+        self,
+        *,
+        actor: User,
+        user_id: UUID,
+        entry_id: UUID,
+        request: Request,
+    ) -> BillingAccountResponse:
+        if actor.role != "admin":
+            raise BillingPermissionError("Admin permission required")
+
+        user = self.billing.get_user_for_update(user_id)
+        if user is None:
+            raise BillingValidationError("User not found")
+        recharge = self.billing.get_entry_for_update(entry_id)
+        if recharge is None or recharge.user_id != user.id:
+            raise BillingValidationError("Recharge record not found")
+        if recharge.entry_type != "recharge":
+            raise BillingValidationError("Only recharge entries can be cancelled")
+        if self.billing.get_recharge_reversal_for_entry(recharge.id) is not None:
+            raise BillingConflictError("Recharge has already been cancelled")
+
+        reversal_amount = Decimal(recharge.amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if reversal_amount <= 0:
+            raise BillingValidationError("Recharge amount must be greater than zero")
+        user.balance = (Decimal(user.balance) - reversal_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        try:
+            reversal = self.billing.create_recharge_reversal(
+                original=recharge,
+                balance_after=user.balance,
+                created_by_user_id=actor.id,
+            )
+            self.audit_logs.create(
+                "cancel_recharge",
+                actor_user_id=actor.id,
+                target_type="billing_entry",
+                target_id=str(recharge.id),
+                ip_address=get_request_ip(request),
+                user_agent=get_request_user_agent(request),
+                metadata={
+                    "reversalEntryId": str(reversal.id),
+                    "userId": str(user.id),
+                    "amount": str(reversal_amount),
+                    "currency": recharge.currency,
+                    "balanceAfter": str(user.balance),
+                },
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
             raise
 
         return self.get_account(actor=actor, user_id=user.id)
