@@ -4,6 +4,9 @@ import type {
   BillingAccountResponse,
   BillingSettingsItem,
   BillingTaxEstimateResponse,
+  InvoiceEligibleDeductionItem,
+  InvoiceItem,
+  InvoiceSettingsItem,
   CancelledWaybillListResponse,
   CancelWaybillResponse,
   RetroactiveBillingResponse,
@@ -217,6 +220,17 @@ export function updateUserStatus(
   });
 }
 
+export function updateUserPayer(
+  userId: string,
+  companyName: string,
+  addressInfo: string
+): Promise<AppUser> {
+  return requestJson<AppUser>(`/api/v1/users/${userId}/payer`, {
+    method: "PATCH",
+    body: JSON.stringify({ companyName, addressInfo })
+  });
+}
+
 export function resetUserPassword(
   userId: string,
   password: string
@@ -297,6 +311,81 @@ export async function applyRetroactiveBilling(
 
 export function getMyBillingAccount(): Promise<BillingAccountResponse> {
   return requestJson<BillingAccountResponse>("/api/v1/billing/me");
+}
+
+function downloadBlob(blob: Blob, disposition: string | null, fallback: string) {
+  const filenameMatch = disposition?.match(/filename="([^"]+)"/i);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filenameMatch?.[1] ?? fallback;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadInvoices(path: string, fallback: string) {
+  const response = await fetch(getRequestUrl(path), { credentials: "include" });
+  if (!response.ok) throw new Error(await response.text());
+  downloadBlob(await response.blob(), response.headers.get("Content-Disposition"), fallback);
+}
+
+export function getMyInvoiceableDeductions(): Promise<InvoiceEligibleDeductionItem[]> {
+  return requestJson<InvoiceEligibleDeductionItem[]>("/api/v1/billing/me/invoices/eligible");
+}
+
+export function getUserInvoiceableDeductions(userId: string): Promise<InvoiceEligibleDeductionItem[]> {
+  return requestJson<InvoiceEligibleDeductionItem[]>(`/api/v1/billing/users/${userId}/invoices/eligible`);
+}
+
+export function listMyInvoices(): Promise<InvoiceItem[]> {
+  return requestJson<InvoiceItem[]>("/api/v1/billing/me/invoices");
+}
+
+export function listUserInvoices(userId: string): Promise<InvoiceItem[]> {
+  return requestJson<InvoiceItem[]>(`/api/v1/billing/users/${userId}/invoices`);
+}
+
+export function createMyInvoices(deductionIds: string[], issuedDate: string): Promise<{ invoices: InvoiceItem[] }> {
+  return requestJson<{ invoices: InvoiceItem[] }>("/api/v1/billing/me/invoices", {
+    method: "POST", body: JSON.stringify({ deductionIds, issuedDate })
+  });
+}
+
+export function createUserInvoices(userId: string, deductionIds: string[], issuedDate: string): Promise<{ invoices: InvoiceItem[] }> {
+  return requestJson<{ invoices: InvoiceItem[] }>(`/api/v1/billing/users/${userId}/invoices`, {
+    method: "POST", body: JSON.stringify({ deductionIds, issuedDate })
+  });
+}
+
+export function downloadMyInvoices(invoiceIds: string[]) {
+  const params = new URLSearchParams();
+  invoiceIds.forEach((id) => params.append("invoiceIds", id));
+  return downloadInvoices(`/api/v1/billing/me/invoices/download?${params}`, "invoices.zip");
+}
+
+export function downloadUserInvoices(userId: string, invoiceIds: string[]) {
+  const params = new URLSearchParams();
+  invoiceIds.forEach((id) => params.append("invoiceIds", id));
+  return downloadInvoices(`/api/v1/billing/users/${userId}/invoices/download?${params}`, "invoices.zip");
+}
+
+export function voidUserInvoice(userId: string, invoiceId: string, reason: string): Promise<InvoiceItem> {
+  return requestJson<InvoiceItem>(`/api/v1/billing/users/${userId}/invoices/${invoiceId}/void`, {
+    method: "POST", body: JSON.stringify({ reason })
+  });
+}
+
+export function getInvoiceSettings(): Promise<InvoiceSettingsItem> {
+  return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings");
+}
+
+export function updateInvoiceSettings(payload: Omit<InvoiceSettingsItem, "stampOriginalFilename" | "updatedAt">, stamp?: File | null): Promise<InvoiceSettingsItem> {
+  const form = new FormData();
+  Object.entries(payload).forEach(([key, value]) => { if (value != null) form.append(key, value); });
+  if (stamp) form.append("stamp", stamp);
+  return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings", { method: "PATCH", body: form });
 }
 
 export function getUserBillingAccount(

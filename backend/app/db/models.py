@@ -437,6 +437,8 @@ class User(Base):
     balance: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
+    payer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payer_address_info: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -534,6 +536,90 @@ class BillingEntry(Base):
     waybill_upload: Mapped["WaybillUpload | None"] = relationship(
         back_populates="billing_entry"
     )
+
+
+class InvoiceSettings(Base):
+    __tablename__ = "invoice_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    issuer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    issuer_address_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    beneficiary_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_account: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_name_and_code: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    branch_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    swift_bic: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bank_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stamp_original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stamp_storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stamp_content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class InvoiceCounter(Base):
+    __tablename__ = "invoice_counters"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    invoice_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="issued", index=True)
+    issued_date: Mapped[date] = mapped_column(Date, nullable=False)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    payer_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    issuer_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    stamp_storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stamp_position: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    voided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    lines: Mapped[list["InvoiceLine"]] = relationship(
+        back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.line_number"
+    )
+
+
+class InvoiceLine(Base):
+    __tablename__ = "invoice_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    billing_entry_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_entries.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    waybill_number: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    invoice: Mapped["Invoice"] = relationship(back_populates="lines")
 
 
 class UserSession(Base):

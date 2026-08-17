@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,21 @@ from app.schemas.billing import (
     RetroactiveBillingResponse,
 )
 from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest
+from app.schemas.invoice import (
+    InvoiceCreateRequest,
+    InvoiceCreateResponse,
+    InvoiceEligibleDeductionItem,
+    InvoiceItem,
+    InvoiceSettingsItem,
+    InvoiceSettingsUpdateRequest,
+    InvoiceVoidRequest,
+)
+from app.services.invoice_service import (
+    InvoiceConflictError,
+    InvoicePermissionError,
+    InvoiceService,
+    InvoiceValidationError,
+)
 from app.services.billing_service import (
     BillingConflictError,
     BillingPermissionError,
@@ -43,6 +58,17 @@ def _billing_error(exc: Exception) -> HTTPException:
         else status.HTTP_400_BAD_REQUEST
     )
     return HTTPException(status_code=code, detail=str(exc))
+
+
+def _invoice_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, InvoicePermissionError):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, InvoiceConflictError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND if str(exc) in {"User not found", "Invoice not found"} else status.HTTP_400_BAD_REQUEST,
+        detail=str(exc),
+    )
 
 
 @router.get("/me", response_model=BillingAccountResponse)
@@ -251,3 +277,127 @@ def update_billing_settings(
         payload=payload,
         request=request,
     )
+
+
+@router.get("/invoice-settings", response_model=InvoiceSettingsItem)
+def get_invoice_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> InvoiceSettingsItem:
+    return InvoiceService(db).get_settings(actor=current_user)
+
+
+@router.patch("/invoice-settings", response_model=InvoiceSettingsItem)
+async def update_invoice_settings(
+    request: Request,
+    issuer_company_name: str = Form(..., alias="issuerCompanyName"),
+    issuer_address_info: str = Form(..., alias="issuerAddressInfo"),
+    beneficiary_name: str = Form(..., alias="beneficiaryName"),
+    bank_account: str = Form(..., alias="bankAccount"),
+    bank_name_and_code: str = Form(..., alias="bankNameAndCode"),
+    branch_code: str = Form(..., alias="branchCode"),
+    swift_bic: str = Form(..., alias="swiftBic"),
+    bank_address: str = Form(..., alias="bankAddress"),
+    stamp: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> InvoiceSettingsItem:
+    payload = InvoiceSettingsUpdateRequest(
+        issuerCompanyName=issuer_company_name,
+        issuerAddressInfo=issuer_address_info,
+        beneficiaryName=beneficiary_name,
+        bankAccount=bank_account,
+        bankNameAndCode=bank_name_and_code,
+        branchCode=branch_code,
+        swiftBic=swift_bic,
+        bankAddress=bank_address,
+    )
+    try:
+        return await InvoiceService(db).update_settings(
+            actor=current_user, payload=payload, stamp=stamp, request=request
+        )
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+
+
+def _invoice_download_response(content: bytes, filename: str) -> Response:
+    media_type = "application/zip" if filename.endswith(".zip") else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(content=content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/me/invoices/eligible", response_model=list[InvoiceEligibleDeductionItem])
+def get_my_invoiceable_deductions(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> list[InvoiceEligibleDeductionItem]:
+    return InvoiceService(db).list_eligible(actor=current_user, user_id=current_user.id)
+
+
+@router.get("/users/{user_id}/invoices/eligible", response_model=list[InvoiceEligibleDeductionItem])
+def get_user_invoiceable_deductions(
+    user_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+) -> list[InvoiceEligibleDeductionItem]:
+    return InvoiceService(db).list_eligible(actor=current_user, user_id=user_id)
+
+
+@router.get("/me/invoices", response_model=list[InvoiceItem])
+def list_my_invoices(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> list[InvoiceItem]:
+    return InvoiceService(db).list_invoices(actor=current_user, user_id=current_user.id)
+
+
+@router.get("/users/{user_id}/invoices", response_model=list[InvoiceItem])
+def list_user_invoices(
+    user_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+) -> list[InvoiceItem]:
+    return InvoiceService(db).list_invoices(actor=current_user, user_id=user_id)
+
+
+@router.post("/me/invoices", response_model=InvoiceCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_my_invoices(
+    payload: InvoiceCreateRequest, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> InvoiceCreateResponse:
+    try:
+        return InvoiceCreateResponse(invoices=InvoiceService(db).create_invoices(actor=current_user, user_id=current_user.id, payload=payload, request=request))
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+
+
+@router.post("/users/{user_id}/invoices", response_model=InvoiceCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_user_invoices(
+    user_id: UUID, payload: InvoiceCreateRequest, request: Request, db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+) -> InvoiceCreateResponse:
+    try:
+        return InvoiceCreateResponse(invoices=InvoiceService(db).create_invoices(actor=current_user, user_id=user_id, payload=payload, request=request))
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+
+
+@router.get("/me/invoices/download")
+def download_my_invoice_batch(
+    request: Request, invoice_ids: list[UUID] = Query(alias="invoiceIds"), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> Response:
+    try:
+        return _invoice_download_response(*InvoiceService(db).export_invoice_batch(actor=current_user, user_id=current_user.id, invoice_ids=invoice_ids, request=request))
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+
+
+@router.get("/users/{user_id}/invoices/download")
+def download_user_invoice_batch(
+    user_id: UUID, request: Request, invoice_ids: list[UUID] = Query(alias="invoiceIds"), db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+) -> Response:
+    try:
+        return _invoice_download_response(*InvoiceService(db).export_invoice_batch(actor=current_user, user_id=user_id, invoice_ids=invoice_ids, request=request))
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+
+
+@router.post("/users/{user_id}/invoices/{invoice_id}/void", response_model=InvoiceItem)
+def void_user_invoice(
+    user_id: UUID, invoice_id: UUID, payload: InvoiceVoidRequest, request: Request, db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+) -> InvoiceItem:
+    try:
+        return InvoiceService(db).void_invoice(actor=current_user, user_id=user_id, invoice_id=invoice_id, reason=payload.reason, request=request)
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc

@@ -15,6 +15,7 @@ import {
   X
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { InvoicePanel } from "@/components/InvoicePanel";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   cancelDeduction,
@@ -30,6 +31,7 @@ import {
   logout,
   rechargeUser,
   resetUserPassword,
+  updateUserPayer,
   updateUserStatus
 } from "@/lib/api";
 import type { AppUser, BillingAccountResponse, BillingEntryItem } from "@/lib/types";
@@ -65,7 +67,7 @@ export default function UsersPage() {
   const [resetPassword, setResetPassword] = useState("");
   const [detailUser, setDetailUser] = useState<AppUser | null>(null);
   const [billing, setBilling] = useState<BillingAccountResponse | null>(null);
-  const [billingTab, setBillingTab] = useState<"deductions" | "recharges">("deductions");
+  const [billingTab, setBillingTab] = useState<"deductions" | "recharges" | "invoices">("deductions");
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
@@ -76,6 +78,9 @@ export default function UsersPage() {
   const [cancellingRechargeId, setCancellingRechargeId] = useState<string | null>(null);
   const [isExportingBilling, setIsExportingBilling] = useState(false);
   const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
+  const [payerCompany, setPayerCompany] = useState("");
+  const [payerAddress, setPayerAddress] = useState("");
+  const [isPayerSaving, setIsPayerSaving] = useState(false);
 
   const addMessage = useCallback((title: string, body: string) => {
     setMessages((current) => [
@@ -113,6 +118,8 @@ export default function UsersPage() {
       const account = await getUserBillingAccount(user.id);
       setBilling(account);
       setDetailUser(account.user);
+      setPayerCompany(account.user.payerCompanyName || "");
+      setPayerAddress(account.user.payerAddressInfo || "");
     } catch (error) {
       if (isUnauthorizedError(error)) {
         router.replace("/");
@@ -209,6 +216,20 @@ export default function UsersPage() {
     } catch (error) {
       addMessage("Unable to delete user", error instanceof Error ? error.message : "Request failed");
     }
+  }
+
+  async function handleSavePayer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detailUser) return;
+    setIsPayerSaving(true);
+    try {
+      const updated = await updateUserPayer(detailUser.id, payerCompany, payerAddress);
+      setDetailUser(updated);
+      setBilling((current) => current ? { ...current, user: updated } : current);
+      await refreshUsers();
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : "Unable to save payer information");
+    } finally { setIsPayerSaving(false); }
   }
 
   async function handleRecharge(event: FormEvent<HTMLFormElement>) {
@@ -415,10 +436,18 @@ export default function UsersPage() {
               <div className={styles.summaryBalance}><span>Balance</span><strong>{formatEuro(detailUser.balance)}</strong></div>
             </div>
 
+            <form className={styles.resetPanel} onSubmit={handleSavePayer}>
+              <strong>Payer information</strong>
+              <input aria-label="Payer company name" onChange={(event) => setPayerCompany(event.target.value)} placeholder="Company name" required value={payerCompany} />
+              <textarea aria-label="Payer address information" onChange={(event) => setPayerAddress(event.target.value)} placeholder="Address / legal information" required value={payerAddress} />
+              <button disabled={isPayerSaving} type="submit">{isPayerSaving ? "Saving..." : "Save payer"}</button>
+            </form>
+
             <div className={styles.billingToolbar}>
               <div className={styles.tabs} role="tablist" aria-label="Customer billing sections">
                 <button aria-selected={billingTab === "deductions"} data-active={billingTab === "deductions"} onClick={() => setBillingTab("deductions")} role="tab" type="button">Deduction entries</button>
                 <button aria-selected={billingTab === "recharges"} data-active={billingTab === "recharges"} onClick={() => setBillingTab("recharges")} role="tab" type="button">Recharge records</button>
+                <button aria-selected={billingTab === "invoices"} data-active={billingTab === "invoices"} onClick={() => setBillingTab("invoices")} role="tab" type="button">Uninvoiced waybills</button>
               </div>
               {billingTab === "recharges" && (
                 <button className={styles.rechargeButton} onClick={() => setIsRechargeOpen(true)} type="button"><Plus aria-hidden="true" size={16} />Recharge</button>
@@ -439,6 +468,8 @@ export default function UsersPage() {
             {detailError && <div className={styles.modalError} role="alert">{detailError}</div>}
             {isDetailLoading ? (
               <div className={styles.modalEmpty}>Loading customer billing...</div>
+            ) : billingTab === "invoices" ? (
+              <InvoicePanel admin userId={detailUser.id} />
             ) : billingTab === "deductions" ? (
               billing?.deductions.length ? (
                 <div className={styles.ledgerTableWrap}>

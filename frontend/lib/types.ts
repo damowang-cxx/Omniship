@@ -8,6 +8,8 @@ export interface AppUser {
   role: UserRole;
   status: UserStatus;
   balance: string;
+  payerCompanyName?: string | null;
+  payerAddressInfo?: string | null;
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -59,6 +61,52 @@ export interface BillingAccountResponse {
   user: AppUser;
   deductions: BillingEntryItem[];
   recharges: BillingEntryItem[];
+}
+
+export interface InvoiceSettingsItem {
+  issuerCompanyName?: string | null;
+  issuerAddressInfo?: string | null;
+  beneficiaryName?: string | null;
+  bankAccount?: string | null;
+  bankNameAndCode?: string | null;
+  branchCode?: string | null;
+  swiftBic?: string | null;
+  bankAddress?: string | null;
+  stampOriginalFilename?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface InvoiceEligibleDeductionItem {
+  id: string;
+  waybillNumber: string;
+  quantity: number;
+  unitRate: string;
+  amount: string;
+  recordedAt: string;
+}
+
+export interface InvoiceLineItem {
+  id: string;
+  billingEntryId: string;
+  lineNumber: number;
+  waybillNumber: string;
+  quantity: number;
+  unitRate: string;
+  amount: string;
+}
+
+export interface InvoiceItem {
+  id: string;
+  invoiceNumber: string;
+  status: "issued" | "voided";
+  issuedDate: string;
+  dueDate: string;
+  totalAmount: string;
+  payer: { companyName: string; addressInfo: string };
+  lines: InvoiceLineItem[];
+  createdAt: string;
+  voidedAt?: string | null;
+  voidReason?: string | null;
 }
 
 export interface BillingTaxEstimateResponse {

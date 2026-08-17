@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownRight, ArrowUpLeft, FileDown, ReceiptText, RefreshCw, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { InvoicePanel } from "@/components/InvoicePanel";
 import {
   exportBillingAccount,
   getMyBillingAccount,
@@ -214,6 +215,7 @@ export default function BillingPage() {
             </div>
           )}
         </section>
+        <InvoicePanel />
       </section>
     </AppShell>
   );

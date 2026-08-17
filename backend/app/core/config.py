@@ -27,6 +27,10 @@ class Settings(BaseSettings):
         default=BACKEND_DIR / "storage" / "billing-receipts",
         alias="BILLING_RECEIPT_STORAGE_DIR",
     )
+    invoice_stamp_storage_dir: Path = Field(
+        default=BACKEND_DIR / "storage" / "invoice-stamps",
+        alias="INVOICE_STAMP_STORAGE_DIR",
+    )
 
     model_config = SettingsConfigDict(
         env_file=(PROJECT_ROOT / ".env", BACKEND_DIR / ".env"),

@@ -11,6 +11,7 @@ from app.schemas.user import (
     UserDeleteResponse,
     UserListResponse,
     UserPasswordResetRequest,
+    UserPayerUpdateRequest,
     UserPublic,
     UserStatusUpdateRequest,
 )
@@ -83,6 +84,27 @@ def reset_password(
             actor=current_user,
             user_id=user_id,
             password=payload.password,
+            request=request,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return UserPublic.model_validate(user)
+
+
+@router.patch("/{user_id}/payer", response_model=UserPublic)
+def update_user_payer(
+    user_id: UUID,
+    payload: UserPayerUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> UserPublic:
+    try:
+        user = UserService(db).update_payer(
+            actor=current_user,
+            user_id=user_id,
+            company_name=payload.company_name,
+            address_info=payload.address_info,
             request=request,
         )
     except ValueError as exc:

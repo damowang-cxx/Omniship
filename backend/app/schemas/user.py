@@ -12,6 +12,8 @@ class UserPublic(BaseModel):
     role: str
     status: str
     balance: Decimal
+    payer_company_name: str | None = Field(default=None, alias="payerCompanyName")
+    payer_address_info: str | None = Field(default=None, alias="payerAddressInfo")
     last_login_at: datetime | None = Field(default=None, alias="lastLoginAt")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
@@ -37,6 +39,13 @@ class UserStatusUpdateRequest(BaseModel):
 
 class UserPasswordResetRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
+
+
+class UserPayerUpdateRequest(BaseModel):
+    company_name: str = Field(min_length=1, max_length=255, alias="companyName")
+    address_info: str = Field(min_length=1, max_length=2000, alias="addressInfo")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UserDeleteResponse(BaseModel):

@@ -88,6 +88,25 @@ class UserService:
         self.db.refresh(user)
         return user
 
+    def update_payer(
+        self, *, actor: User, user_id: UUID, company_name: str, address_info: str, request: Request
+    ) -> User:
+        user = self._get_existing_user(user_id)
+        user.payer_company_name = company_name.strip()
+        user.payer_address_info = address_info.strip()
+        self.audit_logs.create(
+            "update_user_payer",
+            actor_user_id=actor.id,
+            target_type="user",
+            target_id=str(user.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={"companyName": user.payer_company_name},
+        )
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
     def delete_user(self, *, actor: User, user_id: UUID, request: Request) -> None:
         user = self._get_existing_user(user_id)
         if user.id == actor.id:

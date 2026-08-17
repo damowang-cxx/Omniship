@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArchiveX, ClipboardList, Factory, LogOut, Package, UploadCloud, Users, WalletCards } from "lucide-react";
+import { ArchiveX, ClipboardList, Factory, FileText, LogOut, Package, UploadCloud, Users, WalletCards } from "lucide-react";
 import type { AppUser } from "@/lib/types";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
@@ -16,7 +16,7 @@ export function AppShell({
   children
 }: {
   user: AppUser;
-  active: "waybills" | "uploads" | "upload-management" | "cancelled-waybills" | "users" | "billing" | "suppliers";
+  active: "waybills" | "uploads" | "upload-management" | "cancelled-waybills" | "users" | "billing" | "suppliers" | "invoice-settings";
   messages: AppMessage[];
   unreadCount: number;
   isInfoOpen: boolean;
@@ -89,6 +89,17 @@ export function AppShell({
               >
                 <WalletCards aria-hidden="true" size={18} />
                 <span>Billing</span>
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                aria-current={active === "invoice-settings" ? "page" : undefined}
+                className={styles.navItem}
+                data-active={active === "invoice-settings"}
+                href="/invoice-settings"
+              >
+                <FileText aria-hidden="true" size={18} />
+                <span>Invoice Settings</span>
               </Link>
             )}
             {isAdmin && (
