@@ -320,6 +320,23 @@ async def update_invoice_stamp(
         raise _invoice_error(exc) from exc
 
 
+@router.get("/invoice-settings/stamp")
+def get_invoice_stamp(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> FileResponse:
+    try:
+        settings = InvoiceService(db).get_stamp(actor=current_user, request=request)
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+    return FileResponse(
+        settings.stamp_storage_path,
+        media_type=settings.stamp_content_type or "image/png",
+        filename=settings.stamp_original_filename or "invoice-stamp.png",
+    )
+
+
 def _invoice_download_response(content: bytes, filename: str) -> Response:
     media_type = "application/zip" if filename.endswith(".zip") else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return Response(content=content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{filename}"'})

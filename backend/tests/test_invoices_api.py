@@ -146,3 +146,15 @@ def test_admin_updates_each_invoice_setting_independently(client, db_session):
     assert second.status_code == 200
     assert second.json()["beneficiaryName"] == "EPIX"
     assert second.json()["bankAccount"] == "7949929686"
+
+
+def test_admin_can_preview_configured_invoice_stamp(client, db_session, tmp_path):
+    admin = create_test_user(db_session, email="admin@example.com", username="Admin", role="admin")
+    ready_settings(db_session, tmp_path, admin)
+    db_session.commit()
+    assert login(client, email=admin.email).status_code == 200
+
+    response = client.get("/api/v1/billing/invoice-settings/stamp")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/png")
+    assert response.content.startswith(b"\x89PNG")

@@ -59,6 +59,18 @@ class InvoiceService:
         settings = self.invoices.get_settings()
         return InvoiceSettingsItem.model_validate(settings) if settings else InvoiceSettingsItem()
 
+    def get_stamp(self, *, actor: User, request: Request) -> InvoiceSettings:
+        self._require_admin(actor)
+        settings = self.invoices.get_settings()
+        if settings is None or not settings.stamp_storage_path or not Path(settings.stamp_storage_path).is_file():
+            raise InvoiceValidationError("Stamp image not found")
+        self.audit_logs.create(
+            "view_invoice_stamp", actor_user_id=actor.id, target_type="invoice_settings", target_id="1",
+            ip_address=get_request_ip(request), user_agent=get_request_user_agent(request),
+        )
+        self.db.commit()
+        return settings
+
     async def update_settings(
         self, *, actor: User, payload: InvoiceSettingsUpdateRequest, stamp: UploadFile | None, request: Request
     ) -> InvoiceSettingsItem:

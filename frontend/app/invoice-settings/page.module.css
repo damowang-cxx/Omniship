@@ -18,6 +18,8 @@
 .input { min-height:40px; resize:none; }
 .textarea { min-height:88px; resize:vertical; }
 .field small { display:block; margin-top:7px; color:#63817a; }
+.stampPreview { display:grid; min-height:126px; place-items:center; margin-top:10px; overflow:hidden; border:1px dashed #8ab7ac; border-radius:9px; background:linear-gradient(45deg,#f4f8f7 25%,transparent 25%) 0 0/16px 16px,linear-gradient(-45deg,#f4f8f7 25%,transparent 25%) 0 0/16px 16px,#fff; color:#6c8580; font-size:.8rem; }
+.stampPreview img { display:block; max-width:260px; max-height:150px; object-fit:contain; padding:10px; }
 .editorActions { display:flex; justify-content:flex-end; gap:7px; margin-top:10px; }
 .cancel { background:#eef3f2; color:#526d67; }
 .commit { background:#0d6558; color:#fff; }

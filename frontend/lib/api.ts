@@ -381,6 +381,10 @@ export function getInvoiceSettings(): Promise<InvoiceSettingsItem> {
   return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings");
 }
 
+export function getInvoiceStampUrl() {
+  return getRequestUrl("/api/v1/billing/invoice-settings/stamp");
+}
+
 export function updateInvoiceSettings(
   payload: Partial<Omit<InvoiceSettingsItem, "stampOriginalFilename" | "updatedAt">>
 ): Promise<InvoiceSettingsItem> {

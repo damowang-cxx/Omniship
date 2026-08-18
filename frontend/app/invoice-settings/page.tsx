@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Pencil, Save, Stamp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { getCurrentUser, getInvoiceSettings, isUnauthorizedError, logout, updateInvoiceSettings, updateInvoiceStamp } from "@/lib/api";
+import { getCurrentUser, getInvoiceSettings, getInvoiceStampUrl, isUnauthorizedError, logout, updateInvoiceSettings, updateInvoiceStamp } from "@/lib/api";
 import type { AppUser, InvoiceSettingsItem } from "@/lib/types";
 import styles from "./page.module.css";
 
@@ -23,6 +23,7 @@ export default function InvoiceSettingsPage() {
   const [editing, setEditing] = useState<EditableField | "stamp" | null>(null);
   const [draft, setDraft] = useState("");
   const [stamp, setStamp] = useState<File | null>(null);
+  const [localStampPreview, setLocalStampPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -38,6 +39,12 @@ export default function InvoiceSettingsPage() {
     }
   }, [router]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!stamp) { setLocalStampPreview(null); return; }
+    const previewUrl = URL.createObjectURL(stamp);
+    setLocalStampPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [stamp]);
 
   const beginEdit = (key: EditableField) => { setNotice(null); setDraft(settings[key] || ""); setEditing(key); };
   const saveField = async (key: EditableField) => {
@@ -64,7 +71,7 @@ export default function InvoiceSettingsPage() {
         const isEditing = editing === field.key;
         return <article className={styles.field} data-editing={isEditing} key={field.key}><div className={styles.fieldHeader}><label>{field.label}</label>{!isEditing && <button onClick={() => beginEdit(field.key)} type="button"><Pencil size={14} />Modify</button>}</div>{isEditing ? <><textarea aria-label={field.label} autoFocus={!field.multiline} className={field.multiline ? styles.textarea : styles.input} onChange={(event) => setDraft(event.target.value)} value={draft} /><div className={styles.editorActions}><button className={styles.cancel} disabled={saving} onClick={() => setEditing(null)} type="button"><X size={14} />Cancel</button><button className={styles.commit} disabled={saving} onClick={() => void saveField(field.key)} type="button"><Save size={14} />{saving ? "Saving..." : "Save"}</button></div></> : <p>{settings[field.key] || "Not configured"}</p>}</article>;
       })}</div></section>)}
-      <section className={styles.group}><h3>Stamp image</h3><article className={styles.field} data-editing={editing === "stamp"}><div className={styles.fieldHeader}><label>Invoice seal</label>{editing !== "stamp" && <button onClick={() => { setNotice(null); setEditing("stamp"); }} type="button"><Pencil size={14} />Modify</button>}</div>{editing === "stamp" ? <><input accept="image/jpeg,image/png,image/webp" onChange={(event) => setStamp(event.target.files?.[0] ?? null)} type="file" /><small>JPG, PNG or WebP · rendered semi-transparent in the detail area</small><div className={styles.editorActions}><button className={styles.cancel} disabled={saving} onClick={() => { setEditing(null); setStamp(null); }} type="button"><X size={14} />Cancel</button><button className={styles.commit} disabled={saving || !stamp} onClick={() => void saveStamp()} type="button"><Check size={14} />{saving ? "Saving..." : "Save stamp"}</button></div></> : <p>{settings.stampOriginalFilename || "No stamp uploaded"}</p>}</article></section>
+      <section className={styles.group}><h3>Stamp image</h3><article className={styles.field} data-editing={editing === "stamp"}><div className={styles.fieldHeader}><label>Invoice seal</label>{editing !== "stamp" && <button onClick={() => { setNotice(null); setEditing("stamp"); }} type="button"><Pencil size={14} />Modify</button>}</div>{editing === "stamp" ? <><div className={styles.stampPreview}>{localStampPreview ? <img alt="New stamp preview" src={localStampPreview} /> : settings.stampOriginalFilename ? <img alt="Current invoice stamp" src={`${getInvoiceStampUrl()}?v=${settings.updatedAt || "current"}`} /> : <span>Select a stamp image to preview it here.</span>}</div><input accept="image/jpeg,image/png,image/webp" onChange={(event) => setStamp(event.target.files?.[0] ?? null)} type="file" /><small>JPG, PNG or WebP · rendered semi-transparent in the detail area</small><div className={styles.editorActions}><button className={styles.cancel} disabled={saving} onClick={() => { setEditing(null); setStamp(null); }} type="button"><X size={14} />Cancel</button><button className={styles.commit} disabled={saving || !stamp} onClick={() => void saveStamp()} type="button"><Check size={14} />{saving ? "Saving..." : "Save stamp"}</button></div></> : <div className={styles.stampPreview}>{settings.stampOriginalFilename ? <img alt="Configured invoice stamp" src={`${getInvoiceStampUrl()}?v=${settings.updatedAt || "current"}`} /> : <span>No stamp uploaded</span>}</div>}</article></section>
       {notice && <p className={styles.notice}>{notice}</p>}
     </section>
   </AppShell>;
