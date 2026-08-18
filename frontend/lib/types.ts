@@ -82,6 +82,8 @@ export interface InvoiceEligibleDeductionItem {
   quantity: number;
   unitRate: string;
   amount: string;
+  extraFeeTotal: string;
+  totalAmount: string;
   recordedAt: string;
 }
 
@@ -93,6 +95,8 @@ export interface InvoiceLineItem {
   quantity: number;
   unitRate: string;
   amount: string;
+  extraFeeTotal: string;
+  totalAmount: string;
 }
 
 export interface InvoiceItem {
@@ -404,6 +408,22 @@ export interface WaybillPodDeleteResponse {
   podFileId: string;
 }
 
+export interface WaybillExtraFeeType {
+  id: string;
+  name: string;
+}
+
+export interface WaybillExtraFee {
+  id: string;
+  feeTypeId: string;
+  feeTypeName: string;
+  amount: string;
+}
+
+export interface WaybillExtraFeeUpdatePayload {
+  items: Array<{ feeTypeId: string; amount: string }>;
+}
+
 export interface WaybillParcelItem {
   id: string;
   parcelUnitNumber: string;
@@ -462,6 +482,7 @@ export interface WaybillItem {
   updatedAt: string;
   user?: WaybillUploadUserItem | null;
   podFiles: WaybillPodFileItem[];
+  extraFees: WaybillExtraFee[];
 }
 
 export interface WaybillListResponse {

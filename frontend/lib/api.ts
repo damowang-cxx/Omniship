@@ -17,6 +17,8 @@ import type {
   UserListResponse,
   WaybillFilters,
   WaybillItem,
+  WaybillExtraFeeType,
+  WaybillExtraFeeUpdatePayload,
   WaybillListResponse,
   WaybillParcelBulkUpdatePayload,
   WaybillParcelListResponse,
@@ -633,6 +635,29 @@ export function listWaybills(filters?: WaybillFilters): Promise<WaybillListRespo
 
 export function getWaybill(publicCode: string): Promise<WaybillItem> {
   return requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}`);
+}
+
+export function listWaybillExtraFeeTypes(): Promise<WaybillExtraFeeType[]> {
+  return requestJson<WaybillExtraFeeType[]>("/api/v1/waybills/extra-fee-types");
+}
+
+export function createWaybillExtraFeeType(name: string): Promise<WaybillExtraFeeType> {
+  return requestJson<WaybillExtraFeeType>("/api/v1/waybills/extra-fee-types", {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+}
+
+export async function updateWaybillExtraFees(
+  publicCode: string,
+  payload: WaybillExtraFeeUpdatePayload
+): Promise<WaybillItem> {
+  const response = await requestJson<WaybillItem>(`/api/v1/waybills/${publicCode}/extra-fees`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+  updateWaybillInCache(response);
+  return response;
 }
 
 export function listWaybillParcels(

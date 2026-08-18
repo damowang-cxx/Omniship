@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import (
     User,
+    WaybillExtraFeeType,
     WaybillParcel,
     WaybillPodFile,
     WaybillTrackingRecord,
@@ -24,6 +25,10 @@ from app.repositories.supplier_repository import SupplierRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.schemas.waybill import (
     WaybillItem,
+    WaybillExtraFeeItem,
+    WaybillExtraFeeTypeCreateRequest,
+    WaybillExtraFeeTypeItem,
+    WaybillExtraFeeUpdateRequest,
     WaybillListResponse,
     WaybillParcelBulkUpdateRequest,
     WaybillParcelItem,
@@ -139,6 +144,82 @@ class WaybillService:
     def get_waybill(self, actor: User, *, public_code: str) -> WaybillItem:
         record = self._get_visible_record(actor, public_code=public_code)
         return self._build_item(record)
+
+    def list_extra_fee_types(self, actor: User) -> list[WaybillExtraFeeTypeItem]:
+        if actor.role != "admin":
+            raise WaybillPermissionError("Admin permission required")
+        return [WaybillExtraFeeTypeItem.model_validate(item) for item in self.waybills.list_extra_fee_types()]
+
+    def create_extra_fee_type(
+        self,
+        actor: User,
+        *,
+        payload: WaybillExtraFeeTypeCreateRequest,
+        request: Request,
+    ) -> WaybillExtraFeeTypeItem:
+        if actor.role != "admin":
+            raise WaybillPermissionError("Admin permission required")
+        name = payload.name.strip()
+        if not name:
+            raise WaybillValidationError("Extra fee name is required")
+        if any(item.name.casefold() == name.casefold() for item in self.waybills.list_extra_fee_types()):
+            raise WaybillValidationError("An extra fee type with this name already exists")
+        fee_type = self.waybills.create_extra_fee_type(name=name, actor_id=actor.id)
+        self.audit_logs.create(
+            "create_waybill_extra_fee_type",
+            actor_user_id=actor.id,
+            target_type="waybill_extra_fee_type",
+            target_id=str(fee_type.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={"name": fee_type.name},
+        )
+        self.db.commit()
+        self.db.refresh(fee_type)
+        return WaybillExtraFeeTypeItem.model_validate(fee_type)
+
+    def update_extra_fees(
+        self,
+        actor: User,
+        *,
+        public_code: str,
+        payload: WaybillExtraFeeUpdateRequest,
+        request: Request,
+    ) -> WaybillItem:
+        if actor.role != "admin":
+            raise WaybillPermissionError("Admin permission required")
+        record = self._get_visible_record(actor, public_code=public_code)
+        type_ids = {item.feeTypeId for item in payload.items}
+        fee_types = self.waybills.get_extra_fee_types(type_ids)
+        if len(fee_types) != len(type_ids):
+            raise WaybillValidationError("One or more extra fee types were not found")
+        amounts_by_type_id = {item.feeTypeId: item.amount for item in payload.items}
+        self.waybills.replace_extra_fees(
+            record,
+            amounts_by_type_id=amounts_by_type_id,
+            actor_id=actor.id,
+        )
+        self.audit_logs.create(
+            "update_waybill_extra_fees",
+            actor_user_id=actor.id,
+            target_type="waybill_tracking_record",
+            target_id=str(record.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={
+                "publicCode": record.public_code,
+                "airWaybillNumber": record.upload.air_waybill_number,
+                "fees": [
+                    {"feeTypeId": str(item.feeTypeId), "amount": str(item.amount)}
+                    for item in payload.items
+                ],
+            },
+        )
+        self.db.commit()
+        refreshed = self.waybills.get_by_public_code(record.public_code)
+        if refreshed is None:
+            raise WaybillValidationError("Waybill not found")
+        return self._build_item(refreshed)
 
     def update_waybill(
         self,
@@ -620,6 +701,7 @@ class WaybillService:
             if record.user is not None
             else None,
             podFiles=record.pod_files,
+            extraFees=[WaybillExtraFeeItem.model_validate(fee) for fee in record.extra_fees],
         )
 
     def _generate_public_code(self) -> str:

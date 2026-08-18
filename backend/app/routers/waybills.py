@@ -10,6 +10,9 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.waybill import (
     WaybillItem,
+    WaybillExtraFeeTypeCreateRequest,
+    WaybillExtraFeeTypeItem,
+    WaybillExtraFeeUpdateRequest,
     WaybillListResponse,
     WaybillParcelBulkUpdateRequest,
     WaybillParcelListResponse,
@@ -55,6 +58,27 @@ def list_waybills(
             status=waybill_status,
             query=query,
         )
+    except WaybillValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/extra-fee-types", response_model=list[WaybillExtraFeeTypeItem])
+def list_waybill_extra_fee_types(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> list[WaybillExtraFeeTypeItem]:
+    return WaybillService(db).list_extra_fee_types(current_user)
+
+
+@router.post("/extra-fee-types", response_model=WaybillExtraFeeTypeItem, status_code=status.HTTP_201_CREATED)
+def create_waybill_extra_fee_type(
+    payload: WaybillExtraFeeTypeCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> WaybillExtraFeeTypeItem:
+    try:
+        return WaybillService(db).create_extra_fee_type(current_user, payload=payload, request=request)
     except WaybillValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -151,6 +175,27 @@ def update_waybill_parcels(
 ) -> WaybillParcelListResponse:
     try:
         return WaybillService(db).update_parcels(
+            current_user,
+            public_code=public_code,
+            payload=payload,
+            request=request,
+        )
+    except WaybillPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WaybillValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch("/{public_code}/extra-fees", response_model=WaybillItem)
+def update_waybill_extra_fees(
+    public_code: str,
+    payload: WaybillExtraFeeUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> WaybillItem:
+    try:
+        return WaybillService(db).update_extra_fees(
             current_user,
             public_code=public_code,
             payload=payload,

@@ -88,6 +88,7 @@ const waybillItem: WaybillItem = {
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
   podFiles: [],
+  extraFees: [],
   user: {
     id: "user-id",
     email: "user@example.com",

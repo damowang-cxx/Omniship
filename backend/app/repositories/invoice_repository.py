@@ -1,10 +1,10 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.db.models import BillingEntry, Invoice, InvoiceCounter, InvoiceLine, InvoiceSettings
+from app.db.models import BillingEntry, Invoice, InvoiceCounter, InvoiceLine, InvoiceSettings, WaybillExtraFee, WaybillTrackingRecord
 
 
 class InvoiceRepository:
@@ -62,6 +62,18 @@ class InvoiceRepository:
             .where(Invoice.status == "issued", InvoiceLine.billing_entry_id.in_(entry_ids))
         )
         return set(self.db.execute(statement).scalars().all())
+
+    def extra_fee_totals_for_entries(self, entry_ids: list[UUID]) -> dict[UUID, object]:
+        if not entry_ids:
+            return {}
+        statement = (
+            select(BillingEntry.id, func.coalesce(func.sum(WaybillExtraFee.amount), 0))
+            .outerjoin(WaybillTrackingRecord, WaybillTrackingRecord.upload_id == BillingEntry.waybill_upload_id)
+            .outerjoin(WaybillExtraFee, WaybillExtraFee.tracking_record_id == WaybillTrackingRecord.id)
+            .where(BillingEntry.id.in_(entry_ids))
+            .group_by(BillingEntry.id)
+        )
+        return dict(self.db.execute(statement).all())
 
     def next_number(self, issued_date: date) -> str:
         counter = self.db.get(InvoiceCounter, issued_date.year, with_for_update=True)

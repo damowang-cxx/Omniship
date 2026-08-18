@@ -3,24 +3,28 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { CheckCircle2, CircleSlash } from "lucide-react";
+import { CheckCircle2, CircleDollarSign, CircleSlash, Plus } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   deleteWaybillPodFile,
+  createWaybillExtraFeeType,
   getCurrentUser,
   getWaybillPodFileDownloadUrl,
   getWaybill,
   isUnauthorizedError,
   listWaybillParcels,
+  listWaybillExtraFeeTypes,
   logout,
   updateWaybillParcels,
+  updateWaybillExtraFees,
   uploadWaybillPodFile,
   updateWaybill
 } from "@/lib/api";
 import type {
   AppUser,
   WaybillItem,
+  WaybillExtraFeeType,
   WaybillParcelBulkUpdatePayload,
   WaybillParcelItem,
   WaybillParcelStatus,
@@ -181,6 +185,20 @@ function buildMilestoneForm(waybill: WaybillItem): Record<MilestoneKey, string> 
   };
 }
 
+function buildExtraFeeDrafts(waybill: WaybillItem): Record<string, string> {
+  return Object.fromEntries(
+    waybill.extraFees.map((fee) => [fee.feeTypeId, Number(fee.amount).toFixed(2)])
+  );
+}
+
+function formatEuro(value: string | number) {
+  return new Intl.NumberFormat("en-IE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2
+  }).format(Number(value) || 0);
+}
+
 export default function WaybillDetailPage() {
   const params = useParams<{ publicCode: string }>();
   const router = useRouter();
@@ -201,6 +219,11 @@ export default function WaybillDetailPage() {
   const [bulkParcelForm, setBulkParcelForm] =
     useState<BulkParcelForm>(emptyBulkParcelForm);
   const [isSavingParcels, setIsSavingParcels] = useState(false);
+  const [extraFeeTypes, setExtraFeeTypes] = useState<WaybillExtraFeeType[]>([]);
+  const [extraFeeDrafts, setExtraFeeDrafts] = useState<Record<string, string>>({});
+  const [newExtraFeeName, setNewExtraFeeName] = useState("");
+  const [isSavingExtraFees, setIsSavingExtraFees] = useState(false);
+  const [isCreatingExtraFeeType, setIsCreatingExtraFeeType] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(
     null
   );
@@ -209,6 +232,10 @@ export default function WaybillDetailPage() {
   const podFiles = waybill?.podFiles ?? [];
   const canUploadPod = isAdmin && podFiles.length < 2;
   const allParcelsSelected = parcels.length > 0 && selectedParcelIds.size === parcels.length;
+  const extraFeeTotal = useMemo(
+    () => Object.values(extraFeeDrafts).reduce((total, value) => total + (Number(value) || 0), 0),
+    [extraFeeDrafts]
+  );
 
   const addMessage = useCallback((title: string, body: string, tone: "error" | "info") => {
     setMessages((current) => [
@@ -242,6 +269,20 @@ export default function WaybillDetailPage() {
         setCurrentUser(userResult.value.user);
         setWaybill(waybillResult.value);
         setMilestoneForm(buildMilestoneForm(waybillResult.value));
+        setExtraFeeDrafts(buildExtraFeeDrafts(waybillResult.value));
+
+        if (userResult.value.user.role === "admin") {
+          try {
+            setExtraFeeTypes(await listWaybillExtraFeeTypes());
+          } catch (extraFeeError) {
+            const message =
+              extraFeeError instanceof Error
+                ? extraFeeError.message
+                : "Unable to load additional fee types";
+            setNotice({ tone: "error", text: message });
+            addMessage("Additional fees unavailable", message, "error");
+          }
+        }
 
         if (parcelResult.status === "fulfilled") {
           setParcels(parcelResult.value.items);
@@ -501,6 +542,69 @@ export default function WaybillDetailPage() {
     [applyParcelUpdate, bulkParcelForm, selectedParcelIds]
   );
 
+  const handleExtraFeeTypeToggle = useCallback((feeTypeId: string, selected: boolean) => {
+    setExtraFeeDrafts((current) => {
+      const next = { ...current };
+      if (selected) {
+        next[feeTypeId] = next[feeTypeId] ?? "0.00";
+      } else {
+        delete next[feeTypeId];
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCreateExtraFeeType = useCallback(async () => {
+    const name = newExtraFeeName.trim();
+    if (!name || !isAdmin) {
+      return;
+    }
+    setIsCreatingExtraFeeType(true);
+    setNotice(null);
+    try {
+      const feeType = await createWaybillExtraFeeType(name);
+      setExtraFeeTypes((current) => [...current, feeType].sort((left, right) => left.name.localeCompare(right.name)));
+      setExtraFeeDrafts((current) => ({ ...current, [feeType.id]: "0.00" }));
+      setNewExtraFeeName("");
+      setNotice({ tone: "success", text: `${feeType.name} added to additional fee options` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to add additional fee type";
+      setNotice({ tone: "error", text: message });
+      addMessage("Additional fee type failed", message, "error");
+    } finally {
+      setIsCreatingExtraFeeType(false);
+    }
+  }, [addMessage, isAdmin, newExtraFeeName]);
+
+  const handleSaveExtraFees = useCallback(async () => {
+    if (!waybill || !isAdmin) {
+      return;
+    }
+    const items = Object.entries(extraFeeDrafts).map(([feeTypeId, amount]) => ({
+      feeTypeId,
+      amount: amount.trim()
+    }));
+    if (items.some((item) => !item.amount || !Number.isFinite(Number(item.amount)) || Number(item.amount) < 0)) {
+      setNotice({ tone: "error", text: "Enter a valid EUR amount for every selected fee" });
+      return;
+    }
+    setIsSavingExtraFees(true);
+    setNotice(null);
+    try {
+      const updated = await updateWaybillExtraFees(waybill.publicCode, { items });
+      setWaybill(updated);
+      setExtraFeeDrafts(buildExtraFeeDrafts(updated));
+      setNotice({ tone: "success", text: "Additional fees updated" });
+      addMessage("Additional fees updated", `${updated.number} additional fees were saved.`, "info");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update additional fees";
+      setNotice({ tone: "error", text: message });
+      addMessage("Additional fees update failed", message, "error");
+    } finally {
+      setIsSavingExtraFees(false);
+    }
+  }, [addMessage, extraFeeDrafts, isAdmin, waybill]);
+
   const unreadCount = useMemo(
     () => messages.filter((message) => !message.read).length,
     [messages]
@@ -616,6 +720,122 @@ export default function WaybillDetailPage() {
               </div>
             )}
           </form>
+
+          <section className={styles.extraFeeSection}>
+            <div className={styles.extraFeeHeader}>
+              <div>
+                <p className={styles.eyebrow}>Additional charges</p>
+                <h3>附加费用</h3>
+                <p>卡车费、货站特殊处理费及其他逐票收费项目。</p>
+              </div>
+              <div className={styles.extraFeeTotal}>
+                <CircleDollarSign aria-hidden="true" size={18} />
+                <span>Total</span>
+                <strong>{formatEuro(isAdmin ? extraFeeTotal : waybill.extraFees.reduce((total, fee) => total + Number(fee.amount), 0))}</strong>
+              </div>
+            </div>
+
+            {isAdmin ? (
+              <>
+                <div className={styles.extraFeePicker}>
+                  <span className={styles.extraFeePickerLabel}>选择附加费</span>
+                  <div className={styles.extraFeeOptions}>
+                    {extraFeeTypes.map((feeType) => (
+                      <label className={styles.extraFeeOption} key={feeType.id}>
+                        <input
+                          checked={feeType.id in extraFeeDrafts}
+                          disabled={isSavingExtraFees || isCreatingExtraFeeType}
+                          onChange={(event) => handleExtraFeeTypeToggle(feeType.id, event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span>{feeType.name}</span>
+                      </label>
+                    ))}
+                    <div className={styles.extraFeeTypeCreate}>
+                      <input
+                        aria-label="New additional fee type"
+                        disabled={isCreatingExtraFeeType || isSavingExtraFees}
+                        onChange={(event) => setNewExtraFeeName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void handleCreateExtraFeeType();
+                          }
+                        }}
+                        placeholder="新增费用字段，例如卡车费"
+                        value={newExtraFeeName}
+                      />
+                      <button
+                        aria-label="Add additional fee type"
+                        disabled={!newExtraFeeName.trim() || isCreatingExtraFeeType || isSavingExtraFees}
+                        onClick={() => void handleCreateExtraFeeType()}
+                        type="button"
+                      >
+                        <Plus aria-hidden="true" size={16} />
+                        {isCreatingExtraFeeType ? "Adding..." : "Add"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {Object.keys(extraFeeDrafts).length > 0 ? (
+                  <div className={styles.extraFeeAmounts}>
+                    {extraFeeTypes
+                      .filter((feeType) => feeType.id in extraFeeDrafts)
+                      .map((feeType) => (
+                        <label className={styles.extraFeeAmount} key={feeType.id}>
+                          <span>{feeType.name}</span>
+                          <div>
+                            <b>EUR</b>
+                            <input
+                              aria-label={`${feeType.name} amount`}
+                              disabled={isSavingExtraFees}
+                              inputMode="decimal"
+                              min="0"
+                              onChange={(event) =>
+                                setExtraFeeDrafts((current) => ({
+                                  ...current,
+                                  [feeType.id]: event.target.value
+                                }))
+                              }
+                              step="0.01"
+                              type="number"
+                              value={extraFeeDrafts[feeType.id]}
+                            />
+                          </div>
+                        </label>
+                      ))}
+                  </div>
+                ) : (
+                  <p className={styles.extraFeeEmpty}>Select a fee type above to set a charge for this waybill.</p>
+                )}
+
+                <div className={styles.detailActions}>
+                  <button
+                    disabled={isSavingExtraFees}
+                    onClick={() => setExtraFeeDrafts(buildExtraFeeDrafts(waybill))}
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                  <button disabled={isSavingExtraFees} onClick={() => void handleSaveExtraFees()} type="button">
+                    {isSavingExtraFees ? "Saving..." : "Save additional fees"}
+                  </button>
+                </div>
+              </>
+            ) : waybill.extraFees.length ? (
+              <div className={styles.extraFeeReadOnlyList}>
+                {waybill.extraFees.map((fee) => (
+                  <div key={fee.id}>
+                    <span>{fee.feeTypeName}</span>
+                    <strong>{formatEuro(fee.amount)}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.extraFeeEmpty}>No additional fees have been set for this waybill.</p>
+            )}
+          </section>
 
           <section className={styles.podSection}>
             <div className={styles.podHeader}>

@@ -41,7 +41,8 @@ const waybill = {
   outboundCount: 0,
   createdAt: "2026-07-16T10:00:00Z",
   updatedAt: "2026-07-16T10:00:00Z",
-  podFiles: []
+  podFiles: [],
+  extraFees: []
 } satisfies WaybillItem;
 
 describe("client cache", () => {

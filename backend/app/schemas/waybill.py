@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.waybill_upload import WaybillUploadUserItem
 
@@ -47,6 +47,42 @@ class WaybillPodFileItem(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class WaybillExtraFeeTypeItem(BaseModel):
+    id: UUID
+    name: str
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class WaybillExtraFeeItem(BaseModel):
+    id: UUID
+    fee_type_id: UUID = Field(alias="feeTypeId")
+    fee_type_name: str = Field(alias="feeTypeName")
+    amount: Decimal
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class WaybillExtraFeeTypeCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class WaybillExtraFeeUpdateItem(BaseModel):
+    feeTypeId: UUID
+    amount: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+
+
+class WaybillExtraFeeUpdateRequest(BaseModel):
+    items: list[WaybillExtraFeeUpdateItem] = Field(max_length=50)
+
+    @field_validator("items")
+    @classmethod
+    def fee_types_must_be_unique(cls, value: list[WaybillExtraFeeUpdateItem]):
+        if len({item.feeTypeId for item in value}) != len(value):
+            raise ValueError("Each extra fee type can be selected only once")
+        return value
+
+
 class WaybillItem(BaseModel):
     id: UUID
     public_code: str = Field(alias="publicCode")
@@ -81,6 +117,7 @@ class WaybillItem(BaseModel):
     pod_files: list[WaybillPodFileItem] = Field(
         default_factory=list, alias="podFiles"
     )
+    extra_fees: list[WaybillExtraFeeItem] = Field(default_factory=list, alias="extraFees")
 
     model_config = ConfigDict(populate_by_name=True)
 

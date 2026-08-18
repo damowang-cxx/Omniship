@@ -1,8 +1,10 @@
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
+from openpyxl import load_workbook
 
 from app.core.config import get_settings
 from app.db.models import AuditLog, WaybillParcel, WaybillPodFile, WaybillUpload
@@ -13,6 +15,7 @@ from tests.test_waybill_uploads_api import (
     pre_alert_files,
     pre_alert_workbook_bytes,
 )
+from tests.test_invoices_api import ready_settings
 
 
 def _upload_pre_alert(
@@ -180,6 +183,120 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
         if row.actor_user_id == admin.id
     }
     assert "update_waybill_tracking" in actions
+
+
+def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", username="Admin", role="admin")
+    create_test_user(db_session, email="owner@example.com", username="Owner")
+
+    assert login(client, email="owner@example.com").status_code == 200
+    upload_response = _upload_pre_alert(client, pieces="10")
+    assert upload_response.status_code == 201
+
+    assert login(client, email="admin@example.com").status_code == 200
+    assert _approve_upload(client, upload_response.json()["uploadId"]).status_code == 200
+    public_code = client.get("/api/v1/waybills").json()["items"][0]["publicCode"]
+
+    truck_type = client.post("/api/v1/waybills/extra-fee-types", json={"name": "Truck fee"})
+    handling_type = client.post(
+        "/api/v1/waybills/extra-fee-types", json={"name": "Cargo terminal special handling"}
+    )
+    assert truck_type.status_code == 201
+    assert handling_type.status_code == 201
+    assert client.post("/api/v1/waybills/extra-fee-types", json={"name": "truck fee"}).status_code == 400
+
+    updated = client.patch(
+        f"/api/v1/waybills/{public_code}/extra-fees",
+        json={
+            "items": [
+                {"feeTypeId": truck_type.json()["id"], "amount": "14.50"},
+                {"feeTypeId": handling_type.json()["id"], "amount": "5.25"},
+            ]
+        },
+    )
+    assert updated.status_code == 200
+    assert {(fee["feeTypeName"], fee["amount"]) for fee in updated.json()["extraFees"]} == {
+        ("Truck fee", "14.50"),
+        ("Cargo terminal special handling", "5.25"),
+    }
+
+    assert login(client, email="owner@example.com").status_code == 200
+    visible = client.get(f"/api/v1/waybills/{public_code}")
+    assert visible.status_code == 200
+    assert len(visible.json()["extraFees"]) == 2
+    assert client.get("/api/v1/waybills/extra-fee-types").status_code == 403
+    assert client.patch(f"/api/v1/waybills/{public_code}/extra-fees", json={"items": []}).status_code == 403
+
+    assert login(client, email="admin@example.com").status_code == 200
+    replaced = client.patch(
+        f"/api/v1/waybills/{public_code}/extra-fees",
+        json={"items": [{"feeTypeId": truck_type.json()["id"], "amount": "20.00"}]},
+    )
+    assert replaced.status_code == 200
+    assert [(fee["feeTypeName"], fee["amount"]) for fee in replaced.json()["extraFees"]] == [("Truck fee", "20.00")]
+    actions = {row.action for row in db_session.execute(select(AuditLog)).scalars() if row.actor_user_id == admin.id}
+    assert "create_waybill_extra_fee_type" in actions
+    assert "update_waybill_extra_fees" in actions
+
+
+def test_invoice_snapshots_and_exports_waybill_extra_fee_totals(client, db_session, tmp_path):
+    admin = create_test_user(db_session, email="admin@example.com", username="Admin", role="admin")
+    owner = create_test_user(db_session, email="owner@example.com", username="Owner")
+    owner.payer_company_name = "Owner Limited"
+    owner.payer_address_info = "Owner address"
+    ready_settings(db_session, tmp_path, admin)
+    db_session.commit()
+
+    assert login(client, email="owner@example.com").status_code == 200
+    upload_response = _upload_pre_alert(client, pieces="10")
+    assert upload_response.status_code == 201
+
+    assert login(client, email="admin@example.com").status_code == 200
+    assert _approve_upload(client, upload_response.json()["uploadId"]).status_code == 200
+    public_code = client.get("/api/v1/waybills").json()["items"][0]["publicCode"]
+    fee_type = client.post("/api/v1/waybills/extra-fee-types", json={"name": "Truck fee"})
+    assert fee_type.status_code == 201
+    saved_fee = client.patch(
+        f"/api/v1/waybills/{public_code}/extra-fees",
+        json={"items": [{"feeTypeId": fee_type.json()["id"], "amount": "12.50"}]},
+    )
+    assert saved_fee.status_code == 200
+
+    assert login(client, email="owner@example.com").status_code == 200
+    eligible = client.get("/api/v1/billing/me/invoices/eligible")
+    assert eligible.status_code == 200
+    candidate = eligible.json()[0]
+    assert candidate["extraFeeTotal"] == "12.50"
+    assert candidate["totalAmount"] == "15.50"
+    created = client.post(
+        "/api/v1/billing/me/invoices",
+        json={"deductionIds": [candidate["id"]], "issuedDate": "2026-08-18"},
+    )
+    assert created.status_code == 201
+    invoice = created.json()["invoices"][0]
+    assert invoice["totalAmount"] == "15.50"
+    assert invoice["lines"][0]["extraFeeTotal"] == "12.50"
+    assert invoice["lines"][0]["totalAmount"] == "15.50"
+
+    exported = client.get(f"/api/v1/billing/me/invoices/download?invoiceIds={invoice['id']}")
+    assert exported.status_code == 200
+    workbook = load_workbook(BytesIO(exported.content), data_only=True)
+    sheet = workbook.active
+    assert sheet["E13"].value == 12.5
+    assert sheet["G13"].value == 15.5
+    assert sheet["G14"].value == 15.5
+    workbook.close()
+
+    assert login(client, email="admin@example.com").status_code == 200
+    changed_fee = client.patch(
+        f"/api/v1/waybills/{public_code}/extra-fees",
+        json={"items": [{"feeTypeId": fee_type.json()["id"], "amount": "20.00"}]},
+    )
+    assert changed_fee.status_code == 200
+    assert login(client, email="owner@example.com").status_code == 200
+    downloaded_again = client.get(f"/api/v1/billing/me/invoices/download?invoiceIds={invoice['id']}")
+    snapshot = load_workbook(BytesIO(downloaded_again.content), data_only=True).active
+    assert snapshot["E13"].value == 12.5
 
 
 def test_parcels_are_parsed_read_and_bulk_updated(client, db_session):

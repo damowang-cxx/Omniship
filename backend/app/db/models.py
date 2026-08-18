@@ -185,6 +185,26 @@ class WaybillUpload(Base):
         return self.supplier_version.version_number if self.supplier_version else None
 
 
+class WaybillExtraFeeType(Base):
+    __tablename__ = "waybill_extra_fee_types"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    fees: Mapped[list["WaybillExtraFee"]] = relationship(back_populates="fee_type")
+
+
 class WaybillTrackingRecord(Base):
     __tablename__ = "waybill_tracking_records"
 
@@ -251,6 +271,11 @@ class WaybillTrackingRecord(Base):
         back_populates="tracking_record",
         cascade="all, delete-orphan",
         order_by="WaybillParcel.parcel_unit_number",
+    )
+    extra_fees: Mapped[list["WaybillExtraFee"]] = relationship(
+        back_populates="tracking_record",
+        cascade="all, delete-orphan",
+        order_by="WaybillExtraFee.created_at",
     )
 
 
@@ -350,6 +375,49 @@ class WaybillParcel(Base):
     tracking_record: Mapped["WaybillTrackingRecord"] = relationship(
         back_populates="parcels"
     )
+
+
+class WaybillExtraFee(Base):
+    __tablename__ = "waybill_extra_fees"
+    __table_args__ = (
+        UniqueConstraint("tracking_record_id", "fee_type_id", name="uq_waybill_extra_fee_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tracking_record_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("waybill_tracking_records.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    fee_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("waybill_extra_fee_types.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    tracking_record: Mapped["WaybillTrackingRecord"] = relationship(back_populates="extra_fees")
+    fee_type: Mapped[WaybillExtraFeeType] = relationship(back_populates="fees")
+
+    @property
+    def fee_type_name(self) -> str:
+        return self.fee_type.name
 
 
 class CancelledWaybill(Base):
@@ -618,6 +686,9 @@ class InvoiceLine(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    extra_fee_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
 
     invoice: Mapped["Invoice"] = relationship(back_populates="lines")
 

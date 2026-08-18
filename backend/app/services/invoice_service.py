@@ -112,10 +112,14 @@ class InvoiceService:
             for entry in entries
             if entry.entry_type == "deduction_reversal" and entry.reversal_of_entry_id is not None
         }
+        extra_fee_totals = self.invoices.extra_fee_totals_for_entries([entry.id for entry in entries])
         return [
             InvoiceEligibleDeductionItem(
                 id=entry.id, waybill_number=entry.waybill_number or "-", quantity=entry.billable_unit_count or 0,
-                unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount, recorded_at=entry.created_at,
+                unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount,
+                extra_fee_total=Decimal(extra_fee_totals.get(entry.id, 0)),
+                total_amount=Decimal(entry.amount) + Decimal(extra_fee_totals.get(entry.id, 0)),
+                recorded_at=entry.created_at,
             )
             for entry in entries
             if entry.id not in active_ids and entry.id not in reversed_ids and self._is_eligible_entry(entry)
@@ -159,13 +163,20 @@ class InvoiceService:
             raise InvoiceConflictError("One or more selected deductions are no longer available for invoicing")
 
         ordered = sorted(selected, key=lambda entry: (entry.created_at, str(entry.id)))
+        extra_fee_totals = {
+            entry_id: Decimal(total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            for entry_id, total in self.invoices.extra_fee_totals_for_entries([entry.id for entry in ordered]).items()
+        }
         payer_snapshot = {"companyName": user.payer_company_name, "addressInfo": user.payer_address_info}
         issuer_snapshot = self._issuer_snapshot(settings)
         created: list[Invoice] = []
         try:
             for start in range(0, len(ordered), DETAIL_MAX_LINES):
                 lines = ordered[start : start + DETAIL_MAX_LINES]
-                total = sum((Decimal(line.amount) for line in lines), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                total = sum(
+                    (Decimal(line.amount) + extra_fee_totals.get(line.id, Decimal("0.00")) for line in lines),
+                    Decimal("0.00"),
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 invoice = Invoice(
                     user_id=user.id,
                     invoice_number=self.invoices.next_number(payload.issuedDate),
@@ -186,6 +197,7 @@ class InvoiceService:
                         invoice_id=invoice.id, billing_entry_id=entry.id, line_number=line_number,
                         waybill_number=entry.waybill_number or "-", quantity=entry.billable_unit_count or 0,
                         unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount,
+                        extra_fee_total=extra_fee_totals.get(entry.id, Decimal("0.00")),
                     ))
                 created.append(invoice)
             self.db.flush()
@@ -303,6 +315,8 @@ class InvoiceService:
             lines=[InvoiceLineItem(
                 id=line.id, billing_entry_id=line.billing_entry_id, line_number=line.line_number,
                 waybill_number=line.waybill_number, quantity=line.quantity, unit_rate=line.unit_rate, amount=line.amount,
+                extra_fee_total=line.extra_fee_total,
+                total_amount=line.amount + line.extra_fee_total,
             ) for line in invoice.lines],
             created_at=invoice.created_at, voided_at=invoice.voided_at, void_reason=invoice.void_reason,
         )

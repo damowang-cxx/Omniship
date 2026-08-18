@@ -50,6 +50,8 @@ class InvoiceEligibleDeductionItem(BaseModel):
     quantity: int
     unit_rate: Decimal = Field(alias="unitRate")
     amount: Decimal
+    extra_fee_total: Decimal = Field(alias="extraFeeTotal")
+    total_amount: Decimal = Field(alias="totalAmount")
     recorded_at: datetime = Field(alias="recordedAt")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -63,6 +65,8 @@ class InvoiceLineItem(BaseModel):
     quantity: int
     unit_rate: Decimal = Field(alias="unitRate")
     amount: Decimal
+    extra_fee_total: Decimal = Field(alias="extraFeeTotal")
+    total_amount: Decimal = Field(alias="totalAmount")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

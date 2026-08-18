@@ -8,6 +8,7 @@ const routerMock = vi.hoisted(() => ({
 }));
 
 const apiMock = vi.hoisted(() => ({
+  createWaybillExtraFeeType: vi.fn(),
   deleteWaybillPodFile: vi.fn(),
   getCurrentUser: vi.fn(),
   getWaybill: vi.fn(),
@@ -19,9 +20,11 @@ const apiMock = vi.hoisted(() => ({
     error instanceof Error && error.message.includes("401")
   ),
   listWaybillParcels: vi.fn(),
+  listWaybillExtraFeeTypes: vi.fn(),
   logout: vi.fn(),
   uploadWaybillPodFile: vi.fn(),
   updateWaybillParcels: vi.fn(),
+  updateWaybillExtraFees: vi.fn(),
   updateWaybill: vi.fn()
 }));
 
@@ -80,7 +83,8 @@ const waybillItem = {
   outboundAt: null,
   createdAt: "2026-05-11T10:00:00Z",
   updatedAt: "2026-05-11T10:00:00Z",
-  podFiles: []
+  podFiles: [],
+  extraFees: []
 };
 
 const parcelItems = [
@@ -122,6 +126,7 @@ describe("WaybillDetailPage", () => {
     apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
     apiMock.getWaybill.mockResolvedValue(waybillItem);
     apiMock.listWaybillParcels.mockResolvedValue({ items: parcelItems });
+    apiMock.listWaybillExtraFeeTypes.mockResolvedValue([]);
   });
 
   it("shows the waybill number title", async () => {

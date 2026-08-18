@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import (
+    WaybillExtraFee,
+    WaybillExtraFeeType,
     WaybillParcel,
     WaybillPodFile,
     WaybillTrackingRecord,
@@ -32,6 +34,7 @@ class WaybillRepository:
                 joinedload(WaybillTrackingRecord.user),
                 joinedload(WaybillTrackingRecord.pod_files),
                 joinedload(WaybillTrackingRecord.parcels),
+                joinedload(WaybillTrackingRecord.extra_fees).joinedload(WaybillExtraFee.fee_type),
             )
             .where(WaybillTrackingRecord.public_code == public_code.upper())
             .limit(1)
@@ -52,6 +55,7 @@ class WaybillRepository:
                 joinedload(WaybillTrackingRecord.user),
                 joinedload(WaybillTrackingRecord.pod_files),
                 joinedload(WaybillTrackingRecord.parcels),
+                joinedload(WaybillTrackingRecord.extra_fees).joinedload(WaybillExtraFee.fee_type),
             )
             .where(WaybillTrackingRecord.upload_id == upload_id)
             .limit(1)
@@ -87,6 +91,7 @@ class WaybillRepository:
                 joinedload(WaybillTrackingRecord.user),
                 joinedload(WaybillTrackingRecord.pod_files),
                 joinedload(WaybillTrackingRecord.parcels),
+                joinedload(WaybillTrackingRecord.extra_fees).joinedload(WaybillExtraFee.fee_type),
             )
             .where(WaybillUpload.status == "approved")
         )
@@ -109,6 +114,50 @@ class WaybillRepository:
             WaybillTrackingRecord.id.desc(),
         )
         return list(self.db.execute(statement).unique().scalars().all())
+
+    def list_extra_fee_types(self) -> list[WaybillExtraFeeType]:
+        statement = select(WaybillExtraFeeType).order_by(WaybillExtraFeeType.name.asc())
+        return list(self.db.execute(statement).scalars().all())
+
+    def get_extra_fee_types(self, ids: set[UUID]) -> list[WaybillExtraFeeType]:
+        if not ids:
+            return []
+        statement = select(WaybillExtraFeeType).where(WaybillExtraFeeType.id.in_(ids))
+        return list(self.db.execute(statement).scalars().all())
+
+    def create_extra_fee_type(self, *, name: str, actor_id: UUID) -> WaybillExtraFeeType:
+        fee_type = WaybillExtraFeeType(name=name, created_by_user_id=actor_id)
+        self.db.add(fee_type)
+        self.db.flush()
+        return fee_type
+
+    def replace_extra_fees(
+        self,
+        record: WaybillTrackingRecord,
+        *,
+        amounts_by_type_id: dict[UUID, object],
+        actor_id: UUID,
+    ) -> list[WaybillExtraFee]:
+        selected_type_ids = set(amounts_by_type_id)
+        for fee in list(record.extra_fees):
+            if fee.fee_type_id not in selected_type_ids:
+                self.db.delete(fee)
+            else:
+                fee.amount = amounts_by_type_id[fee.fee_type_id]
+                fee.updated_by_user_id = actor_id
+        existing_type_ids = {fee.fee_type_id for fee in record.extra_fees}
+        for fee_type_id in selected_type_ids - existing_type_ids:
+            self.db.add(
+                WaybillExtraFee(
+                    tracking_record_id=record.id,
+                    fee_type_id=fee_type_id,
+                    amount=amounts_by_type_id[fee_type_id],
+                    created_by_user_id=actor_id,
+                    updated_by_user_id=actor_id,
+                )
+            )
+        self.db.flush()
+        return record.extra_fees
 
     def create_for_upload(
         self,
