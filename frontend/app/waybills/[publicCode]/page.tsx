@@ -567,7 +567,11 @@ export default function WaybillDetailPage() {
     setNotice(null);
     try {
       const feeType = await createWaybillExtraFeeType(name);
-      setExtraFeeTypes((current) => [...current, feeType].sort((left, right) => left.name.localeCompare(right.name)));
+      setExtraFeeTypes((current) =>
+        [...current.filter((item) => item.id !== feeType.id), feeType].sort((left, right) =>
+          left.name.localeCompare(right.name)
+        )
+      );
       setExtraFeeDrafts((current) => ({ ...current, [feeType.id]: "0.00" }));
       setNewExtraFeeName("");
       setNotice({ tone: "success", text: `${feeType.name} added to additional fee options` });
@@ -582,7 +586,7 @@ export default function WaybillDetailPage() {
 
   const handleDeleteExtraFeeType = useCallback(
     async (feeType: WaybillExtraFeeType) => {
-      if (!isAdmin) {
+      if (!isAdmin || !waybill) {
         return;
       }
       if (
@@ -594,10 +598,20 @@ export default function WaybillDetailPage() {
       setDeletingExtraFeeTypeId(feeType.id);
       setNotice(null);
       try {
+        const savedFee = waybill.extraFees.find((fee) => fee.feeTypeId === feeType.id);
+        if (savedFee) {
+          const updated = await deleteWaybillExtraFee(waybill.publicCode, savedFee.id);
+          setWaybill(updated);
+          setExtraFeeDrafts(buildExtraFeeDrafts(updated));
+        } else {
+          setExtraFeeDrafts((current) => {
+            const next = { ...current };
+            delete next[feeType.id];
+            return next;
+          });
+        }
         await deleteWaybillExtraFeeType(feeType.id);
-        setExtraFeeTypes((current) =>
-          current.map((item) => (item.id === feeType.id ? { ...item, isActive: false } : item))
-        );
+        setExtraFeeTypes((current) => current.filter((item) => item.id !== feeType.id));
         setNotice({ tone: "success", text: `${feeType.name} removed from the extra fee options` });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to remove extra fee type";
@@ -607,7 +621,7 @@ export default function WaybillDetailPage() {
         setDeletingExtraFeeTypeId(null);
       }
     },
-    [addMessage, isAdmin]
+    [addMessage, isAdmin, waybill]
   );
 
   const handleDeleteExtraFee = useCallback(
@@ -854,12 +868,12 @@ export default function WaybillDetailPage() {
                 {Object.keys(extraFeeDrafts).length > 0 ? (
                   <div className={styles.extraFeeAmounts}>
                     {extraFeeTypes
-                      .filter((feeType) => feeType.id in extraFeeDrafts)
+                      .filter((feeType) => feeType.isActive && feeType.id in extraFeeDrafts)
                       .map((feeType) => {
                         const savedFee = waybill.extraFees.find((fee) => fee.feeTypeId === feeType.id);
                         return (
                         <div className={styles.extraFeeAmount} key={feeType.id}>
-                          <span>{feeType.name}{!feeType.isActive && <small>已删除选项</small>}</span>
+                          <span>{feeType.name}</span>
                           <div>
                             <b>EUR</b>
                             <input
