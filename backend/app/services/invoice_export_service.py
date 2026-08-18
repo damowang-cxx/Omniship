@@ -72,6 +72,24 @@ def _row_height_pixels(sheet, row: int) -> float:
     return points * 96 / 72
 
 
+def _image_anchor_row(image) -> int:
+    """Get an embedded image's 1-based start row from either anchor type."""
+    anchor = image.anchor
+    if isinstance(anchor, str):
+        _, row = coordinate_from_string(anchor)
+        return row
+    marker = getattr(anchor, "_from", None)
+    return marker.row + 1 if marker is not None else 1
+
+
+def _remove_template_detail_images(sheet) -> None:
+    """Discard the template's embedded detail-area seal before adding our own."""
+    # The supplied template has a large pre-existing image anchored in its detail
+    # section.  It is not the configured invoice stamp and can extend below bank
+    # details, so retain only header images from the template.
+    sheet._images = [image for image in sheet._images if _image_anchor_row(image) < DETAIL_START_ROW]
+
+
 def _compact_stamp_anchor(position: dict, total_row: int, bank_row: int, image_height: int, sheet) -> str:
     """Keep a saved stamp near a compact invoice without changing its size."""
     anchor = str(position.get("anchor", "E20"))
@@ -114,6 +132,7 @@ def build_invoice_workbook(invoice: Invoice) -> bytes:
     workbook = load_workbook(TEMPLATE_PATH)
     sheet = workbook.active
     total_row, bank_row = _prepare_detail_area(sheet, len(invoice.lines))
+    _remove_template_detail_images(sheet)
     payer = invoice.payer_snapshot
     issuer = invoice.issuer_snapshot
 

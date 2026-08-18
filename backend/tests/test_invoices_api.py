@@ -7,7 +7,6 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app.db.models import BillingEntry, Invoice, InvoiceSettings
-from app.services.invoice_export_service import _compact_stamp_anchor
 from tests.auth_helpers import create_test_user, login
 
 
@@ -97,18 +96,19 @@ def test_customer_can_create_invoice_export_and_admin_can_void(client, db_sessio
     assert sheet["G15"].value == 6
     assert "Beneficiary Name: Epix Logistics Co., Limited" in sheet["A17"].value
     assert sheet["A20"].value is None
-    # The reference template already contains two decorative images; exporting
-    # the invoice adds the configured, semi-transparent seal as another image.
-    assert len(sheet._images) >= 3
+    # The template's oversized detail-area seal is removed.  The header logo and
+    # the configured invoice stamp are the only remaining images.
+    assert len(sheet._images) == 2
+    stamp = next(image for image in sheet._images if type(image.anchor).__name__ == "OneCellAnchor")
     bank_bottom_row = 19
-    stamp_anchor = _compact_stamp_anchor({"anchor": "B34"}, 15, 17, 300, sheet)
-    stamp_start_row = int(stamp_anchor[1:])
+    stamp_start_row = stamp.anchor._from.row + 1
+    stamp_height = stamp.anchor.ext.cy / 9525
     stamp_available_height = sum(
         (sheet.row_dimensions[row].height or sheet.sheet_format.defaultRowHeight or 15) * 96 / 72
         for row in range(stamp_start_row, bank_bottom_row + 1)
     )
-    assert stamp_start_row <= 16
-    assert stamp_available_height >= 300
+    assert stamp_height == 86
+    assert stamp_available_height >= stamp_height
     workbook.close()
 
     assert login(client, email=admin.email).status_code == 200
