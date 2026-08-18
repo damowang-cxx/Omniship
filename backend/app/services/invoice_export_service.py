@@ -33,10 +33,16 @@ def _prepare_detail_area(sheet) -> tuple[int, int]:
     for merged in list(sheet.merged_cells.ranges):
         if str(merged) == "A41:G43":
             sheet.unmerge_cells(str(merged))
-    for row in range(39, 43):
-        _copy_row_style(sheet, 38, row)
+
+    # The supplied template contains example waybills (including "duty" rows)
+    # in its detail table. Preserve the table formatting, but always remove every
+    # example value/formula before inserting the selected invoice lines.
+    for row in range(DETAIL_START_ROW, DETAIL_START_ROW + DETAIL_MAX_LINES):
         for column in range(1, 8):
             sheet.cell(row, column).value = None
+
+    for row in range(39, 43):
+        _copy_row_style(sheet, 38, row)
 
     total_row = 43
     for column in range(1, 8):

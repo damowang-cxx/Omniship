@@ -89,6 +89,9 @@ def test_customer_can_create_invoice_export_and_admin_can_void(client, db_sessio
     assert sheet["G2"].value == "2026.08.17"
     assert "Customer Limited" in sheet["A7"].value
     assert {sheet["A13"].value, sheet["A14"].value} == {first.waybill_number, second.waybill_number}
+    assert sheet["A15"].value is None
+    assert sheet["D15"].value is None
+    assert sheet["G17"].value is None
     assert sheet["G43"].value == 6
     assert "Beneficiary Name: Epix Logistics Co., Limited" in sheet["A45"].value
     # The reference template already contains two decorative images; exporting
