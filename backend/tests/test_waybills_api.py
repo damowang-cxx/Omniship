@@ -203,6 +203,7 @@ def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, 
     )
     assert truck_type.status_code == 201
     assert handling_type.status_code == 201
+    assert truck_type.json()["isActive"] is True
     assert client.post("/api/v1/waybills/extra-fee-types", json={"name": "truck fee"}).status_code == 400
 
     updated = client.patch(
@@ -220,6 +221,19 @@ def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, 
         ("Cargo terminal special handling", "5.25"),
     }
 
+    removed = client.delete(f"/api/v1/waybills/extra-fee-types/{handling_type.json()['id']}")
+    assert removed.status_code == 200
+    assert removed.json()["status"] == "deactivated"
+    listed_types = client.get("/api/v1/waybills/extra-fee-types")
+    assert listed_types.status_code == 200
+    assert next(item for item in listed_types.json() if item["id"] == handling_type.json()["id"])["isActive"] is False
+    restored = client.post(
+        "/api/v1/waybills/extra-fee-types", json={"name": "Cargo terminal special handling"}
+    )
+    assert restored.status_code == 201
+    assert restored.json()["id"] == handling_type.json()["id"]
+    assert restored.json()["isActive"] is True
+
     assert login(client, email="owner@example.com").status_code == 200
     visible = client.get(f"/api/v1/waybills/{public_code}")
     assert visible.status_code == 200
@@ -236,6 +250,7 @@ def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, 
     assert [(fee["feeTypeName"], fee["amount"]) for fee in replaced.json()["extraFees"]] == [("Truck fee", "20.00")]
     actions = {row.action for row in db_session.execute(select(AuditLog)).scalars() if row.actor_user_id == admin.id}
     assert "create_waybill_extra_fee_type" in actions
+    assert "deactivate_waybill_extra_fee_type" in actions
     assert "update_waybill_extra_fees" in actions
 
 

@@ -125,6 +125,9 @@ class WaybillRepository:
         statement = select(WaybillExtraFeeType).where(WaybillExtraFeeType.id.in_(ids))
         return list(self.db.execute(statement).scalars().all())
 
+    def get_extra_fee_type(self, fee_type_id: UUID) -> WaybillExtraFeeType | None:
+        return self.db.get(WaybillExtraFeeType, fee_type_id)
+
     def create_extra_fee_type(self, *, name: str, actor_id: UUID) -> WaybillExtraFeeType:
         fee_type = WaybillExtraFeeType(name=name, created_by_user_id=actor_id)
         self.db.add(fee_type)

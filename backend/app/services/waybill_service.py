@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import (
     User,
-    WaybillExtraFeeType,
     WaybillParcel,
     WaybillPodFile,
     WaybillTrackingRecord,
@@ -27,6 +26,7 @@ from app.schemas.waybill import (
     WaybillItem,
     WaybillExtraFeeItem,
     WaybillExtraFeeTypeCreateRequest,
+    WaybillExtraFeeTypeDeleteResponse,
     WaybillExtraFeeTypeItem,
     WaybillExtraFeeUpdateRequest,
     WaybillListResponse,
@@ -162,11 +162,21 @@ class WaybillService:
         name = payload.name.strip()
         if not name:
             raise WaybillValidationError("Extra fee name is required")
-        if any(item.name.casefold() == name.casefold() for item in self.waybills.list_extra_fee_types()):
+        existing = next(
+            (item for item in self.waybills.list_extra_fee_types() if item.name.casefold() == name.casefold()),
+            None,
+        )
+        if existing and existing.is_active:
             raise WaybillValidationError("An extra fee type with this name already exists")
-        fee_type = self.waybills.create_extra_fee_type(name=name, actor_id=actor.id)
+        if existing:
+            existing.is_active = True
+            fee_type = existing
+            action = "reactivate_waybill_extra_fee_type"
+        else:
+            fee_type = self.waybills.create_extra_fee_type(name=name, actor_id=actor.id)
+            action = "create_waybill_extra_fee_type"
         self.audit_logs.create(
-            "create_waybill_extra_fee_type",
+            action,
             actor_user_id=actor.id,
             target_type="waybill_extra_fee_type",
             target_id=str(fee_type.id),
@@ -177,6 +187,31 @@ class WaybillService:
         self.db.commit()
         self.db.refresh(fee_type)
         return WaybillExtraFeeTypeItem.model_validate(fee_type)
+
+    def delete_extra_fee_type(
+        self,
+        actor: User,
+        *,
+        fee_type_id: UUID,
+        request: Request,
+    ) -> WaybillExtraFeeTypeDeleteResponse:
+        if actor.role != "admin":
+            raise WaybillPermissionError("Admin permission required")
+        fee_type = self.waybills.get_extra_fee_type(fee_type_id)
+        if fee_type is None or not fee_type.is_active:
+            raise WaybillValidationError("Extra fee type not found")
+        fee_type.is_active = False
+        self.audit_logs.create(
+            "deactivate_waybill_extra_fee_type",
+            actor_user_id=actor.id,
+            target_type="waybill_extra_fee_type",
+            target_id=str(fee_type.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={"name": fee_type.name},
+        )
+        self.db.commit()
+        return WaybillExtraFeeTypeDeleteResponse(status="deactivated", feeTypeId=fee_type.id)
 
     def update_extra_fees(
         self,
@@ -193,6 +228,9 @@ class WaybillService:
         fee_types = self.waybills.get_extra_fee_types(type_ids)
         if len(fee_types) != len(type_ids):
             raise WaybillValidationError("One or more extra fee types were not found")
+        existing_type_ids = {fee.fee_type_id for fee in record.extra_fees}
+        if any(not fee_type.is_active and fee_type.id not in existing_type_ids for fee_type in fee_types):
+            raise WaybillValidationError("A deleted extra fee type cannot be added to a waybill")
         amounts_by_type_id = {item.feeTypeId: item.amount for item in payload.items}
         self.waybills.replace_extra_fees(
             record,

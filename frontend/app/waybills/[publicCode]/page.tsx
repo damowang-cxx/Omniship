@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { CheckCircle2, CircleDollarSign, CircleSlash, Plus } from "lucide-react";
+import { CheckCircle2, CircleDollarSign, CircleSlash, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   deleteWaybillPodFile,
+  deleteWaybillExtraFeeType,
   createWaybillExtraFeeType,
   getCurrentUser,
   getWaybillPodFileDownloadUrl,
@@ -224,6 +225,7 @@ export default function WaybillDetailPage() {
   const [newExtraFeeName, setNewExtraFeeName] = useState("");
   const [isSavingExtraFees, setIsSavingExtraFees] = useState(false);
   const [isCreatingExtraFeeType, setIsCreatingExtraFeeType] = useState(false);
+  const [deletingExtraFeeTypeId, setDeletingExtraFeeTypeId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(
     null
   );
@@ -576,6 +578,36 @@ export default function WaybillDetailPage() {
     }
   }, [addMessage, isAdmin, newExtraFeeName]);
 
+  const handleDeleteExtraFeeType = useCallback(
+    async (feeType: WaybillExtraFeeType) => {
+      if (!isAdmin) {
+        return;
+      }
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm(`Remove "${feeType.name}" from the extra fee options?`)
+      ) {
+        return;
+      }
+      setDeletingExtraFeeTypeId(feeType.id);
+      setNotice(null);
+      try {
+        await deleteWaybillExtraFeeType(feeType.id);
+        setExtraFeeTypes((current) =>
+          current.map((item) => (item.id === feeType.id ? { ...item, isActive: false } : item))
+        );
+        setNotice({ tone: "success", text: `${feeType.name} removed from the extra fee options` });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to remove extra fee type";
+        setNotice({ tone: "error", text: message });
+        addMessage("Extra fee option removal failed", message, "error");
+      } finally {
+        setDeletingExtraFeeTypeId(null);
+      }
+    },
+    [addMessage, isAdmin]
+  );
+
   const handleSaveExtraFees = useCallback(async () => {
     if (!waybill || !isAdmin) {
       return;
@@ -724,8 +756,8 @@ export default function WaybillDetailPage() {
           <section className={styles.extraFeeSection}>
             <div className={styles.extraFeeHeader}>
               <div>
-                <p className={styles.eyebrow}>Additional charges</p>
-                <h3>附加费用</h3>
+                <p className={styles.eyebrow}>Extra charges</p>
+                <h3>额外费用</h3>
                 <p>卡车费、货站特殊处理费及其他逐票收费项目。</p>
               </div>
               <div className={styles.extraFeeTotal}>
@@ -738,18 +770,28 @@ export default function WaybillDetailPage() {
             {isAdmin ? (
               <>
                 <div className={styles.extraFeePicker}>
-                  <span className={styles.extraFeePickerLabel}>选择附加费</span>
+                  <span className={styles.extraFeePickerLabel}>选择额外费用</span>
                   <div className={styles.extraFeeOptions}>
-                    {extraFeeTypes.map((feeType) => (
-                      <label className={styles.extraFeeOption} key={feeType.id}>
-                        <input
-                          checked={feeType.id in extraFeeDrafts}
-                          disabled={isSavingExtraFees || isCreatingExtraFeeType}
-                          onChange={(event) => handleExtraFeeTypeToggle(feeType.id, event.target.checked)}
-                          type="checkbox"
-                        />
-                        <span>{feeType.name}</span>
-                      </label>
+                    {extraFeeTypes.filter((feeType) => feeType.isActive).map((feeType) => (
+                      <div className={styles.extraFeeOption} key={feeType.id}>
+                        <label>
+                          <input
+                            checked={feeType.id in extraFeeDrafts}
+                            disabled={isSavingExtraFees || isCreatingExtraFeeType || deletingExtraFeeTypeId === feeType.id}
+                            onChange={(event) => handleExtraFeeTypeToggle(feeType.id, event.target.checked)}
+                            type="checkbox"
+                          />
+                          <span>{feeType.name}</span>
+                        </label>
+                        <button
+                          aria-label={`Delete ${feeType.name} extra fee option`}
+                          disabled={isSavingExtraFees || isCreatingExtraFeeType || deletingExtraFeeTypeId === feeType.id}
+                          onClick={() => void handleDeleteExtraFeeType(feeType)}
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" size={14} />
+                        </button>
+                      </div>
                     ))}
                     <div className={styles.extraFeeTypeCreate}>
                       <input
@@ -762,7 +804,7 @@ export default function WaybillDetailPage() {
                             void handleCreateExtraFeeType();
                           }
                         }}
-                        placeholder="新增费用字段，例如卡车费"
+                        placeholder="新增额外费用字段，例如卡车费"
                         value={newExtraFeeName}
                       />
                       <button
@@ -784,7 +826,7 @@ export default function WaybillDetailPage() {
                       .filter((feeType) => feeType.id in extraFeeDrafts)
                       .map((feeType) => (
                         <label className={styles.extraFeeAmount} key={feeType.id}>
-                          <span>{feeType.name}</span>
+                          <span>{feeType.name}{!feeType.isActive && <small>已删除选项</small>}</span>
                           <div>
                             <b>EUR</b>
                             <input
@@ -807,7 +849,7 @@ export default function WaybillDetailPage() {
                       ))}
                   </div>
                 ) : (
-                  <p className={styles.extraFeeEmpty}>Select a fee type above to set a charge for this waybill.</p>
+                  <p className={styles.extraFeeEmpty}>从上方选择额外费用项目，再填写此运单的金额。</p>
                 )}
 
                 <div className={styles.detailActions}>
@@ -819,7 +861,7 @@ export default function WaybillDetailPage() {
                     Reset
                   </button>
                   <button disabled={isSavingExtraFees} onClick={() => void handleSaveExtraFees()} type="button">
-                    {isSavingExtraFees ? "Saving..." : "Save additional fees"}
+                    {isSavingExtraFees ? "Saving..." : "Save extra fees"}
                   </button>
                 </div>
               </>
@@ -833,7 +875,7 @@ export default function WaybillDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className={styles.extraFeeEmpty}>No additional fees have been set for this waybill.</p>
+              <p className={styles.extraFeeEmpty}>此运单尚未设置额外费用。</p>
             )}
           </section>
 

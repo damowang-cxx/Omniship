@@ -50,6 +50,7 @@ class WaybillPodFileItem(BaseModel):
 class WaybillExtraFeeTypeItem(BaseModel):
     id: UUID
     name: str
+    is_active: bool = Field(alias="isActive")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -65,6 +66,13 @@ class WaybillExtraFeeItem(BaseModel):
 
 class WaybillExtraFeeTypeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+
+
+class WaybillExtraFeeTypeDeleteResponse(BaseModel):
+    status: Literal["deactivated"]
+    fee_type_id: UUID = Field(alias="feeTypeId")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WaybillExtraFeeUpdateItem(BaseModel):

@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.schemas.waybill import (
     WaybillItem,
     WaybillExtraFeeTypeCreateRequest,
+    WaybillExtraFeeTypeDeleteResponse,
     WaybillExtraFeeTypeItem,
     WaybillExtraFeeUpdateRequest,
     WaybillListResponse,
@@ -79,6 +80,19 @@ def create_waybill_extra_fee_type(
 ) -> WaybillExtraFeeTypeItem:
     try:
         return WaybillService(db).create_extra_fee_type(current_user, payload=payload, request=request)
+    except WaybillValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete("/extra-fee-types/{fee_type_id}", response_model=WaybillExtraFeeTypeDeleteResponse)
+def delete_waybill_extra_fee_type(
+    fee_type_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> WaybillExtraFeeTypeDeleteResponse:
+    try:
+        return WaybillService(db).delete_extra_fee_type(current_user, fee_type_id=fee_type_id, request=request)
     except WaybillValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

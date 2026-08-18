@@ -411,6 +411,12 @@ export interface WaybillPodDeleteResponse {
 export interface WaybillExtraFeeType {
   id: string;
   name: string;
+  isActive: boolean;
+}
+
+export interface WaybillExtraFeeTypeDeleteResponse {
+  status: "deactivated";
+  feeTypeId: string;
 }
 
 export interface WaybillExtraFee {

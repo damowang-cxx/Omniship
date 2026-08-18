@@ -18,6 +18,7 @@ import type {
   WaybillFilters,
   WaybillItem,
   WaybillExtraFeeType,
+  WaybillExtraFeeTypeDeleteResponse,
   WaybillExtraFeeUpdatePayload,
   WaybillListResponse,
   WaybillParcelBulkUpdatePayload,
@@ -646,6 +647,15 @@ export function createWaybillExtraFeeType(name: string): Promise<WaybillExtraFee
     method: "POST",
     body: JSON.stringify({ name })
   });
+}
+
+export function deleteWaybillExtraFeeType(
+  feeTypeId: string
+): Promise<WaybillExtraFeeTypeDeleteResponse> {
+  return requestJson<WaybillExtraFeeTypeDeleteResponse>(
+    `/api/v1/waybills/extra-fee-types/${feeTypeId}`,
+    { method: "DELETE" }
+  );
 }
 
 export async function updateWaybillExtraFees(

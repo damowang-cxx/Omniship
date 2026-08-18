@@ -144,7 +144,7 @@ def build_invoice_workbook(invoice: Invoice) -> bytes:
         f"賬單金額€ {invoice.total_amount:,.2f}  EUR"
         f"(到期日 {invoice.due_date.year}年{invoice.due_date.month}月{invoice.due_date.day}日)"
     )
-    sheet["E12"] = "附加费/EUR"
+    sheet["E12"] = "额外费用/EUR"
     sheet["G12"] = "总金额/EUR"
 
     for index, line in enumerate(invoice.lines, start=DETAIL_START_ROW):
