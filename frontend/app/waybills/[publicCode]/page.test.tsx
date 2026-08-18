@@ -10,6 +10,7 @@ const routerMock = vi.hoisted(() => ({
 const apiMock = vi.hoisted(() => ({
   createWaybillExtraFeeType: vi.fn(),
   deleteWaybillPodFile: vi.fn(),
+  deleteWaybillExtraFee: vi.fn(),
   getCurrentUser: vi.fn(),
   getWaybill: vi.fn(),
   getWaybillPodFileDownloadUrl: vi.fn(

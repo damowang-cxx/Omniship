@@ -221,6 +221,27 @@ def update_waybill_extra_fees(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@router.delete("/{public_code}/extra-fees/{fee_id}", response_model=WaybillItem)
+def delete_waybill_extra_fee(
+    public_code: str,
+    fee_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> WaybillItem:
+    try:
+        return WaybillService(db).delete_extra_fee(
+            current_user,
+            public_code=public_code,
+            fee_id=fee_id,
+            request=request,
+        )
+    except WaybillPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WaybillValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 @router.get("/{public_code}", response_model=WaybillItem)
 def get_waybill(
     public_code: str,

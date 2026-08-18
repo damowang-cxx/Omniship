@@ -221,6 +221,13 @@ def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, 
         ("Cargo terminal special handling", "5.25"),
     }
 
+    handling_fee_id = next(
+        fee["id"] for fee in updated.json()["extraFees"] if fee["feeTypeName"] == "Cargo terminal special handling"
+    )
+    deleted_fee = client.delete(f"/api/v1/waybills/{public_code}/extra-fees/{handling_fee_id}")
+    assert deleted_fee.status_code == 200
+    assert [(fee["feeTypeName"], fee["amount"]) for fee in deleted_fee.json()["extraFees"]] == [("Truck fee", "14.50")]
+
     removed = client.delete(f"/api/v1/waybills/extra-fee-types/{handling_type.json()['id']}")
     assert removed.status_code == 200
     assert removed.json()["status"] == "deactivated"
@@ -237,7 +244,7 @@ def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, 
     assert login(client, email="owner@example.com").status_code == 200
     visible = client.get(f"/api/v1/waybills/{public_code}")
     assert visible.status_code == 200
-    assert len(visible.json()["extraFees"]) == 2
+    assert len(visible.json()["extraFees"]) == 1
     assert client.get("/api/v1/waybills/extra-fee-types").status_code == 403
     assert client.patch(f"/api/v1/waybills/{public_code}/extra-fees", json={"items": []}).status_code == 403
 
@@ -251,6 +258,7 @@ def test_admin_configures_waybill_extra_fees_and_customer_can_only_view(client, 
     actions = {row.action for row in db_session.execute(select(AuditLog)).scalars() if row.actor_user_id == admin.id}
     assert "create_waybill_extra_fee_type" in actions
     assert "deactivate_waybill_extra_fee_type" in actions
+    assert "delete_waybill_extra_fee" in actions
     assert "update_waybill_extra_fees" in actions
 
 

@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   deleteWaybillPodFile,
+  deleteWaybillExtraFee,
   deleteWaybillExtraFeeType,
   createWaybillExtraFeeType,
   getCurrentUser,
@@ -226,6 +227,7 @@ export default function WaybillDetailPage() {
   const [isSavingExtraFees, setIsSavingExtraFees] = useState(false);
   const [isCreatingExtraFeeType, setIsCreatingExtraFeeType] = useState(false);
   const [deletingExtraFeeTypeId, setDeletingExtraFeeTypeId] = useState<string | null>(null);
+  const [deletingExtraFeeId, setDeletingExtraFeeId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(
     null
   );
@@ -608,6 +610,35 @@ export default function WaybillDetailPage() {
     [addMessage, isAdmin]
   );
 
+  const handleDeleteExtraFee = useCallback(
+    async (feeId: string, feeName: string) => {
+      if (!waybill || !isAdmin) {
+        return;
+      }
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm(`Delete ${feeName} from this waybill?`)
+      ) {
+        return;
+      }
+      setDeletingExtraFeeId(feeId);
+      setNotice(null);
+      try {
+        const updated = await deleteWaybillExtraFee(waybill.publicCode, feeId);
+        setWaybill(updated);
+        setExtraFeeDrafts(buildExtraFeeDrafts(updated));
+        setNotice({ tone: "success", text: `${feeName} removed from this waybill` });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to delete extra fee";
+        setNotice({ tone: "error", text: message });
+        addMessage("Extra fee deletion failed", message, "error");
+      } finally {
+        setDeletingExtraFeeId(null);
+      }
+    },
+    [addMessage, isAdmin, waybill]
+  );
+
   const handleSaveExtraFees = useCallback(async () => {
     if (!waybill || !isAdmin) {
       return;
@@ -824,14 +855,16 @@ export default function WaybillDetailPage() {
                   <div className={styles.extraFeeAmounts}>
                     {extraFeeTypes
                       .filter((feeType) => feeType.id in extraFeeDrafts)
-                      .map((feeType) => (
-                        <label className={styles.extraFeeAmount} key={feeType.id}>
+                      .map((feeType) => {
+                        const savedFee = waybill.extraFees.find((fee) => fee.feeTypeId === feeType.id);
+                        return (
+                        <div className={styles.extraFeeAmount} key={feeType.id}>
                           <span>{feeType.name}{!feeType.isActive && <small>已删除选项</small>}</span>
                           <div>
                             <b>EUR</b>
                             <input
                               aria-label={`${feeType.name} amount`}
-                              disabled={isSavingExtraFees}
+                              disabled={isSavingExtraFees || deletingExtraFeeId === savedFee?.id}
                               inputMode="decimal"
                               min="0"
                               onChange={(event) =>
@@ -844,9 +877,19 @@ export default function WaybillDetailPage() {
                               type="number"
                               value={extraFeeDrafts[feeType.id]}
                             />
+                            {savedFee && (
+                              <button
+                                aria-label={`Delete ${feeType.name} from this waybill`}
+                                disabled={isSavingExtraFees || deletingExtraFeeId === savedFee.id}
+                                onClick={() => void handleDeleteExtraFee(savedFee.id, feeType.name)}
+                                type="button"
+                              >
+                                <Trash2 aria-hidden="true" size={14} />
+                              </button>
+                            )}
                           </div>
-                        </label>
-                      ))}
+                        </div>
+                      )})}
                   </div>
                 ) : (
                   <p className={styles.extraFeeEmpty}>从上方选择额外费用项目，再填写此运单的金额。</p>

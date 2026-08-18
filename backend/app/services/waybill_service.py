@@ -259,6 +259,41 @@ class WaybillService:
             raise WaybillValidationError("Waybill not found")
         return self._build_item(refreshed)
 
+    def delete_extra_fee(
+        self,
+        actor: User,
+        *,
+        public_code: str,
+        fee_id: UUID,
+        request: Request,
+    ) -> WaybillItem:
+        if actor.role != "admin":
+            raise WaybillPermissionError("Admin permission required")
+        record = self._get_visible_record(actor, public_code=public_code)
+        fee = next((item for item in record.extra_fees if item.id == fee_id), None)
+        if fee is None:
+            raise WaybillValidationError("Extra fee not found on this waybill")
+        self.audit_logs.create(
+            "delete_waybill_extra_fee",
+            actor_user_id=actor.id,
+            target_type="waybill_extra_fee",
+            target_id=str(fee.id),
+            ip_address=get_request_ip(request),
+            user_agent=get_request_user_agent(request),
+            metadata={
+                "publicCode": record.public_code,
+                "airWaybillNumber": record.upload.air_waybill_number,
+                "feeType": fee.fee_type_name,
+                "amount": str(fee.amount),
+            },
+        )
+        self.db.delete(fee)
+        self.db.commit()
+        refreshed = self.waybills.get_by_public_code(record.public_code)
+        if refreshed is None:
+            raise WaybillValidationError("Waybill not found")
+        return self._build_item(refreshed)
+
     def update_waybill(
         self,
         actor: User,

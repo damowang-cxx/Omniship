@@ -670,6 +670,18 @@ export async function updateWaybillExtraFees(
   return response;
 }
 
+export async function deleteWaybillExtraFee(
+  publicCode: string,
+  feeId: string
+): Promise<WaybillItem> {
+  const response = await requestJson<WaybillItem>(
+    `/api/v1/waybills/${publicCode}/extra-fees/${feeId}`,
+    { method: "DELETE" }
+  );
+  updateWaybillInCache(response);
+  return response;
+}
+
 export function listWaybillParcels(
   publicCode: string
 ): Promise<WaybillParcelListResponse> {
