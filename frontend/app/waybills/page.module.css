@@ -694,9 +694,19 @@
   color: #8b4d46;
   cursor: pointer;
   display: inline-flex;
+  opacity: 0;
+  pointer-events: none;
   padding: 0 8px;
+  transform: translateX(3px);
+  transition: background .16s ease, color .16s ease, opacity .16s ease, transform .16s ease;
 }
 
+.extraFeeOption:hover button,
+.extraFeeOption:focus-within button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
 .extraFeeOption button:hover { background: #fff0ed; color: #a63426; }
 .extraFeeOption button:disabled { cursor: wait; opacity: .5; }
 
@@ -786,7 +796,17 @@
   display: inline-flex;
   height: 34px;
   justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(3px);
+  transition: background .16s ease, opacity .16s ease, transform .16s ease;
   width: 34px;
+}
+.extraFeeAmount:hover button,
+.extraFeeAmount:focus-within button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 .extraFeeAmount button:hover { background: #fee9e5; }
 .extraFeeAmount button:disabled { cursor: wait; opacity: .55; }
