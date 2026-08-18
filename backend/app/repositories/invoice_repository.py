@@ -2,7 +2,7 @@ from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.models import BillingEntry, Invoice, InvoiceCounter, InvoiceLine, InvoiceSettings
 
@@ -36,8 +36,12 @@ class InvoiceRepository:
         return self.db.execute(statement).unique().scalar_one_or_none()
 
     def get_invoice_for_update(self, invoice_id: UUID) -> Invoice | None:
+        # Keep the row lock on the invoice table only.  A joined eager load here
+        # produces a LEFT OUTER JOIN, which PostgreSQL rejects with FOR UPDATE
+        # (it cannot lock the nullable side of that join).  Loading lines in a
+        # separate SELECT retains the response data without weakening the lock.
         statement = (
-            select(Invoice).where(Invoice.id == invoice_id).options(joinedload(Invoice.lines)).with_for_update()
+            select(Invoice).where(Invoice.id == invoice_id).options(selectinload(Invoice.lines)).with_for_update()
         )
         return self.db.execute(statement).unique().scalar_one_or_none()
 
