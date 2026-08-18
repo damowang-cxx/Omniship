@@ -66,14 +66,35 @@ def _prepare_detail_area(sheet, line_count: int) -> tuple[int, int]:
     return total_row, bank_row
 
 
-def _compact_stamp_anchor(position: dict, total_row: int) -> str:
+def _row_height_pixels(sheet, row: int) -> float:
+    """Return an Excel row's displayed height in pixels."""
+    points = sheet.row_dimensions[row].height or sheet.sheet_format.defaultRowHeight or 15
+    return points * 96 / 72
+
+
+def _compact_stamp_anchor(position: dict, total_row: int, bank_row: int, image_height: int, sheet) -> str:
     """Keep a saved stamp near a compact invoice without changing its size."""
     anchor = str(position.get("anchor", "E20"))
     column, row = coordinate_from_string(anchor)
     # Leave the one template spacer row after the total.  When the saved anchor
     # was in an omitted detail row, the full-size stamp may overlap the bank
     # block; this is intentional and avoids shrinking the seal.
-    return f"{column}{min(row, total_row + 1)}"
+    desired_row = min(row, total_row + 1)
+
+    # A seal must never extend below the three-row bank-details cell.  Find the
+    # lowest starting row that can fit the saved image height above its bottom;
+    # then move it upward only when that boundary requires it.
+    bank_bottom_row = bank_row + 2
+    available_height = 0.0
+    maximum_start_row = bank_bottom_row
+    while maximum_start_row > 1 and available_height < image_height:
+        available_height += _row_height_pixels(sheet, maximum_start_row)
+        maximum_start_row -= 1
+    if available_height < image_height:
+        maximum_start_row = 1
+    else:
+        maximum_start_row += 1
+    return f"{column}{min(desired_row, maximum_start_row)}"
 
 
 def _bank_text(snapshot: dict) -> str:
@@ -124,7 +145,7 @@ def build_invoice_workbook(invoice: Invoice) -> bytes:
             image = ExcelImage(stamp_path)
             image.width = int(invoice.stamp_position.get("width", 86))
             image.height = int(invoice.stamp_position.get("height", 86))
-            sheet.add_image(image, _compact_stamp_anchor(invoice.stamp_position, total_row))
+            sheet.add_image(image, _compact_stamp_anchor(invoice.stamp_position, total_row, bank_row, image.height, sheet))
 
     output = BytesIO()
     workbook.save(output)
