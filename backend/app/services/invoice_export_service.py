@@ -4,6 +4,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as ExcelImage
+from openpyxl.utils.cell import coordinate_from_string
 
 from app.db.models import Invoice
 
@@ -26,42 +27,53 @@ def _copy_row_style(sheet, source_row: int, target_row: int) -> None:
             target.alignment = copy(source.alignment)
 
 
-def _prepare_detail_area(sheet) -> tuple[int, int]:
-    """Extend the reference template's 26 detail rows to the agreed 30 rows."""
-    # The original bank block starts inside the rows being converted into the
-    # additional four detail lines, so release the merge before touching cells.
+def _prepare_detail_area(sheet, line_count: int) -> tuple[int, int]:
+    """Resize the template detail table to exactly the invoice's line count."""
+    if not 1 <= line_count <= DETAIL_MAX_LINES:
+        raise ValueError(f"Invoice detail count must be between 1 and {DETAIL_MAX_LINES}")
+
+    template_detail_lines = 26
+    # The bank block may be shifted when rows are inserted or removed, so release
+    # the merge before changing the detail table's height.
     for merged in list(sheet.merged_cells.ranges):
         if str(merged) == "A41:G43":
             sheet.unmerge_cells(str(merged))
 
-    # The supplied template contains example waybills (including "duty" rows)
-    # in its detail table. Preserve the table formatting, but always remove every
-    # example value/formula before inserting the selected invoice lines.
-    for row in range(DETAIL_START_ROW, DETAIL_START_ROW + DETAIL_MAX_LINES):
+    # The supplied template contains example waybills (including "duty" rows).
+    # Preserve its table formatting while removing every example value/formula.
+    for row in range(DETAIL_START_ROW, DETAIL_START_ROW + template_detail_lines):
         for column in range(1, 8):
             sheet.cell(row, column).value = None
 
-    for row in range(39, 43):
-        _copy_row_style(sheet, 38, row)
+    if line_count > template_detail_lines:
+        extra_lines = line_count - template_detail_lines
+        # The template footer begins at row 39.  Insert enough formatted detail
+        # rows directly before it for the 27th through 30th waybill.
+        sheet.insert_rows(39, amount=extra_lines)
+        for row in range(39, 39 + extra_lines):
+            _copy_row_style(sheet, 38, row)
+    elif line_count < template_detail_lines:
+        # Remove unused rows rather than leaving a fixed 30-row blank area.
+        sheet.delete_rows(DETAIL_START_ROW + line_count, template_detail_lines - line_count)
 
-    total_row = 43
-    for column in range(1, 8):
-        source = sheet.cell(39, column)
-        target = sheet.cell(total_row, column)
-        if source.has_style:
-            target._style = copy(source._style)
-        if source.alignment:
-            target.alignment = copy(source.alignment)
-        if source.number_format:
-            target.number_format = source.number_format
-
-    # The source template merges A41:G43 for bank information. Recreate it below
-    # the extended detail table without modifying the stored template itself.
-    for row in range(41, 48):
+    total_row = DETAIL_START_ROW + line_count
+    bank_row = total_row + 2
+    # Recreate the three-row bank block immediately below the compact footer.
+    for row in range(bank_row, bank_row + 3):
         for column in range(1, 8):
             sheet.cell(row, column).value = None
-    sheet.merge_cells("A45:G47")
-    return total_row, 45
+    sheet.merge_cells(start_row=bank_row, start_column=1, end_row=bank_row + 2, end_column=7)
+    return total_row, bank_row
+
+
+def _compact_stamp_anchor(position: dict, total_row: int) -> str:
+    """Keep a saved stamp near a compact invoice without changing its size."""
+    anchor = str(position.get("anchor", "E20"))
+    column, row = coordinate_from_string(anchor)
+    # Leave the one template spacer row after the total.  When the saved anchor
+    # was in an omitted detail row, the full-size stamp may overlap the bank
+    # block; this is intentional and avoids shrinking the seal.
+    return f"{column}{min(row, total_row + 1)}"
 
 
 def _bank_text(snapshot: dict) -> str:
@@ -80,7 +92,7 @@ def _bank_text(snapshot: dict) -> str:
 def build_invoice_workbook(invoice: Invoice) -> bytes:
     workbook = load_workbook(TEMPLATE_PATH)
     sheet = workbook.active
-    total_row, bank_row = _prepare_detail_area(sheet)
+    total_row, bank_row = _prepare_detail_area(sheet, len(invoice.lines))
     payer = invoice.payer_snapshot
     issuer = invoice.issuer_snapshot
 
@@ -112,7 +124,7 @@ def build_invoice_workbook(invoice: Invoice) -> bytes:
             image = ExcelImage(stamp_path)
             image.width = int(invoice.stamp_position.get("width", 86))
             image.height = int(invoice.stamp_position.get("height", 86))
-            sheet.add_image(image, invoice.stamp_position.get("anchor", "E20"))
+            sheet.add_image(image, _compact_stamp_anchor(invoice.stamp_position, total_row))
 
     output = BytesIO()
     workbook.save(output)

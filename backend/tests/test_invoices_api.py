@@ -1,5 +1,6 @@
 from datetime import date
 from io import BytesIO
+from zipfile import ZipFile
 
 from PIL import Image
 from openpyxl import load_workbook
@@ -92,8 +93,9 @@ def test_customer_can_create_invoice_export_and_admin_can_void(client, db_sessio
     assert sheet["A15"].value is None
     assert sheet["D15"].value is None
     assert sheet["G17"].value is None
-    assert sheet["G43"].value == 6
-    assert "Beneficiary Name: Epix Logistics Co., Limited" in sheet["A45"].value
+    assert sheet["G15"].value == 6
+    assert "Beneficiary Name: Epix Logistics Co., Limited" in sheet["A17"].value
+    assert sheet["A20"].value is None
     # The reference template already contains two decorative images; exporting
     # the invoice adds the configured, semi-transparent seal as another image.
     assert len(sheet._images) >= 3
@@ -134,6 +136,13 @@ def test_more_than_thirty_deductions_create_two_invoices(client, db_session, tmp
     )
     assert batch.status_code == 200
     assert batch.headers["content-type"].startswith("application/zip")
+    with ZipFile(BytesIO(batch.content)) as archive:
+        compact_workbook = load_workbook(BytesIO(archive.read("INV26002.xlsx")), data_only=True)
+    compact_sheet = compact_workbook.active
+    assert compact_sheet["A13"].value == invoices[1]["lines"][0]["waybillNumber"]
+    assert compact_sheet["G14"].value == 3
+    assert "Beneficiary Name: Epix Logistics Co., Limited" in compact_sheet["A16"].value
+    compact_workbook.close()
 
 
 def test_admin_updates_each_invoice_setting_independently(client, db_session):
