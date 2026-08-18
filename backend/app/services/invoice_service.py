@@ -64,11 +64,17 @@ class InvoiceService:
     ) -> InvoiceSettingsItem:
         self._require_admin(actor)
         settings = self.invoices.get_or_create_settings()
-        for field in (
-            "issuer_company_name", "issuer_address_info", "beneficiary_name", "bank_account",
-            "bank_name_and_code", "branch_code", "swift_bic", "bank_address",
-        ):
-            setattr(settings, field, getattr(payload, field).strip())
+        field_map = {
+            "issuerCompanyName": "issuer_company_name", "issuerAddressInfo": "issuer_address_info",
+            "beneficiaryName": "beneficiary_name", "bankAccount": "bank_account",
+            "bankNameAndCode": "bank_name_and_code", "branchCode": "branch_code",
+            "swiftBic": "swift_bic", "bankAddress": "bank_address",
+        }
+        changed_fields = payload.model_dump(exclude_unset=True).keys()
+        for field in changed_fields:
+            value = getattr(payload, field)
+            if value is not None:
+                setattr(settings, field_map[field], value.strip())
         if stamp is not None and stamp.filename:
             stamp_data = await self._collect_stamp(stamp)
             path = self._save_stamp(stamp_data)
@@ -79,6 +85,7 @@ class InvoiceService:
         self.audit_logs.create(
             "update_invoice_settings", actor_user_id=actor.id, target_type="invoice_settings", target_id="1",
             ip_address=get_request_ip(request), user_agent=get_request_user_agent(request),
+            metadata={"fields": sorted(changed_fields), "stampUploaded": stamp is not None and bool(stamp.filename)},
         )
         self.db.commit()
         self.db.refresh(settings)
@@ -123,8 +130,8 @@ class InvoiceService:
         if not self._settings_complete(settings):
             raise InvoiceValidationError("Invoice settings and stamp image must be configured before invoicing")
 
-        selected = self.invoices.get_entries_for_update(user_id, payload.deduction_ids)
-        if len(selected) != len(payload.deduction_ids):
+        selected = self.invoices.get_entries_for_update(user_id, payload.deductionIds)
+        if len(selected) != len(payload.deductionIds):
             raise InvoiceValidationError("One or more selected deductions were not found")
         active_ids = self.invoices.active_invoice_entry_ids([entry.id for entry in selected])
         reversed_ids = {
@@ -149,10 +156,10 @@ class InvoiceService:
                 total = sum((Decimal(line.amount) for line in lines), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 invoice = Invoice(
                     user_id=user.id,
-                    invoice_number=self.invoices.next_number(payload.issued_date),
+                    invoice_number=self.invoices.next_number(payload.issuedDate),
                     status="issued",
-                    issued_date=payload.issued_date,
-                    due_date=payload.issued_date + timedelta(days=4),
+                    issued_date=payload.issuedDate,
+                    due_date=payload.issuedDate + timedelta(days=4),
                     total_amount=total,
                     payer_snapshot=payer_snapshot,
                     issuer_snapshot=issuer_snapshot,

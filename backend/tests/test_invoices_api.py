@@ -131,3 +131,18 @@ def test_more_than_thirty_deductions_create_two_invoices(client, db_session, tmp
     )
     assert batch.status_code == 200
     assert batch.headers["content-type"].startswith("application/zip")
+
+
+def test_admin_updates_each_invoice_setting_independently(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", username="Admin", role="admin")
+    assert login(client, email=admin.email).status_code == 200
+
+    first = client.patch("/api/v1/billing/invoice-settings", json={"beneficiaryName": "EPIX"})
+    assert first.status_code == 200
+    assert first.json()["beneficiaryName"] == "EPIX"
+    assert first.json()["bankAccount"] is None
+
+    second = client.patch("/api/v1/billing/invoice-settings", json={"bankAccount": "7949929686"})
+    assert second.status_code == 200
+    assert second.json()["beneficiaryName"] == "EPIX"
+    assert second.json()["bankAccount"] == "7949929686"

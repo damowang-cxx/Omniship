@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class InvoicePayerItem(BaseModel):
@@ -28,16 +28,20 @@ class InvoiceSettingsItem(BaseModel):
 
 
 class InvoiceSettingsUpdateRequest(BaseModel):
-    issuer_company_name: str = Field(min_length=1, max_length=255, alias="issuerCompanyName")
-    issuer_address_info: str = Field(min_length=1, max_length=2000, alias="issuerAddressInfo")
-    beneficiary_name: str = Field(min_length=1, max_length=255, alias="beneficiaryName")
-    bank_account: str = Field(min_length=1, max_length=255, alias="bankAccount")
-    bank_name_and_code: str = Field(min_length=1, max_length=500, alias="bankNameAndCode")
-    branch_code: str = Field(min_length=1, max_length=120, alias="branchCode")
-    swift_bic: str = Field(min_length=1, max_length=120, alias="swiftBic")
-    bank_address: str = Field(min_length=1, max_length=2000, alias="bankAddress")
+    issuerCompanyName: str | None = Field(default=None, min_length=1, max_length=255)
+    issuerAddressInfo: str | None = Field(default=None, min_length=1, max_length=2000)
+    beneficiaryName: str | None = Field(default=None, min_length=1, max_length=255)
+    bankAccount: str | None = Field(default=None, min_length=1, max_length=255)
+    bankNameAndCode: str | None = Field(default=None, min_length=1, max_length=500)
+    branchCode: str | None = Field(default=None, min_length=1, max_length=120)
+    swiftBic: str | None = Field(default=None, min_length=1, max_length=120)
+    bankAddress: str | None = Field(default=None, min_length=1, max_length=2000)
 
-    model_config = ConfigDict(populate_by_name=True)
+    @model_validator(mode="after")
+    def require_at_least_one_value(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one invoice setting")
+        return self
 
 
 class InvoiceEligibleDeductionItem(BaseModel):
@@ -80,12 +84,10 @@ class InvoiceItem(BaseModel):
 
 
 class InvoiceCreateRequest(BaseModel):
-    deduction_ids: list[UUID] = Field(min_length=1, max_length=500, alias="deductionIds")
-    issued_date: date = Field(alias="issuedDate")
+    deductionIds: list[UUID] = Field(min_length=1, max_length=500)
+    issuedDate: date
 
-    model_config = ConfigDict(populate_by_name=True)
-
-    @field_validator("deduction_ids")
+    @field_validator("deductionIds")
     @classmethod
     def unique_ids(cls, value: list[UUID]):
         if len(set(value)) != len(value):

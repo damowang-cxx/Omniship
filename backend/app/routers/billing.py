@@ -290,31 +290,31 @@ def get_invoice_settings(
 @router.patch("/invoice-settings", response_model=InvoiceSettingsItem)
 async def update_invoice_settings(
     request: Request,
-    issuer_company_name: str = Form(..., alias="issuerCompanyName"),
-    issuer_address_info: str = Form(..., alias="issuerAddressInfo"),
-    beneficiary_name: str = Form(..., alias="beneficiaryName"),
-    bank_account: str = Form(..., alias="bankAccount"),
-    bank_name_and_code: str = Form(..., alias="bankNameAndCode"),
-    branch_code: str = Form(..., alias="branchCode"),
-    swift_bic: str = Form(..., alias="swiftBic"),
-    bank_address: str = Form(..., alias="bankAddress"),
-    stamp: UploadFile | None = File(default=None),
+    payload: InvoiceSettingsUpdateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> InvoiceSettingsItem:
-    payload = InvoiceSettingsUpdateRequest(
-        issuerCompanyName=issuer_company_name,
-        issuerAddressInfo=issuer_address_info,
-        beneficiaryName=beneficiary_name,
-        bankAccount=bank_account,
-        bankNameAndCode=bank_name_and_code,
-        branchCode=branch_code,
-        swiftBic=swift_bic,
-        bankAddress=bank_address,
-    )
     try:
         return await InvoiceService(db).update_settings(
-            actor=current_user, payload=payload, stamp=stamp, request=request
+            actor=current_user, payload=payload, stamp=None, request=request
+        )
+    except (InvoicePermissionError, InvoiceValidationError) as exc:
+        raise _invoice_error(exc) from exc
+
+
+@router.post("/invoice-settings/stamp", response_model=InvoiceSettingsItem)
+async def update_invoice_stamp(
+    request: Request,
+    stamp: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> InvoiceSettingsItem:
+    try:
+        return await InvoiceService(db).update_settings(
+            actor=current_user,
+            payload=InvoiceSettingsUpdateRequest.model_construct(),
+            stamp=stamp,
+            request=request,
         )
     except (InvoicePermissionError, InvoiceValidationError) as exc:
         raise _invoice_error(exc) from exc

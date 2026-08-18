@@ -1,51 +1,71 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Save, Stamp } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check, Pencil, Save, Stamp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { getCurrentUser, getInvoiceSettings, isUnauthorizedError, logout, updateInvoiceSettings } from "@/lib/api";
+import { getCurrentUser, getInvoiceSettings, isUnauthorizedError, logout, updateInvoiceSettings, updateInvoiceStamp } from "@/lib/api";
 import type { AppUser, InvoiceSettingsItem } from "@/lib/types";
 import styles from "./page.module.css";
 
+type EditableField = Exclude<keyof InvoiceSettingsItem, "stampOriginalFilename" | "updatedAt">;
+
 const blank: InvoiceSettingsItem = { issuerCompanyName: "", issuerAddressInfo: "", beneficiaryName: "", bankAccount: "", bankNameAndCode: "", branchCode: "", swiftBic: "", bankAddress: "" };
+const groups: { title: string; fields: { key: EditableField; label: string; multiline?: boolean }[] }[] = [
+  { title: "Issuer", fields: [{ key: "issuerCompanyName", label: "Issuer company name" }, { key: "issuerAddressInfo", label: "Issuer address / legal information", multiline: true }] },
+  { title: "Bank details", fields: [{ key: "beneficiaryName", label: "Beneficiary Name" }, { key: "bankAccount", label: "Bank Account" }, { key: "bankNameAndCode", label: "Bank name and code" }, { key: "branchCode", label: "Branch code" }, { key: "swiftBic", label: "Swift/BIC" }, { key: "bankAddress", label: "Bank Address", multiline: true }] }
+];
 
 export default function InvoiceSettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<AppUser | null>(null);
-  const [form, setForm] = useState<InvoiceSettingsItem>(blank);
+  const [settings, setSettings] = useState<InvoiceSettingsItem>(blank);
+  const [editing, setEditing] = useState<EditableField | "stamp" | null>(null);
+  const [draft, setDraft] = useState("");
   const [stamp, setStamp] = useState<File | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const account = await getCurrentUser();
       if (account.user.role !== "admin") { router.replace("/waybills"); return; }
       setUser(account.user);
-      setForm({ ...blank, ...await getInvoiceSettings() });
+      setSettings({ ...blank, ...await getInvoiceSettings() });
     } catch (error) {
       if (isUnauthorizedError(error)) router.replace("/");
       else setNotice(error instanceof Error ? error.message : "Unable to load invoice settings");
     }
   }, [router]);
   useEffect(() => { void load(); }, [load]);
-  const change = (key: keyof InvoiceSettingsItem, value: string) => setForm((current) => ({ ...current, [key]: value }));
-  const save = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true); setNotice(null);
-    try { setForm({ ...blank, ...await updateInvoiceSettings(form, stamp) }); setStamp(null); setNotice("Invoice settings saved."); }
-    catch (error) { setNotice(error instanceof Error ? error.message : "Unable to save invoice settings"); }
+
+  const beginEdit = (key: EditableField) => { setNotice(null); setDraft(settings[key] || ""); setEditing(key); };
+  const saveField = async (key: EditableField) => {
+    if (!draft.trim()) { setNotice("This setting cannot be empty."); return; }
+    setSaving(true); setNotice(null);
+    try { const result = await updateInvoiceSettings({ [key]: draft.trim() }); setSettings((current) => ({ ...current, ...result })); setEditing(null); setNotice("Setting saved."); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Unable to save setting"); }
     finally { setSaving(false); }
   };
+  const saveStamp = async () => {
+    if (!stamp) { setNotice("Choose a stamp image first."); return; }
+    setSaving(true); setNotice(null);
+    try { const result = await updateInvoiceStamp(stamp); setSettings((current) => ({ ...current, ...result })); setStamp(null); setEditing(null); setNotice("Stamp image saved."); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Unable to save stamp image"); }
+    finally { setSaving(false); }
+  };
+
   if (!user) return <main className={styles.loading}>Loading invoice settings...</main>;
   return <AppShell active="invoice-settings" isInfoOpen={false} messages={[]} onInfoClose={() => undefined} onInfoOpen={() => undefined} onLogout={async () => { await logout(); router.replace("/"); }} unreadCount={0} user={user}>
-    <section className={styles.workspace}><header><div><p>Administrator · invoice source of truth</p><h2>Invoice Settings</h2></div><Stamp size={34} /></header>
-      <form onSubmit={save}>
-        <section><h3>Issuer</h3><label>Issuer company name<input required value={form.issuerCompanyName ?? ""} onChange={(event) => change("issuerCompanyName", event.target.value)} /></label><label>Issuer address / legal information<textarea required value={form.issuerAddressInfo ?? ""} onChange={(event) => change("issuerAddressInfo", event.target.value)} /></label></section>
-        <section><h3>Bank details</h3><div className={styles.grid}><label>Beneficiary Name<input required value={form.beneficiaryName ?? ""} onChange={(event) => change("beneficiaryName", event.target.value)} /></label><label>Bank Account<input required value={form.bankAccount ?? ""} onChange={(event) => change("bankAccount", event.target.value)} /></label><label>Bank name and code<input required value={form.bankNameAndCode ?? ""} onChange={(event) => change("bankNameAndCode", event.target.value)} /></label><label>Branch code<input required value={form.branchCode ?? ""} onChange={(event) => change("branchCode", event.target.value)} /></label><label>Swift/BIC<input required value={form.swiftBic ?? ""} onChange={(event) => change("swiftBic", event.target.value)} /></label><label>Bank Address<textarea required value={form.bankAddress ?? ""} onChange={(event) => change("bankAddress", event.target.value)} /></label></div></section>
-        <section><h3>Stamp image</h3><label className={styles.upload}><span>{form.stampOriginalFilename || "No stamp uploaded"}</span><input accept="image/jpeg,image/png,image/webp" onChange={(event) => setStamp(event.target.files?.[0] ?? null)} type="file" /><small>JPG, PNG or WebP · rendered semi-transparent in the waybill detail area</small></label></section>
-        {notice && <p className={styles.notice}>{notice}</p>}<button className={styles.save} disabled={saving} type="submit"><Save size={17} />{saving ? "Saving..." : "Save invoice settings"}</button>
-      </form>
+    <section className={styles.workspace}>
+      <header><div><p>Administrator · invoice source of truth</p><h2>Invoice Settings</h2></div><Stamp size={34} /></header>
+      <p className={styles.hint}>Each invoice setting is saved independently. Existing invoices keep their original snapshots.</p>
+      {groups.map((group) => <section className={styles.group} key={group.title}><h3>{group.title}</h3><div className={styles.fields}>{group.fields.map((field) => {
+        const isEditing = editing === field.key;
+        return <article className={styles.field} data-editing={isEditing} key={field.key}><div className={styles.fieldHeader}><label>{field.label}</label>{!isEditing && <button onClick={() => beginEdit(field.key)} type="button"><Pencil size={14} />Modify</button>}</div>{isEditing ? <><textarea aria-label={field.label} autoFocus={!field.multiline} className={field.multiline ? styles.textarea : styles.input} onChange={(event) => setDraft(event.target.value)} value={draft} /><div className={styles.editorActions}><button className={styles.cancel} disabled={saving} onClick={() => setEditing(null)} type="button"><X size={14} />Cancel</button><button className={styles.commit} disabled={saving} onClick={() => void saveField(field.key)} type="button"><Save size={14} />{saving ? "Saving..." : "Save"}</button></div></> : <p>{settings[field.key] || "Not configured"}</p>}</article>;
+      })}</div></section>)}
+      <section className={styles.group}><h3>Stamp image</h3><article className={styles.field} data-editing={editing === "stamp"}><div className={styles.fieldHeader}><label>Invoice seal</label>{editing !== "stamp" && <button onClick={() => { setNotice(null); setEditing("stamp"); }} type="button"><Pencil size={14} />Modify</button>}</div>{editing === "stamp" ? <><input accept="image/jpeg,image/png,image/webp" onChange={(event) => setStamp(event.target.files?.[0] ?? null)} type="file" /><small>JPG, PNG or WebP · rendered semi-transparent in the detail area</small><div className={styles.editorActions}><button className={styles.cancel} disabled={saving} onClick={() => { setEditing(null); setStamp(null); }} type="button"><X size={14} />Cancel</button><button className={styles.commit} disabled={saving || !stamp} onClick={() => void saveStamp()} type="button"><Check size={14} />{saving ? "Saving..." : "Save stamp"}</button></div></> : <p>{settings.stampOriginalFilename || "No stamp uploaded"}</p>}</article></section>
+      {notice && <p className={styles.notice}>{notice}</p>}
     </section>
   </AppShell>;
 }

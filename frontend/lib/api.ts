@@ -381,11 +381,20 @@ export function getInvoiceSettings(): Promise<InvoiceSettingsItem> {
   return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings");
 }
 
-export function updateInvoiceSettings(payload: Omit<InvoiceSettingsItem, "stampOriginalFilename" | "updatedAt">, stamp?: File | null): Promise<InvoiceSettingsItem> {
+export function updateInvoiceSettings(
+  payload: Partial<Omit<InvoiceSettingsItem, "stampOriginalFilename" | "updatedAt">>
+): Promise<InvoiceSettingsItem> {
+  return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings", {
+    method: "PATCH", body: JSON.stringify(payload)
+  });
+}
+
+export function updateInvoiceStamp(stamp: File): Promise<InvoiceSettingsItem> {
   const form = new FormData();
-  Object.entries(payload).forEach(([key, value]) => { if (value != null) form.append(key, value); });
-  if (stamp) form.append("stamp", stamp);
-  return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings", { method: "PATCH", body: form });
+  form.append("stamp", stamp);
+  return requestJson<InvoiceSettingsItem>("/api/v1/billing/invoice-settings/stamp", {
+    method: "POST", body: form, timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS
+  });
 }
 
 export function getUserBillingAccount(
