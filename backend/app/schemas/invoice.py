@@ -45,9 +45,12 @@ class InvoiceSettingsUpdateRequest(BaseModel):
 
 
 class InvoiceEligibleDeductionItem(BaseModel):
+    fee_type: str = Field(alias="feeType")
+    fee_name: str = Field(alias="feeName")
     id: UUID
     waybill_number: str = Field(alias="waybillNumber")
-    quantity: int
+    quantity: float
+    currency: str = "EUR"
     unit_rate: Decimal = Field(alias="unitRate")
     amount: Decimal
     extra_fee_total: Decimal = Field(alias="extraFeeTotal")
@@ -58,11 +61,14 @@ class InvoiceEligibleDeductionItem(BaseModel):
 
 
 class InvoiceLineItem(BaseModel):
+    fee_type: str = Field(alias="feeType")
+    fee_name: str = Field(alias="feeName")
     id: UUID
     billing_entry_id: UUID = Field(alias="billingEntryId")
     line_number: int = Field(alias="lineNumber")
     waybill_number: str = Field(alias="waybillNumber")
-    quantity: int
+    quantity: float
+    currency: str = "EUR"
     unit_rate: Decimal = Field(alias="unitRate")
     amount: Decimal
     extra_fee_total: Decimal = Field(alias="extraFeeTotal")
@@ -78,6 +84,7 @@ class InvoiceItem(BaseModel):
     issued_date: date = Field(alias="issuedDate")
     due_date: date = Field(alias="dueDate")
     total_amount: Decimal = Field(alias="totalAmount")
+    currency: str = "EUR"
     payer: InvoicePayerItem
     lines: list[InvoiceLineItem] = []
     created_at: datetime = Field(alias="createdAt")

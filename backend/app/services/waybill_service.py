@@ -5,14 +5,18 @@ import secrets
 import string
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import Request, UploadFile
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import (
+    BillingEntry,
     User,
     WaybillParcel,
     WaybillPodFile,
@@ -20,6 +24,8 @@ from app.db.models import (
     WaybillUpload,
 )
 from app.repositories.audit_log_repository import AuditLogRepository
+from app.repositories.billing_repository import BillingRepository
+from app.repositories.waybill_upload_repository import WaybillUploadRepository
 from app.repositories.supplier_repository import SupplierRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.schemas.waybill import (
@@ -38,6 +44,7 @@ from app.schemas.waybill import (
 )
 from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.waybill_upload import WaybillUploadUserItem
+from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 
@@ -93,6 +100,10 @@ class WaybillValidationError(ValueError):
     pass
 
 
+class WaybillBillingConflictError(WaybillValidationError):
+    pass
+
+
 class WaybillPermissionError(PermissionError):
     pass
 
@@ -139,11 +150,73 @@ class WaybillService:
             status=status,
             query=query,
         )
-        return WaybillListResponse(items=[self._build_item(record) for record in records])
+        entry_ids = [entry.id for record in records for entry in record.upload.billing_entries]
+        reversed_ids = self._reversed_fee_ids(entry_ids)
+        return WaybillListResponse(items=[self._build_item(record, actor=actor, reversed_ids=reversed_ids) for record in records])
 
     def get_waybill(self, actor: User, *, public_code: str) -> WaybillItem:
         record = self._get_visible_record(actor, public_code=public_code)
-        return self._build_item(record)
+        return self._build_item(record, actor=actor)
+
+    def backfill_operation_fee(self, actor: User, *, public_code: str, request: Request) -> WaybillItem:
+        if actor.role != "admin":
+            raise WaybillPermissionError("Admin permission required")
+        record = self._get_visible_record(actor, public_code=public_code)
+        if record.upload.airport_of_arrival == "LHR":
+            raise WaybillBillingConflictError("LHR waybills use the weight and clearance fees")
+        billing = BillingRepository(self.db)
+        try:
+            upload = WaybillUploadRepository(self.db).get_by_id_for_update(record.upload_id)
+            if upload is None:
+                raise WaybillValidationError("Waybill upload was not found")
+            owner = billing.get_user_for_update(upload.user_id)
+            if owner is None:
+                raise WaybillValidationError("Waybill owner was not found")
+            if billing.get_deduction_for_upload(upload.id, OPERATION_FEE_TYPE) is not None:
+                raise WaybillBillingConflictError("Declaration operation fee has already been recorded (including cancelled fees)")
+            pre_alert = self._get_pre_alert_file(upload)
+            if pre_alert is None or not Path(pre_alert.storage_path).is_file():
+                raise WaybillValidationError("Upload Pre Alert File is missing")
+            if upload.supplier_version is None:
+                raise WaybillValidationError("Original supplier version was not found")
+            try:
+                row_count = count_operation_rows(
+                    filename=pre_alert.original_filename, content=Path(pre_alert.storage_path).read_bytes(),
+                    config=SupplierVersionConfig.model_validate(upload.supplier_version.config),
+                )
+            except (ValueError, OSError) as exc:
+                raise WaybillValidationError(str(exc)) from exc
+            if row_count == 0:
+                raise WaybillValidationError("Pre Alert File contains no billable data rows")
+            amount = row_count * OPERATION_UNIT_RATE
+            if Decimal(owner.balance) < amount:
+                raise WaybillValidationError(f"Insufficient balance: required EUR {amount:.2f}, balance EUR {owner.balance:.2f}")
+            owner.balance = (Decimal(owner.balance) - amount).quantize(Decimal("0.01"))
+            entry = billing.create_deduction(
+                user_id=owner.id, amount=amount, balance_after=owner.balance,
+                waybill_upload_id=upload.id, waybill_number=upload.air_waybill_number,
+                supplier_id=upload.supplier_id, supplier_name=upload.supplier_name or "",
+                supplier_version_number=upload.supplier_version.version_number,
+                arrival_airport=upload.airport_of_arrival or "", billable_unit_count=row_count,
+                unit_rate=OPERATION_UNIT_RATE, created_by_user_id=actor.id,
+                billing_source="retroactive", fee_type=OPERATION_FEE_TYPE,
+            )
+            self.audit_logs.create(
+                "retroactive_operation_fee_deduction", actor_user_id=actor.id,
+                target_type="waybill_upload", target_id=str(upload.id),
+                ip_address=get_request_ip(request), user_agent=get_request_user_agent(request),
+                metadata={"entryId": str(entry.id), "operationRowCount": row_count,
+                          "unitRate": str(OPERATION_UNIT_RATE), "amount": str(amount),
+                          "balanceAfter": str(owner.balance)},
+            )
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise WaybillBillingConflictError("Declaration operation fee has already been recorded") from exc
+        except Exception:
+            self.db.rollback()
+            raise
+        return self.get_waybill(actor, public_code=public_code)
 
     def list_extra_fee_types(self, actor: User) -> list[WaybillExtraFeeTypeItem]:
         if actor.role != "admin":
@@ -257,7 +330,7 @@ class WaybillService:
         refreshed = self.waybills.get_by_public_code(record.public_code)
         if refreshed is None:
             raise WaybillValidationError("Waybill not found")
-        return self._build_item(refreshed)
+        return self._build_item(refreshed, actor=actor)
 
     def delete_extra_fee(
         self,
@@ -292,7 +365,7 @@ class WaybillService:
         refreshed = self.waybills.get_by_public_code(record.public_code)
         if refreshed is None:
             raise WaybillValidationError("Waybill not found")
-        return self._build_item(refreshed)
+        return self._build_item(refreshed, actor=actor)
 
     def update_waybill(
         self,
@@ -323,6 +396,10 @@ class WaybillService:
                 raise WaybillValidationError(
                     "Airport of Arrival must be a three-letter IATA code"
                 )
+            if (arrival == "LHR") != (record.upload.airport_of_arrival == "LHR") and any(
+                entry.entry_type == "deduction" for entry in record.upload.billing_entries
+            ):
+                raise WaybillBillingConflictError("Cannot switch a billed waybill into or out of LHR")
             record.upload.airport_of_arrival = arrival
             airport_fields_changed.append("airportOfArrival")
 
@@ -369,7 +446,7 @@ class WaybillService:
         refreshed = self.waybills.get_by_public_code(record.public_code)
         if refreshed is None:
             raise WaybillValidationError("Waybill not found")
-        return self._build_item(refreshed)
+        return self._build_item(refreshed, actor=actor)
 
     async def upload_pod_file(
         self,
@@ -420,7 +497,7 @@ class WaybillService:
         refreshed = self.waybills.get_by_public_code(record.public_code)
         if refreshed is None:
             raise WaybillValidationError("Waybill not found")
-        return self._build_item(refreshed)
+        return self._build_item(refreshed, actor=actor)
 
     def delete_pod_file(
         self,
@@ -739,10 +816,30 @@ class WaybillService:
             items=[WaybillParcelItem.model_validate(parcel) for parcel in sorted_parcels]
         )
 
-    def _build_item(self, record: WaybillTrackingRecord) -> WaybillItem:
+    def _reversed_fee_ids(self, entry_ids: list[UUID]) -> set[UUID]:
+        if not entry_ids:
+            return set()
+        return set(self.db.scalars(select(BillingEntry.reversal_of_entry_id).where(
+            BillingEntry.reversal_of_entry_id.in_(entry_ids),
+            BillingEntry.entry_type == "deduction_reversal",
+        )).all())
+
+    def _build_item(self, record: WaybillTrackingRecord, *, actor: User, reversed_ids: set[UUID] | None = None) -> WaybillItem:
         upload = record.upload
-        billing_entry = upload.billing_entry
+        entries = [entry for entry in upload.billing_entries if entry.entry_type == "deduction"]
+        billing_entry = next((entry for entry in entries if entry.fee_type == "customs_tax"), None)
+        operation_entry = next((entry for entry in entries if entry.fee_type == OPERATION_FEE_TYPE), None)
+        if reversed_ids is None:
+            reversed_ids = self._reversed_fee_ids([entry.id for entry in entries])
         return WaybillItem(
+            billingBalance=record.user.balance if record.user else None,
+            gbpBalance=record.user.gbp_balance if record.user else None,
+            billingFees=[dict(entryId=entry.id, feeType=entry.fee_type, feeName=fee_name(entry.fee_type),
+                              quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0,
+                              currency=entry.currency, unitRate=entry.unit_rate or Decimal("0.00"),
+                              amount=entry.amount, status="reversed" if entry.id in reversed_ids else "paid") for entry in entries],
+            operationFeeStatus=("reversed" if operation_entry.id in reversed_ids else "paid") if operation_entry else "unpaid",
+            canBackfillOperationFee=actor.role == "admin" and upload.airport_of_arrival != "LHR" and operation_entry is None,
             id=record.id,
             publicCode=record.public_code,
             uploadId=record.upload_id,

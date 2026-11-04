@@ -904,3 +904,9 @@
     max-width: none;
   }
 }
+
+.feeEstimateLine, .feeEstimateTotal { border-top: 1px solid #b9ded8; margin-top: 10px; padding-top: 10px; }
+.taxSnapshot > div { min-width: 0; width: 100%; }
+.taxSnapshot { align-items: flex-start; }
+.feeEstimateTotal strong { color: var(--accent-strong); font-size: 21px; }
+.billingFooter > button { align-self: center; }

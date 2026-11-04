@@ -4,15 +4,19 @@ import re
 import shutil
 import uuid
 from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP
+from types import SimpleNamespace
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import Request, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import PROJECT_ROOT, Settings, get_settings
-from app.db.models import User, WaybillUpload, WaybillUploadFile
+from app.db.models import InvoiceLine, User, WaybillUpload, WaybillUploadFile
 from app.repositories.audit_log_repository import AuditLogRepository
+from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, LHR_WEIGHT_FEE_TYPE, LHR_CLEARANCE_FEE_TYPE, LHR_WEIGHT_RATE_GBP, LHR_CLEARANCE_RATE_EUR
 from app.repositories.billing_repository import BillingRepository
 from app.repositories.cancelled_waybill_repository import CancelledWaybillRepository
 from app.repositories.supplier_repository import SupplierRepository
@@ -51,14 +55,19 @@ class WaybillUploadValidationError(ValueError):
     pass
 
 
+class WaybillUploadConflictError(WaybillUploadValidationError):
+    pass
+
+
 class WaybillUploadPermissionError(PermissionError):
     pass
 
 
 class WaybillUploadInsufficientBalanceError(WaybillUploadValidationError):
-    def __init__(self, *, required: Decimal, balance: Decimal):
+    def __init__(self, *, required: Decimal, balance: Decimal, currency: str = "EUR"):
         self.required = required
         self.balance = balance
+        self.currency = currency
         self.shortfall = required - balance
         super().__init__("Insufficient account balance")
 
@@ -166,8 +175,9 @@ class WaybillUploadService:
             required=True,
         )
 
+        is_lhr = airport_of_arrival == "LHR"
         try:
-            evaluation = SupplierRuleEngine().evaluate(
+            evaluation = SimpleNamespace(distinct_count=0, issue_count=0, issues=[]) if is_lhr else SupplierRuleEngine().evaluate(
                 filename=pre_alert[0]["original_filename"],
                 content=pre_alert[0]["content"],
                 config=SupplierVersionConfig.model_validate(supplier_version.config),
@@ -184,15 +194,29 @@ class WaybillUploadService:
             else Decimal("0.00")
         ).quantize(Decimal("0.01"))
 
+        try:
+            operation_row_count = 0 if is_lhr else count_operation_rows(
+                filename=pre_alert[0]["original_filename"], content=pre_alert[0]["content"],
+                config=SupplierVersionConfig.model_validate(supplier_version.config),
+            )
+        except ValueError as exc:
+            raise WaybillUploadValidationError(str(exc)) from exc
+        deducted_operation_fee = operation_row_count * OPERATION_UNIT_RATE
+        lhr_clearance_eur = LHR_CLEARANCE_RATE_EUR if is_lhr else Decimal("0.00")
+        lhr_weight_fee_gbp = (gross_weight * LHR_WEIGHT_RATE_GBP).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if is_lhr else Decimal("0.00")
+        deducted_total = deducted_tax + deducted_operation_fee + lhr_clearance_eur
+
         locked_user = self.billing.get_user_for_update(target_user.id)
         if locked_user is None:
             raise WaybillUploadValidationError("Target user not found")
         current_balance = Decimal(locked_user.balance)
-        if deducted_tax > current_balance:
+        if deducted_total > current_balance:
             raise WaybillUploadInsufficientBalanceError(
-                required=deducted_tax,
+                required=deducted_total,
                 balance=current_balance,
             )
+        if lhr_weight_fee_gbp > Decimal(locked_user.gbp_balance):
+            raise WaybillUploadInsufficientBalanceError(required=lhr_weight_fee_gbp, balance=Decimal(locked_user.gbp_balance), currency="GBP")
 
         upload = self.uploads.create(
             user_id=target_user.id,
@@ -244,6 +268,36 @@ class WaybillUploadService:
                     created_by_user_id=actor.id,
                 )
 
+            if deducted_operation_fee > 0:
+                locked_user.balance = (current_balance - deducted_tax - deducted_operation_fee).quantize(Decimal("0.01"))
+                self.billing.create_deduction(
+                    user_id=locked_user.id, amount=deducted_operation_fee,
+                    balance_after=locked_user.balance, waybill_upload_id=upload.id,
+                    waybill_number=air_waybill_number, supplier_id=supplier.id,
+                    supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                    arrival_airport=airport_of_arrival, billable_unit_count=operation_row_count,
+                    unit_rate=OPERATION_UNIT_RATE, created_by_user_id=actor.id,
+                    fee_type=OPERATION_FEE_TYPE,
+                )
+
+            if is_lhr:
+                locked_user.balance = (current_balance - deducted_total).quantize(Decimal("0.01"))
+                self.billing.create_deduction(
+                    user_id=locked_user.id, amount=lhr_clearance_eur, balance_after=locked_user.balance,
+                    waybill_upload_id=upload.id, waybill_number=air_waybill_number,
+                    supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                    arrival_airport=airport_of_arrival, billable_unit_count=1, unit_rate=LHR_CLEARANCE_RATE_EUR,
+                    quantity=Decimal("1"), fee_type=LHR_CLEARANCE_FEE_TYPE, created_by_user_id=actor.id,
+                )
+                locked_user.gbp_balance = (Decimal(locked_user.gbp_balance) - lhr_weight_fee_gbp).quantize(Decimal("0.01"))
+                self.billing.create_deduction(
+                    user_id=locked_user.id, amount=lhr_weight_fee_gbp, balance_after=locked_user.gbp_balance,
+                    waybill_upload_id=upload.id, waybill_number=air_waybill_number,
+                    supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                    arrival_airport=airport_of_arrival, billable_unit_count=None, unit_rate=LHR_WEIGHT_RATE_GBP,
+                    quantity=gross_weight, currency="GBP", fee_type=LHR_WEIGHT_FEE_TYPE, created_by_user_id=actor.id,
+                )
+
             self.audit_logs.create(
                 "upload_pre_alert",
                 actor_user_id=actor.id,
@@ -261,6 +315,11 @@ class WaybillUploadService:
                     "supplierVersion": supplier_version.version_number,
                     "billableUnitCount": evaluation.distinct_count,
                     "deductedTax": str(deducted_tax),
+                    "operationRowCount": operation_row_count,
+                    "deductedOperationFee": str(deducted_operation_fee),
+                    "deductedTotal": str(deducted_total),
+                    "lhrWeightFeeGbp": str(lhr_weight_fee_gbp),
+                    "lhrClearanceEur": str(lhr_clearance_eur),
                     "validationIssueCount": evaluation.issue_count,
                 },
             )
@@ -279,7 +338,12 @@ class WaybillUploadService:
             billable_unit_count=evaluation.distinct_count,
             unit_rate=unit_rate,
             deducted_tax=deducted_tax,
+            operation_row_count=operation_row_count,
+            deducted_operation_fee=deducted_operation_fee,
             balance_after=Decimal(locked_user.balance),
+            lhr_weight_fee_gbp=lhr_weight_fee_gbp,
+            lhr_clearance_eur=lhr_clearance_eur,
+            gbp_balance_after=Decimal(locked_user.gbp_balance),
         )
 
     def update_status(
@@ -341,12 +405,12 @@ class WaybillUploadService:
         upload_id: UUID,
         request: Request,
     ) -> WaybillUploadDeleteResponse:
-        upload = self.uploads.get_by_id(upload_id)
+        upload = self.uploads.get_by_id_for_update(upload_id)
         if upload is None:
             raise WaybillUploadValidationError("Waybill upload not found")
         if actor.role != "admin" and upload.user_id != actor.id:
             raise WaybillUploadPermissionError("Cannot delete another user's upload")
-        if self.billing.get_deduction_for_upload(upload.id) is not None:
+        if self.billing.list_deductions_for_upload(upload.id):
             raise WaybillUploadValidationError(
                 "Billed waybill uploads must be cancelled by an administrator"
             )
@@ -389,45 +453,50 @@ class WaybillUploadService:
         if upload is None:
             raise WaybillUploadValidationError("Waybill upload not found")
 
-        deduction = self.billing.get_deduction_for_upload_for_update(upload.id)
-        reversal = (
-            self.billing.get_reversal_for_entry_for_update(deduction.id)
-            if deduction is not None
-            else None
-        )
         owner = self.billing.get_user_for_update(upload.user_id)
         if owner is None:
             raise WaybillUploadValidationError("Waybill owner not found")
-        tax_amount_deleted = (
-            Decimal(deduction.amount).quantize(Decimal("0.01"))
-            if deduction is not None
-            else Decimal("0.00")
-        )
-        refunded_amount = (
-            tax_amount_deleted if deduction is not None and reversal is None
-            else Decimal("0.00")
-        )
+        deductions = self.billing.list_deductions_for_upload(upload.id)
+        reversals = {entry.id: self.billing.get_reversal_for_entry_for_update(entry.id) for entry in deductions}
+        entry_ids = [entry.id for entry in deductions] + [entry.id for entry in reversals.values() if entry]
+        if entry_ids and self.db.scalar(select(InvoiceLine.id).where(InvoiceLine.billing_entry_id.in_(entry_ids)).limit(1)):
+            raise WaybillUploadConflictError("Cannot delete waybill billing records referenced by an invoice")
+        tax_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.fee_type == "customs_tax"), Decimal("0.00"))
+        operation_fee_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.fee_type == OPERATION_FEE_TYPE), Decimal("0.00"))
+        refunded_amount = sum((Decimal(entry.amount) for entry in deductions if entry.currency == "EUR" and reversals[entry.id] is None), Decimal("0.00"))
+        gbp_fee_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.currency == "GBP"), Decimal("0.00"))
+        lhr_clearance_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.fee_type == LHR_CLEARANCE_FEE_TYPE), Decimal("0.00"))
+        gbp_refunded_amount = sum((Decimal(entry.amount) for entry in deductions if entry.currency == "GBP" and reversals[entry.id] is None), Decimal("0.00"))
         current_balance = Decimal(owner.balance)
         balance_after_refund = (current_balance + refunded_amount).quantize(
             Decimal("0.01")
         )
+        gbp_balance_after_refund = (Decimal(owner.gbp_balance) + gbp_refunded_amount).quantize(Decimal("0.01"))
         file_paths = [file.storage_path for file in upload.files]
 
         try:
             owner.balance = balance_after_refund
+            owner.gbp_balance = gbp_balance_after_refund
             record = self.cancelled_waybills.create(
                 upload=upload,
                 owner=owner,
                 actor=actor,
                 reason=reason,
                 tax_amount_deleted=tax_amount_deleted,
+                operation_fee_amount_deleted=operation_fee_amount_deleted,
                 refunded_amount=refunded_amount,
                 balance_after_refund=balance_after_refund,
+                gbp_fee_amount_deleted=gbp_fee_amount_deleted,
+                gbp_refunded_amount=gbp_refunded_amount,
+                lhr_clearance_amount_deleted=lhr_clearance_amount_deleted,
+                gbp_balance_after_refund=gbp_balance_after_refund,
             )
 
-            if reversal is not None:
-                self.billing.delete_entry(reversal)
-            if deduction is not None:
+            for reversal in reversals.values():
+                if reversal is not None:
+                    self.billing.delete_entry(reversal)
+            self.db.flush()
+            for deduction in deductions:
                 self.billing.delete_entry(deduction)
             self.db.flush()
 
@@ -444,9 +513,14 @@ class WaybillUploadService:
                     "boundUserId": str(owner.id),
                     "reason": reason,
                     "taxAmountDeleted": str(tax_amount_deleted),
+                    "operationFeeAmountDeleted": str(operation_fee_amount_deleted),
                     "refundedAmount": str(refunded_amount),
                     "balanceAfterRefund": str(balance_after_refund),
-                    "previouslyReversed": reversal is not None,
+                    "gbpFeeAmountDeleted": str(gbp_fee_amount_deleted),
+                    "lhrClearanceAmountDeleted": str(lhr_clearance_amount_deleted),
+                    "gbpRefundedAmount": str(gbp_refunded_amount),
+                    "gbpBalanceAfterRefund": str(gbp_balance_after_refund),
+                    "previouslyReversed": any(reversals.values()),
                 },
             )
             self.uploads.delete(upload)
@@ -461,6 +535,8 @@ class WaybillUploadService:
             uploadId=upload_id,
             refundedAmount=refunded_amount,
             balanceAfterRefund=balance_after_refund,
+            gbpRefundedAmount=gbp_refunded_amount,
+            gbpBalanceAfterRefund=gbp_balance_after_refund,
             record=CancelledWaybillItem.model_validate(record),
         )
 
@@ -508,9 +584,19 @@ class WaybillUploadService:
         billable_unit_count: int,
         unit_rate: Decimal,
         deducted_tax: Decimal,
+        operation_row_count: int,
+        deducted_operation_fee: Decimal,
         balance_after: Decimal,
+        lhr_weight_fee_gbp: Decimal,
+        lhr_clearance_eur: Decimal,
+        gbp_balance_after: Decimal,
     ) -> WaybillPreAlertUploadResponse:
         return WaybillPreAlertUploadResponse(
+            operation_unit_rate=OPERATION_UNIT_RATE,
+            deducted_total=deducted_tax + deducted_operation_fee + lhr_clearance_eur,
+            lhr_weight_fee_gbp=lhr_weight_fee_gbp,
+            lhr_clearance_eur=lhr_clearance_eur,
+            gbp_balance_after=gbp_balance_after,
             upload_id=upload.id,
             air_waybill_number=upload.air_waybill_number,
             airport_of_departure=upload.airport_of_departure or "",
@@ -523,6 +609,8 @@ class WaybillUploadService:
             billable_unit_count=billable_unit_count,
             unit_rate=unit_rate,
             deducted_tax=deducted_tax,
+            operation_row_count=operation_row_count,
+            deducted_operation_fee=deducted_operation_fee,
             balance_after=balance_after,
             validation_issue_count=upload.validation_issue_count,
             validation_issues=upload.validation_issues,
@@ -568,8 +656,12 @@ class WaybillUploadService:
             parsed = Decimal(value.strip())
         except (InvalidOperation, AttributeError) as exc:
             raise WaybillUploadValidationError(f"{label} must be a number") from exc
+        if not parsed.is_finite():
+            raise WaybillUploadValidationError(f"{label} must be a finite number")
         if parsed <= 0:
             raise WaybillUploadValidationError(f"{label} must be greater than 0")
+        if not parsed.is_finite() or parsed.as_tuple().exponent < -3 or parsed >= Decimal("1000000000"):
+            raise WaybillUploadValidationError(f"{label} must be a finite value with at most 3 decimal places")
         return parsed
 
     def _parse_positive_int(self, value: str, label: str) -> int:

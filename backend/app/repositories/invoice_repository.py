@@ -70,7 +70,7 @@ class InvoiceRepository:
             select(BillingEntry.id, func.coalesce(func.sum(WaybillExtraFee.amount), 0))
             .outerjoin(WaybillTrackingRecord, WaybillTrackingRecord.upload_id == BillingEntry.waybill_upload_id)
             .outerjoin(WaybillExtraFee, WaybillExtraFee.tracking_record_id == WaybillTrackingRecord.id)
-            .where(BillingEntry.id.in_(entry_ids))
+            .where(BillingEntry.id.in_(entry_ids), BillingEntry.fee_type == "customs_tax")
             .group_by(BillingEntry.id)
         )
         return dict(self.db.execute(statement).all())

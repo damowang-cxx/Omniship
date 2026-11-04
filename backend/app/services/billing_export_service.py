@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from app.services.operation_fee import fee_name
 from app.schemas.billing import BillingAccountResponse, BillingEntryItem
 
 
@@ -24,6 +25,7 @@ THIN_BORDER = Border(
     bottom=Side(style="thin", color="D8E1E7"),
 )
 EUR_FORMAT = '€#,##0.00;[Red]-€#,##0.00'
+GBP_FORMAT = '£#,##0.00;[Red]-£#,##0.00'
 DATE_FORMAT = "yyyy-mm-dd hh:mm"
 
 
@@ -35,11 +37,7 @@ def _safe_text(value: str | None) -> str:
 
 
 def _entry_label(entry: BillingEntryItem) -> str:
-    return (
-        "Tax cancellation"
-        if entry.entry_type == "deduction_reversal"
-        else "Customs tax deduction"
-    )
+    return f"{fee_name(entry.fee_type)} {'cancellation' if entry.entry_type == 'deduction_reversal' else 'deduction'}"
 
 
 def _entry_status(entry: BillingEntryItem) -> str:
@@ -52,9 +50,9 @@ def _entry_status(entry: BillingEntryItem) -> str:
 
 def _source_label(entry: BillingEntryItem) -> str:
     if entry.entry_type == "deduction_reversal":
-        return "Tax cancellation"
+        return "Fee cancellation" if entry.fee_type != "customs_tax" else "Tax cancellation"
     if entry.billing_source == "retroactive":
-        return "Tax backfill"
+        return "Fee backfill" if entry.fee_type != "customs_tax" else "Tax backfill"
     return "Upload"
 
 
@@ -80,7 +78,7 @@ def build_billing_workbook(account: BillingAccountResponse) -> bytes:
 
     sheet.merge_cells("A2:M2")
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    sheet["A2"] = f"Deduction ledger · Generated {generated_at}"
+    sheet["A2"] = f"Deduction ledger · EUR {account.user.balance} · GBP {account.user.gbp_balance} · Generated {generated_at}"
     sheet["A2"].font = Font(name="Aptos", size=10, color="667085")
     sheet["A2"].alignment = Alignment(vertical="center")
     sheet.row_dimensions[2].height = 22
@@ -128,11 +126,11 @@ def build_billing_workbook(account: BillingAccountResponse) -> bytes:
         "Supplier",
         "Supplier Version",
         "Source",
-        "Arrival Airport",
-        "Billable Units",
-        "Unit Rate (EUR)",
-        "Amount (EUR)",
-        "Balance After (EUR)",
+        "Arrival Airport / Currency",
+        "Quantity",
+        "Unit Rate",
+        "Amount",
+        "Balance After",
         "Record ID",
     ]
     for column, header in enumerate(headers, start=1):
@@ -157,8 +155,8 @@ def build_billing_workbook(account: BillingAccountResponse) -> bytes:
             _safe_text(entry.supplier_name) or "-",
             entry.supplier_version_number,
             _source_label(entry),
-            _safe_text(entry.arrival_airport) or "-",
-            entry.billable_unit_count,
+            f"{_safe_text(entry.arrival_airport) or '-'} / {entry.currency}",
+            entry.quantity if entry.quantity is not None else entry.billable_unit_count,
             Decimal(entry.unit_rate) if entry.unit_rate is not None else None,
             signed_amount,
             Decimal(entry.balance_after),
@@ -171,7 +169,7 @@ def build_billing_workbook(account: BillingAccountResponse) -> bytes:
             cell.border = THIN_BORDER
         sheet.cell(row=row_number, column=1).number_format = DATE_FORMAT
         for column in (10, 11, 12):
-            sheet.cell(row=row_number, column=column).number_format = EUR_FORMAT
+            sheet.cell(row=row_number, column=column).number_format = GBP_FORMAT if entry.currency == "GBP" else EUR_FORMAT
         if entry.entry_type == "deduction_reversal":
             for column in range(1, len(headers) + 1):
                 sheet.cell(row=row_number, column=column).fill = REFUND_FILL

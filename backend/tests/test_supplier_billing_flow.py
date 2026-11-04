@@ -212,7 +212,7 @@ def test_warning_upload_deducts_distinct_units_atomically(client, db_session):
         db_session,
         email="user@example.com",
         username="User",
-        balance="20.00",
+        balance="40.00",
     )
     assert login(client, email=user.email).status_code == 200
 
@@ -228,11 +228,14 @@ def test_warning_upload_deducts_distinct_units_atomically(client, db_session):
     body = response.json()
     assert body["billableUnitCount"] == 5
     assert body["deductedTax"] == "15.00"
-    assert body["balanceAfter"] == "5.00"
+    assert body["balanceAfter"] == "13.00"
+    assert body["operationRowCount"] == 6
+    assert body["deductedOperationFee"] == "12.00"
+    assert body["deductedTotal"] == "27.00"
     assert body["validationIssueCount"] == 1
     assert "less than or equal to 20" in body["validationIssues"][0]["message"]
 
-    entry = db_session.execute(select(BillingEntry)).scalar_one()
+    entry = db_session.execute(select(BillingEntry).where(BillingEntry.fee_type == "customs_tax")).scalar_one()
     assert entry.entry_type == "deduction"
     assert entry.amount == Decimal("15.00")
     assert entry.billable_unit_count == 5
@@ -257,9 +260,9 @@ def test_insufficient_balance_saves_nothing(client, db_session):
     assert response.status_code == 402
     assert response.json()["detail"] == {
         "code": "insufficient_balance",
-        "required": "15.00",
+        "required": "25.00",
         "balance": "10.00",
-        "shortfall": "5.00",
+        "shortfall": "15.00",
     }
     assert db_session.execute(select(WaybillUpload)).scalars().all() == []
     assert db_session.execute(select(BillingEntry)).scalars().all() == []
@@ -267,7 +270,7 @@ def test_insufficient_balance_saves_nothing(client, db_session):
     assert user.balance == Decimal("10.00")
 
 
-def test_non_taxable_airport_uploads_without_deduction(client, db_session):
+def test_non_taxable_airport_uploads_charge_only_operation_fee(client, db_session):
     user = create_test_user(
         db_session,
         email="user@example.com",
@@ -278,14 +281,16 @@ def test_non_taxable_airport_uploads_without_deduction(client, db_session):
 
     response = client.post(
         "/api/v1/waybill-uploads/file",
-        data=upload_data(airport="LHR"),
+        data=upload_data(airport="FRA"),
         files=upload_files(workbook_bytes(["P1", "P2", "P3"])),
     )
 
     assert response.status_code == 201
     assert response.json()["deductedTax"] == "0.00"
-    assert response.json()["balanceAfter"] == "10.00"
-    assert db_session.execute(select(BillingEntry)).scalars().all() == []
+    assert response.json()["balanceAfter"] == "4.00"
+    assert response.json()["deductedOperationFee"] == "6.00"
+    entry = db_session.scalars(select(BillingEntry)).one()
+    assert entry.fee_type == "declaration_operation_fee"
 
 
 def test_zero_distinct_values_is_structural_error(client, db_session):
@@ -366,7 +371,7 @@ def test_retroactive_billing_detects_supplier_and_allows_negative_balance(client
         db_session,
         email="user@example.com",
         username="User",
-        balance="0.00",
+        balance="10.00",
     )
     assert login(client, email=admin.email).status_code == 200
     supplier_response = client.post(
@@ -381,7 +386,7 @@ def test_retroactive_billing_detects_supplier_and_allows_negative_balance(client
     uploaded = client.post(
         "/api/v1/waybill-uploads/file",
         data={
-            **upload_data(airport="LHR", number="020-12345678"),
+            **upload_data(airport="FRA", number="020-12345678"),
             "supplierId": rpl_supplier["id"],
         },
         files=upload_files(content),
@@ -443,12 +448,12 @@ def test_retroactive_billing_respects_july_first_effective_date(client, db_sessi
         db_session,
         email="user@example.com",
         username="User",
-        balance="0.00",
+        balance="4.00",
     )
     assert login(client, email=user.email).status_code == 200
     uploaded = client.post(
         "/api/v1/waybill-uploads/file",
-        data=upload_data(airport="LHR", number="784-00000001"),
+        data=upload_data(airport="FRA", number="784-00000001"),
         files=upload_files(workbook_bytes(["P1", "P2"])),
     )
     assert uploaded.status_code == 201
@@ -469,4 +474,4 @@ def test_retroactive_billing_respects_july_first_effective_date(client, db_sessi
     assert "2026-07-01" in response.json()["failed"][0]["reason"]
     db_session.refresh(user)
     assert user.balance == Decimal("0.00")
-    assert db_session.execute(select(BillingEntry)).scalars().all() == []
+    assert db_session.execute(select(BillingEntry).where(BillingEntry.fee_type == "customs_tax")).scalars().all() == []

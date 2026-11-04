@@ -140,16 +140,25 @@ def build_invoice_workbook(invoice: Invoice) -> bytes:
     sheet["G2"] = invoice.issued_date.strftime("%Y.%m.%d")
     sheet["A7"] = f"{payer['companyName']}\n{payer['addressInfo']}"
     sheet["F7"] = f"{issuer['issuerCompanyName']}\n{issuer['issuerAddressInfo']}"
+    currency = invoice.currency
+    symbol = "£" if currency == "GBP" else "€"
     sheet["A9"] = (
-        f"賬單金額€ {invoice.total_amount:,.2f}  EUR"
+        f"賬單金額{symbol} {invoice.total_amount:,.2f}  {currency}"
         f"(到期日 {invoice.due_date.year}年{invoice.due_date.month}月{invoice.due_date.day}日)"
     )
-    sheet["E12"] = "额外费用/EUR"
-    sheet["G12"] = "总金额/EUR"
+    sheet["A12"] = "提单 / 费用名称"
+    sheet["C12"] = "数量"
+    sheet["D12"] = f"单价/{currency}"
+    sheet["E12"] = f"额外费用/{currency}"
+    sheet["G12"] = f"总金额/{currency}"
 
     for index, line in enumerate(invoice.lines, start=DETAIL_START_ROW):
-        sheet.cell(index, 1).value = line.waybill_number
-        sheet.cell(index, 3).value = line.quantity
+        sheet.cell(index, 1).value = f"{line.waybill_number}\n{line.fee_name}"
+        alignment = copy(sheet.cell(index, 1).alignment)
+        alignment.wrap_text = True
+        sheet.cell(index, 1).alignment = alignment
+        sheet.row_dimensions[index].height = max(sheet.row_dimensions[index].height or 15, 34)
+        sheet.cell(index, 3).value = float(line.quantity)
         sheet.cell(index, 4).value = float(line.unit_rate)
         sheet.cell(index, 5).value = float(line.extra_fee_total)
         sheet.cell(index, 7).value = float(line.amount + line.extra_fee_total)

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Index,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
@@ -172,8 +174,8 @@ class WaybillUpload(Base):
     tracking_record: Mapped["WaybillTrackingRecord | None"] = relationship(
         back_populates="upload", cascade="all, delete-orphan", uselist=False
     )
-    billing_entry: Mapped["BillingEntry | None"] = relationship(
-        back_populates="waybill_upload", uselist=False
+    billing_entries: Mapped[list["BillingEntry"]] = relationship(
+        back_populates="waybill_upload"
     )
 
     @property
@@ -469,12 +471,17 @@ class CancelledWaybill(Base):
         DateTime(timezone=True), nullable=False
     )
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    operation_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     tax_amount_deleted: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
     refunded_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
+    gbp_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
+    gbp_refunded_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
+    lhr_clearance_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
+    gbp_balance_after_refund: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     balance_after_refund: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True
     )
@@ -504,6 +511,9 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     balance: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    gbp_balance: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
     payer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -541,6 +551,12 @@ class User(Base):
 
 class BillingEntry(Base):
     __tablename__ = "billing_entries"
+    __table_args__ = (
+        Index("uq_upload_fee_type", "waybill_upload_id", "fee_type", unique=True),
+        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance'))", name="ck_billing_fee_type"),
+    )
+
+    fee_type: Mapped[str | None] = mapped_column(String(40), nullable=True, default="customs_tax")
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -559,7 +575,6 @@ class BillingEntry(Base):
         Uuid(as_uuid=True),
         ForeignKey("waybill_uploads.id", ondelete="SET NULL"),
         nullable=True,
-        unique=True,
         index=True,
     )
     waybill_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -570,6 +585,7 @@ class BillingEntry(Base):
     supplier_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     arrival_airport: Mapped[str | None] = mapped_column(String(3), nullable=True)
     billable_unit_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     unit_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     billing_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     reversal_of_entry_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -603,7 +619,7 @@ class BillingEntry(Base):
         foreign_keys=[created_by_user_id]
     )
     waybill_upload: Mapped["WaybillUpload | None"] = relationship(
-        back_populates="billing_entry"
+        back_populates="billing_entries"
     )
 
 
@@ -651,6 +667,7 @@ class Invoice(Base):
     issued_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR", server_default="EUR")
     payer_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
     issuer_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
     stamp_storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -671,6 +688,9 @@ class Invoice(Base):
 
 
 class InvoiceLine(Base):
+    fee_type: Mapped[str] = mapped_column(String(40), nullable=False, default="customs_tax", server_default="customs_tax")
+    fee_name: Mapped[str] = mapped_column(String(120), nullable=False, default="Customs tax", server_default="Customs tax")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR", server_default="EUR")
     __tablename__ = "invoice_lines"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -684,7 +704,7 @@ class InvoiceLine(Base):
     )
     line_number: Mapped[int] = mapped_column(Integer, nullable=False)
     waybill_number: Mapped[str] = mapped_column(String(255), nullable=False)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     unit_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     extra_fee_total: Mapped[Decimal] = mapped_column(

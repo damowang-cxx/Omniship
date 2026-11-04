@@ -21,6 +21,12 @@ function formatEuro(value: string) {
     minimumFractionDigits: 2
   }).format(Number(value));
 }
+function money(value: string, currency = "EUR") {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(Number(value));
+}
+function feeName(type?: string | null) {
+  return ({ customs_tax: "Customs tax", declaration_operation_fee: "申报行操作费", lhr_weight_handling: "LHR 操作费", lhr_clearance: "LHR 清关费" } as Record<string, string>)[type || "customs_tax"] || "Fee";
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -130,10 +136,10 @@ export default function BillingPage() {
           </div>
           <div>
             <span>Available balance</span>
-            <strong>{formatEuro(user.balance)}</strong>
-            <small>EUR account · updated from your posted ledger</small>
+            <strong>{formatEuro(user.balance)} · {money(user.gbpBalance || "0.00", "GBP")}</strong>
+            <small>EUR / GBP accounts · updated from your posted ledger</small>
           </div>
-          <div className={styles.balanceMark}>EPIX / EUR</div>
+          <div className={styles.balanceMark}>EPIX / EUR + GBP</div>
         </section>
 
         {error && <div className={styles.errorNotice} role="alert">{error}</div>}
@@ -163,7 +169,7 @@ export default function BillingPage() {
                 <thead>
                   <tr>
                     <th>Air Waybill Number</th>
-                    <th>Supplier</th>
+                    <th>Fee type</th><th>Supplier</th>
                     <th>Source</th>
                     <th>Calculation</th>
                     <th>Recorded At</th>
@@ -182,25 +188,26 @@ export default function BillingPage() {
                           {entry.waybillNumber || "-"}
                         </span>
                       </td>
-                      <td>{entry.supplierName ? `${entry.supplierName} v${entry.supplierVersionNumber}` : "-"}</td>
-                      <td>{isReversal ? "Tax cancellation" : entry.billingSource === "retroactive" ? "Tax backfill" : "Upload"}</td>
-                      <td>{entry.billableUnitCount != null && entry.unitRate ? `${entry.billableUnitCount} × ${formatEuro(entry.unitRate)}` : "-"}</td>
+                      <td>{feeName(entry.feeType)}</td>
+                          <td>{entry.supplierName ? `${entry.supplierName} v${entry.supplierVersionNumber}` : "-"}</td>
+                      <td>{isReversal ? (!entry.feeType || entry.feeType === "customs_tax" ? "Tax cancellation" : "Fee cancellation") : entry.billingSource === "retroactive" ? (!entry.feeType || entry.feeType === "customs_tax" ? "Tax backfill" : "Fee backfill") : "Upload"}</td>
+                      <td>{(entry.quantity ?? entry.billableUnitCount) != null && entry.unitRate ? `${entry.quantity ?? entry.billableUnitCount} × ${money(entry.unitRate, entry.currency)}` : "-"}</td>
                       <td>{formatDateTime(entry.createdAt)}</td>
                       <td>
                         {isReversal ? (
                           <span className={styles.refundAmount}>
                             <ArrowUpLeft aria-hidden="true" size={15} />
-                            +{formatEuro(entry.amount)}
-                            <small>Tax cancelled</small>
+                            +{money(entry.amount, entry.currency)}
+                            <small>{!entry.feeType || entry.feeType === "customs_tax" ? "Tax cancelled" : "Fee cancelled"}</small>
                           </span>
                         ) : (
                           <span className={styles.chargeAmount}>
                             <ArrowDownRight aria-hidden="true" size={15} />
-                            {formatEuro(entry.amount)}
+                            {money(entry.amount, entry.currency)}
                           </span>
                         )}
                       </td>
-                      <td>{formatEuro(entry.balanceAfter)}</td>
+                      <td>{money(entry.balanceAfter, entry.currency)}</td>
                     </tr>
                     );
                   })}
@@ -211,7 +218,7 @@ export default function BillingPage() {
             <div className={styles.emptyState}>
               <ReceiptText aria-hidden="true" size={28} />
               <strong>No deduction entries yet</strong>
-              <span>Tax charges will appear here after they are posted to a waybill.</span>
+              <span>Customs tax and declaration operation fees will appear here after they are posted to a waybill.</span>
             </div>
           )}
         </section>

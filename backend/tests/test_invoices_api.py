@@ -89,7 +89,7 @@ def test_customer_can_create_invoice_export_and_admin_can_void(client, db_sessio
     assert sheet["F2"].value == "INV26001"
     assert sheet["G2"].value == "2026.08.17"
     assert "Customer Limited" in sheet["A7"].value
-    assert {sheet["A13"].value, sheet["A14"].value} == {first.waybill_number, second.waybill_number}
+    assert {sheet["A13"].value.splitlines()[0], sheet["A14"].value.splitlines()[0]} == {first.waybill_number, second.waybill_number}
     assert sheet["A15"].value is None
     assert sheet["D15"].value is None
     assert sheet["G17"].value is None
@@ -149,7 +149,7 @@ def test_more_than_thirty_deductions_create_two_invoices(client, db_session, tmp
     with ZipFile(BytesIO(batch.content)) as archive:
         compact_workbook = load_workbook(BytesIO(archive.read("INV26002.xlsx")), data_only=True)
     compact_sheet = compact_workbook.active
-    assert compact_sheet["A13"].value == invoices[1]["lines"][0]["waybillNumber"]
+    assert compact_sheet["A13"].value.splitlines()[0] == invoices[1]["lines"][0]["waybillNumber"]
     assert compact_sheet["G14"].value == 3
     assert "Beneficiary Name: Epix Logistics Co., Limited" in compact_sheet["A16"].value
     compact_workbook.close()

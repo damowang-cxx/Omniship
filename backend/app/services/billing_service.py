@@ -30,6 +30,7 @@ from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.user import UserPublic
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
+from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, LHR_WEIGHT_RATE_GBP, LHR_CLEARANCE_RATE_EUR, fee_name
 from app.services.billing_export_service import build_billing_workbook
 
 
@@ -140,23 +141,27 @@ class BillingService:
         amount: str,
         receipt: UploadFile | None,
         request: Request,
+        currency: str = "EUR",
     ) -> BillingAccountResponse:
         if actor.role != "admin":
             raise BillingPermissionError("Admin permission required")
+        if currency not in {"EUR", "GBP"}:
+            raise BillingValidationError("Currency must be EUR or GBP")
         recharge_amount = self._parse_amount(amount)
         user = self.billing.get_user_for_update(user_id)
         if user is None:
             raise BillingValidationError("User not found")
 
         receipt_payload = await self._collect_receipt(receipt)
-        user.balance = (Decimal(user.balance) + recharge_amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        wallet = "gbp_balance" if currency == "GBP" else "balance"
+        balance_after = (Decimal(getattr(user, wallet)) + recharge_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        setattr(user, wallet, balance_after)
         entry = self.billing.create_recharge(
             user_id=user.id,
             amount=recharge_amount,
-            balance_after=user.balance,
+            balance_after=balance_after,
             created_by_user_id=actor.id,
+            currency=currency,
         )
 
         saved_path: Path | None = None
@@ -178,8 +183,8 @@ class BillingService:
                 user_agent=get_request_user_agent(request),
                 metadata={
                     "amount": str(recharge_amount),
-                    "currency": "EUR",
-                    "balanceAfter": str(user.balance),
+                    "currency": currency,
+                    "balanceAfter": str(balance_after),
                     "receiptUploaded": receipt_payload is not None,
                 },
             )
@@ -219,14 +224,13 @@ class BillingService:
         )
         if reversal_amount <= 0:
             raise BillingValidationError("Recharge amount must be greater than zero")
-        user.balance = (Decimal(user.balance) - reversal_amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        wallet = "gbp_balance" if recharge.currency == "GBP" else "balance"
+        setattr(user, wallet, (Decimal(getattr(user, wallet)) - reversal_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
         try:
             reversal = self.billing.create_recharge_reversal(
                 original=recharge,
-                balance_after=user.balance,
+                balance_after=getattr(user, wallet),
                 created_by_user_id=actor.id,
             )
             self.audit_logs.create(
@@ -241,7 +245,7 @@ class BillingService:
                     "userId": str(user.id),
                     "amount": str(reversal_amount),
                     "currency": recharge.currency,
-                    "balanceAfter": str(user.balance),
+                    "balanceAfter": str(getattr(user, wallet)),
                 },
             )
             self.db.commit()
@@ -271,25 +275,24 @@ class BillingService:
         if deduction.entry_type != "deduction":
             raise BillingValidationError("Only deduction entries can be cancelled")
         if self.billing.get_reversal_for_entry(deduction.id) is not None:
-            raise BillingConflictError("Customs tax has already been cancelled")
+            raise BillingConflictError(f"{fee_name(deduction.fee_type)} has already been cancelled")
 
         refund_amount = Decimal(deduction.amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         if refund_amount <= 0:
             raise BillingValidationError("Deduction amount must be greater than zero")
-        user.balance = (Decimal(user.balance) + refund_amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        wallet = "gbp_balance" if deduction.currency == "GBP" else "balance"
+        setattr(user, wallet, (Decimal(getattr(user, wallet)) + refund_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
         try:
             reversal = self.billing.create_deduction_reversal(
                 original=deduction,
-                balance_after=user.balance,
+                balance_after=getattr(user, wallet),
                 created_by_user_id=actor.id,
             )
             self.audit_logs.create(
-                "cancel_customs_tax",
+                "cancel_operation_fee" if deduction.fee_type == OPERATION_FEE_TYPE else "cancel_customs_tax" if deduction.fee_type == "customs_tax" else "cancel_lhr_fee",
                 actor_user_id=actor.id,
                 target_type="billing_entry",
                 target_id=str(deduction.id),
@@ -299,9 +302,10 @@ class BillingService:
                     "reversalEntryId": str(reversal.id),
                     "userId": str(user.id),
                     "waybillNumber": deduction.waybill_number,
+                    "feeType": deduction.fee_type,
                     "amount": str(refund_amount),
                     "currency": deduction.currency,
-                    "balanceAfter": str(user.balance),
+                    "balanceAfter": str(getattr(user, wallet)),
                 },
             )
             self.db.commit()
@@ -317,6 +321,7 @@ class BillingService:
         pre_alert_file: UploadFile,
         supplier_id: UUID,
         airport_of_arrival: str,
+        gross_weight_kg: str | None = None,
     ) -> BillingTaxEstimateResponse:
         if not pre_alert_file.filename:
             raise BillingValidationError("Upload Pre Alert File is required")
@@ -334,6 +339,24 @@ class BillingService:
         content = await pre_alert_file.read()
         if len(content) > ESTIMATE_MAX_BYTES:
             raise BillingValidationError("Upload Pre Alert File exceeds the 25 MB estimate limit")
+        if airport == "LHR":
+            try:
+                weight = Decimal((gross_weight_kg or "").strip())
+            except InvalidOperation as exc:
+                raise BillingValidationError("Air Waybill Gross Weight (KG) must be a number") from exc
+            if not weight.is_finite() or weight <= 0 or weight.as_tuple().exponent < -3 or weight >= Decimal("1000000000"):
+                raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
+            return BillingTaxEstimateResponse(
+                lhr_weight_fee_gbp=(weight * LHR_WEIGHT_RATE_GBP).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                lhr_clearance_eur=LHR_CLEARANCE_RATE_EUR,
+                lhr_weight_kg=weight,
+                operation_row_count=0, operation_unit_rate=OPERATION_UNIT_RATE,
+                estimated_operation_fee=Decimal("0.00"), estimated_total=LHR_CLEARANCE_RATE_EUR,
+                supplier_id=supplier.id, supplier_name=supplier.name,
+                supplier_version_id=version.id, supplier_version_number=version.version_number,
+                taxable_airport=False, billable_unit_count=0, unit_rate=Decimal("0.00"),
+                estimated_tax=Decimal("0.00"), warning_count=0, warnings=[], currency="EUR",
+            )
         try:
             evaluation = SupplierRuleEngine().evaluate(
                 filename=Path(pre_alert_file.filename).name,
@@ -348,7 +371,16 @@ class BillingService:
         estimated_tax = (
             unit_rate * evaluation.distinct_count if taxable else Decimal("0.00")
         ).quantize(Decimal("0.01"))
+        try:
+            row_count = count_operation_rows(filename=pre_alert_file.filename, content=content, config=SupplierVersionConfig.model_validate(version.config))
+        except ValueError as exc:
+            raise BillingValidationError(str(exc)) from exc
+        operation_fee = row_count * OPERATION_UNIT_RATE
         return BillingTaxEstimateResponse(
+            operation_row_count=row_count,
+            operation_unit_rate=OPERATION_UNIT_RATE,
+            estimated_operation_fee=operation_fee,
+            estimated_total=estimated_tax + operation_fee,
             supplier_id=supplier.id,
             supplier_name=supplier.name,
             supplier_version_id=version.id,
@@ -450,6 +482,8 @@ class BillingService:
         upload = matches[0]
         if upload.status != "approved":
             raise BillingValidationError("Waybill is not approved")
+        if (upload.airport_of_arrival or "").strip().upper() == "LHR":
+            raise BillingValidationError("LHR waybills use weight handling and clearance fees, not customs tax")
         if upload.created_at.date() < effective_date:
             raise BillingValidationError(
                 f"Waybill predates the tax effective date {effective_date.isoformat()}"
@@ -654,6 +688,7 @@ class BillingService:
         return BillingEntryItem(
             id=entry.id,
             entry_type=entry.entry_type,
+            fee_type=entry.fee_type,
             amount=entry.amount,
             currency=entry.currency,
             balance_after=entry.balance_after,
@@ -664,6 +699,7 @@ class BillingService:
             supplier_version_number=entry.supplier_version_number,
             arrival_airport=entry.arrival_airport,
             billable_unit_count=entry.billable_unit_count,
+            quantity=entry.quantity,
             unit_rate=entry.unit_rate,
             billing_source=entry.billing_source,
             reversal_of_entry_id=entry.reversal_of_entry_id,

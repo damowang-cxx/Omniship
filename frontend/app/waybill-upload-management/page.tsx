@@ -201,7 +201,7 @@ export default function WaybillUploadManagementPage() {
         );
         setNotice({
           tone: "success",
-          text: `Waybill ${cancelTarget.airWaybillNumber} cancelled. €${response.refundedAmount} returned to the customer.`
+          text: `Waybill ${cancelTarget.airWaybillNumber} cancelled. €${response.refundedAmount} returned to the customer.${Number(response.gbpRefundedAmount || 0) ? ` £${response.gbpRefundedAmount} GBP also returned.` : ""}`
         });
         setCancelTarget(null);
         setCancellationReason("");
@@ -570,8 +570,8 @@ export default function WaybillUploadManagementPage() {
               <div>
                 <strong>This action cannot be undone.</strong>
                 <span>
-                  The waybill, tracking data and files will be removed. Its customs
-                  deduction records will be deleted and any tax not already reversed
+                  The waybill, tracking data and files will be removed. Its customs and operation fee
+                  deduction records will be deleted and any fees not already reversed
                   will be returned to {cancelTarget.user?.email ?? "the customer"}.
                 </span>
               </div>

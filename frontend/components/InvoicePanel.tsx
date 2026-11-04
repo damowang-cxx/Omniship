@@ -16,8 +16,8 @@ import {
 import type { InvoiceEligibleDeductionItem, InvoiceItem } from "@/lib/types";
 import styles from "./InvoicePanel.module.css";
 
-function euro(value: string) {
-  return new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(Number(value));
+function money(value: string | number, currency = "EUR") {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(Number(value));
 }
 
 export function InvoicePanel({ userId, admin = false }: { userId?: string; admin?: boolean }) {
@@ -48,8 +48,11 @@ export function InvoicePanel({ userId, admin = false }: { userId?: string; admin
 
   useEffect(() => { void load(); }, [load]);
 
-  const total = useMemo(
-    () => eligible.filter((item) => selected.includes(item.id)).reduce((sum, item) => sum + Number(item.totalAmount), 0),
+  const totals = useMemo(
+    () => eligible.filter((item) => selected.includes(item.id)).reduce((sum, item) => {
+      sum[item.currency || "EUR"] += Number(item.totalAmount);
+      return sum;
+    }, { EUR: 0, GBP: 0 }),
     [eligible, selected]
   );
 
@@ -99,7 +102,7 @@ export function InvoicePanel({ userId, admin = false }: { userId?: string; admin
     <section className={styles.panel} aria-label="Invoices">
       <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>EUR · Customer documents</span>
+          <span className={styles.eyebrow}>EUR / GBP · Customer documents</span>
           <h3>Invoices</h3>
         </div>
         {busy && <LoaderCircle className={styles.loader} aria-label="Loading" size={18} />}
@@ -113,14 +116,14 @@ export function InvoicePanel({ userId, admin = false }: { userId?: string; admin
         <div className={styles.content}>
           <div className={styles.issueBar}>
             <label>Issue date<input type="date" value={issuedDate} onChange={(event) => setIssuedDate(event.target.value)} /></label>
-            <div><span>Selected total</span><strong>{euro(total.toFixed(2))}</strong><small>{selected.length} waybills · over 30 creates a ZIP</small></div>
+            <div><span>Selected total</span><strong>{totals.GBP ? `${money(totals.EUR)} · ${money(totals.GBP, "GBP")}` : money(totals.EUR)}</strong><small>{selected.length} fee lines · separate invoices per currency</small></div>
             <button disabled={busy || !selected.length} onClick={() => void create()} type="button"><Stamp size={16} />Create & download</button>
           </div>
-          {eligible.length ? <div className={styles.tableWrap}><table><thead><tr><th></th><th>Waybill</th><th>Quantity</th><th>Unit tax</th><th>Base charge</th><th>Extra fees</th><th>Invoice total</th></tr></thead><tbody>{eligible.map((item) => <tr key={item.id}><td><input aria-label={`Select ${item.waybillNumber}`} checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} type="checkbox" /></td><td>{item.waybillNumber}</td><td>{item.quantity}</td><td>{euro(item.unitRate)}</td><td>{euro(item.amount)}</td><td>{euro(item.extraFeeTotal)}</td><td><strong>{euro(item.totalAmount)}</strong></td></tr>)}</tbody></table></div> : <p className={styles.empty}>No uninvoiced, valid waybill deductions.</p>}
+          {eligible.length ? <div className={styles.tableWrap}><table><thead><tr><th></th><th>Waybill</th><th>Fee type</th><th>Quantity</th><th>Unit rate</th><th>Base charge</th><th>Extra fees</th><th>Invoice total</th></tr></thead><tbody>{eligible.map((item) => <tr key={item.id}><td><input aria-label={`Select ${item.waybillNumber} ${item.feeName}`} checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} type="checkbox" /></td><td>{item.waybillNumber}</td><td>{item.feeName}</td><td>{item.quantity}</td><td>{money(item.unitRate, item.currency)}</td><td>{money(item.amount, item.currency)}</td><td>{money(item.extraFeeTotal, item.currency)}</td><td><strong>{money(item.totalAmount, item.currency)}</strong></td></tr>)}</tbody></table></div> : <p className={styles.empty}>No uninvoiced, valid waybill deductions.</p>}
         </div>
       ) : (
         <div className={styles.content}>
-          {invoices.length ? <div className={styles.history}>{invoices.map((invoice) => <article className={styles.invoice} data-status={invoice.status} key={invoice.id}><div><span>{invoice.status === "voided" ? "VOIDED" : "ISSUED"}</span><strong>{invoice.invoiceNumber}</strong><small>{invoice.issuedDate} · Due {invoice.dueDate} · {invoice.lines.length} waybills</small>{invoice.voidReason && <small>Reason: {invoice.voidReason}</small>}</div><b>{euro(invoice.totalAmount)}</b><div className={styles.actions}><button aria-label={`Download ${invoice.invoiceNumber}`} onClick={() => void download(invoice)} type="button"><Download size={15} /></button>{admin && invoice.status === "issued" && <button aria-label={`Void ${invoice.invoiceNumber}`} onClick={() => void voidInvoice(invoice)} type="button"><XCircle size={15} /></button>}</div><details><summary>View details</summary><ul>{invoice.lines.map((line) => <li key={line.id}>{line.waybillNumber} · Base {euro(line.amount)} + extra fees {euro(line.extraFeeTotal)} = {euro(line.totalAmount)}</li>)}</ul></details></article>)}</div> : <p className={styles.empty}><ReceiptText size={22} />No invoices have been issued.</p>}
+          {invoices.length ? <div className={styles.history}>{invoices.map((invoice) => <article className={styles.invoice} data-status={invoice.status} key={invoice.id}><div><span>{invoice.status === "voided" ? "VOIDED" : "ISSUED"}</span><strong>{invoice.invoiceNumber} · {invoice.currency || "EUR"}</strong><small>{invoice.issuedDate} · Due {invoice.dueDate} · {invoice.lines.length} fee lines</small>{invoice.voidReason && <small>Reason: {invoice.voidReason}</small>}</div><b>{money(invoice.totalAmount, invoice.currency)}</b><div className={styles.actions}><button aria-label={`Download ${invoice.invoiceNumber}`} onClick={() => void download(invoice)} type="button"><Download size={15} /></button>{admin && invoice.status === "issued" && <button aria-label={`Void ${invoice.invoiceNumber}`} onClick={() => void voidInvoice(invoice)} type="button"><XCircle size={15} /></button>}</div><details><summary>View details</summary><ul>{invoice.lines.map((line) => <li key={line.id}>{line.waybillNumber} · {line.feeName} · {line.quantity} × {money(line.unitRate, invoice.currency)} · Base {money(line.amount, invoice.currency)} + extra fees {money(line.extraFeeTotal, invoice.currency)} = {money(line.totalAmount, invoice.currency)}</li>)}</ul></details></article>)}</div> : <p className={styles.empty}><ReceiptText size={22} />No invoices have been issued.</p>}
         </div>
       )}
     </section>

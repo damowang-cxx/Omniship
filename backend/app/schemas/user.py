@@ -12,6 +12,7 @@ class UserPublic(BaseModel):
     role: str
     status: str
     balance: Decimal
+    gbp_balance: Decimal = Field(alias="gbpBalance")
     payer_company_name: str | None = Field(default=None, alias="payerCompanyName")
     payer_address_info: str | None = Field(default=None, alias="payerAddressInfo")
     last_login_at: datetime | None = Field(default=None, alias="lastLoginAt")

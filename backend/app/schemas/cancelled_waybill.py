@@ -43,8 +43,13 @@ class CancelledWaybillItem(BaseModel):
     original_status: str = Field(alias="originalStatus")
     uploaded_at: datetime = Field(alias="uploadedAt")
     file_count: int = Field(alias="fileCount")
+    operation_fee_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="operationFeeAmountDeleted")
     tax_amount_deleted: Decimal = Field(alias="taxAmountDeleted")
     refunded_amount: Decimal = Field(alias="refundedAmount")
+    gbp_fee_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="gbpFeeAmountDeleted")
+    gbp_refunded_amount: Decimal = Field(default=Decimal("0.00"), alias="gbpRefundedAmount")
+    lhr_clearance_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="lhrClearanceAmountDeleted")
+    gbp_balance_after_refund: Decimal | None = Field(default=None, alias="gbpBalanceAfterRefund")
     balance_after_refund: Decimal | None = Field(
         default=None, alias="balanceAfterRefund"
     )
@@ -68,6 +73,8 @@ class CancelWaybillResponse(BaseModel):
     upload_id: UUID = Field(alias="uploadId")
     refunded_amount: Decimal = Field(alias="refundedAmount")
     balance_after_refund: Decimal = Field(alias="balanceAfterRefund")
+    gbp_refunded_amount: Decimal = Field(default=Decimal("0.00"), alias="gbpRefundedAmount")
+    gbp_balance_after_refund: Decimal = Field(default=Decimal("0.00"), alias="gbpBalanceAfterRefund")
     record: CancelledWaybillItem
 
     model_config = ConfigDict(populate_by_name=True)

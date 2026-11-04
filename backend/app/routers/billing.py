@@ -139,6 +139,7 @@ async def recharge_user(
     user_id: UUID,
     request: Request,
     amount: str = Form(...),
+    currency: str = Form(default="EUR"),
     receipt: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
@@ -148,6 +149,7 @@ async def recharge_user(
             actor=current_user,
             user_id=user_id,
             amount=amount,
+            currency=currency,
             receipt=receipt,
             request=request,
         )
@@ -227,6 +229,7 @@ async def estimate_pre_alert_tax(
     pre_alert_file: UploadFile = File(..., alias="preAlertFile"),
     supplier_id: UUID = Form(..., alias="supplierId"),
     airport_of_arrival: str = Form(..., alias="airportOfArrival"),
+    gross_weight_kg: str | None = Form(default=None, alias="grossWeightKg"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> BillingTaxEstimateResponse:
@@ -235,6 +238,7 @@ async def estimate_pre_alert_tax(
             pre_alert_file=pre_alert_file,
             supplier_id=supplier_id,
             airport_of_arrival=airport_of_arrival,
+            gross_weight_kg=gross_weight_kg,
         )
     except BillingValidationError as exc:
         raise _billing_error(exc) from exc

@@ -82,8 +82,10 @@ function parseErrorDetail(rawDetail: string) {
         required?: string;
         balance?: string;
         shortfall?: string;
+        currency?: string;
       };
-      return `Insufficient balance. Required €${detail.required}, available €${detail.balance}, shortfall €${detail.shortfall}.`;
+      const symbol = detail.currency === "GBP" ? "£" : "€";
+      return `Insufficient ${detail.currency || "EUR"} balance. Required ${symbol}${detail.required}, available ${symbol}${detail.balance}, shortfall ${symbol}${detail.shortfall}.`;
     }
   } catch {
     return rawDetail;
@@ -444,10 +446,12 @@ export async function exportBillingAccount(userId?: string): Promise<string> {
 export function rechargeUser(
   userId: string,
   amount: string,
-  receipt?: File | null
+  receipt?: File | null,
+  currency: "EUR" | "GBP" = "EUR"
 ): Promise<BillingAccountResponse> {
   const formData = new FormData();
   formData.append("amount", amount);
+  formData.append("currency", currency);
   if (receipt) {
     formData.append("receipt", receipt);
   }
@@ -472,14 +476,16 @@ export function cancelRecharge(
   );
 }
 
-export function cancelDeduction(
+export async function cancelDeduction(
   userId: string,
   entryId: string
 ): Promise<BillingAccountResponse> {
-  return requestJson<BillingAccountResponse>(
+  const response = await requestJson<BillingAccountResponse>(
     `/api/v1/billing/users/${userId}/deductions/${entryId}/cancel`,
     { method: "POST" }
   );
+  clearClientCache();
+  return response;
 }
 
 export function getRechargeReceiptUrl(userId: string, entryId: string) {
@@ -491,12 +497,14 @@ export function getRechargeReceiptUrl(userId: string, entryId: string) {
 export function estimatePreAlertTax(
   preAlertFile: File,
   supplierId: string,
-  airportOfArrival: string
+  airportOfArrival: string,
+  grossWeightKg?: string
 ): Promise<BillingTaxEstimateResponse> {
   const formData = new FormData();
   formData.append("preAlertFile", preAlertFile);
   formData.append("supplierId", supplierId);
   formData.append("airportOfArrival", airportOfArrival);
+  if (grossWeightKg) formData.append("grossWeightKg", grossWeightKg);
   return requestJson<BillingTaxEstimateResponse>("/api/v1/billing/estimate", {
     method: "POST",
     body: formData,
@@ -754,4 +762,13 @@ export function getWaybillPodFileDownloadUrl(
 
 export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("401");
+}
+
+export async function backfillOperationFee(publicCode: string): Promise<WaybillItem> {
+  const response = await requestJson<WaybillItem>(`/api/v1/waybills/${encodeURIComponent(publicCode)}/operation-fee/backfill`, {
+    method: "POST",
+    timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS
+  });
+  clearClientCache();
+  return response;
 }

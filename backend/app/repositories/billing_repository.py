@@ -12,7 +12,7 @@ class BillingRepository:
         self.db = db
 
     def get_user_for_update(self, user_id: UUID) -> User | None:
-        statement = select(User).where(User.id == user_id).with_for_update()
+        statement = select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
         return self.db.execute(statement).scalar_one_or_none()
 
     def list_for_user(self, user_id: UUID) -> list[BillingEntry]:
@@ -63,25 +63,33 @@ class BillingRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
-    def get_deduction_for_upload(self, upload_id: UUID) -> BillingEntry | None:
+    def get_deduction_for_upload(self, upload_id: UUID, fee_type: str = "customs_tax") -> BillingEntry | None:
         statement = select(BillingEntry).where(
             BillingEntry.waybill_upload_id == upload_id,
+            BillingEntry.fee_type == fee_type,
             BillingEntry.entry_type == "deduction",
         )
         return self.db.execute(statement).scalar_one_or_none()
 
     def get_deduction_for_upload_for_update(
-        self, upload_id: UUID
+        self, upload_id: UUID, fee_type: str = "customs_tax"
     ) -> BillingEntry | None:
         statement = (
             select(BillingEntry)
             .where(
                 BillingEntry.waybill_upload_id == upload_id,
+            BillingEntry.fee_type == fee_type,
                 BillingEntry.entry_type == "deduction",
             )
             .with_for_update()
         )
         return self.db.execute(statement).scalar_one_or_none()
+
+    def list_deductions_for_upload(self, upload_id: UUID) -> list[BillingEntry]:
+        return list(self.db.scalars(select(BillingEntry).where(
+            BillingEntry.waybill_upload_id == upload_id,
+            BillingEntry.entry_type == "deduction",
+        ).with_for_update()).all())
 
     def delete_entry(self, entry: BillingEntry) -> None:
         self.db.delete(entry)
@@ -93,12 +101,13 @@ class BillingRepository:
         amount: Decimal,
         balance_after: Decimal,
         created_by_user_id: UUID,
+        currency: str = "EUR",
     ) -> BillingEntry:
         entry = BillingEntry(
             user_id=user_id,
             entry_type="recharge",
             amount=amount,
-            currency="EUR",
+            currency=currency,
             balance_after=balance_after,
             created_by_user_id=created_by_user_id,
         )
@@ -143,12 +152,17 @@ class BillingRepository:
         unit_rate: Decimal,
         created_by_user_id: UUID,
         billing_source: str = "upload",
+        fee_type: str = "customs_tax",
+        currency: str = "EUR",
+        quantity: Decimal | None = None,
     ) -> BillingEntry:
         entry = BillingEntry(
             user_id=user_id,
             entry_type="deduction",
+            fee_type=fee_type,
             amount=amount,
-            currency="EUR",
+            currency=currency,
+            quantity=quantity,
             balance_after=balance_after,
             waybill_upload_id=waybill_upload_id,
             waybill_number=waybill_number,
@@ -175,6 +189,7 @@ class BillingRepository:
         entry = BillingEntry(
             user_id=original.user_id,
             entry_type="deduction_reversal",
+            fee_type=original.fee_type,
             amount=original.amount,
             currency=original.currency,
             balance_after=balance_after,
@@ -184,6 +199,7 @@ class BillingRepository:
             supplier_version_number=original.supplier_version_number,
             arrival_airport=original.arrival_airport,
             billable_unit_count=original.billable_unit_count,
+            quantity=original.quantity,
             unit_rate=original.unit_rate,
             billing_source="cancellation",
             reversal_of_entry_id=original.id,

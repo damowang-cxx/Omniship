@@ -1253,3 +1253,18 @@
     max-width: none;
   }
 }
+
+.billingSection { border-top: 1px solid var(--border); padding: 24px; }
+.billingFeeGrid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
+.billingFeeCard { background: #f8faf9; border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.billingFeeCard > div { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.billingFeeCard span { color: #344054; font-size: 13px; font-weight: 800; }
+.billingFeeCard small { background: #e8eeed; border-radius: 4px; color: #475467; padding: 3px 7px; }
+.billingFeeCard small[data-status="paid"] { background: #dcfce7; color: #166534; }
+.billingFeeCard small[data-status="reversed"] { background: #fff1f2; color: #be123c; }
+.billingFeeCard strong { display: block; font-size: 26px; font-variant-numeric: tabular-nums; margin-top: 18px; }
+.billingFeeCard p, .billingFeeNote { color: #667085; font-size: 12px; margin: 8px 0 0; }
+.backfillButton { align-items: center; background: var(--accent); border: 1px solid var(--accent); border-radius: 7px; color: white; cursor: pointer; display: inline-flex; gap: 7px; min-height: 40px; padding: 8px 14px; }
+.backfillButton:disabled { cursor: wait; opacity: .65; }
+.backfillButton:focus-visible { outline: 3px solid #99d5c9; outline-offset: 3px; }
+@media (max-width: 640px) { .billingFeeGrid { grid-template-columns: 1fr; } .billingSection { padding: 16px; } }

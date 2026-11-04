@@ -56,7 +56,7 @@ class WaybillUploadRepository:
                 joinedload(WaybillUpload.user),
                 joinedload(WaybillUpload.supplier),
                 joinedload(WaybillUpload.supplier_version),
-                joinedload(WaybillUpload.billing_entry),
+                joinedload(WaybillUpload.billing_entries),
             )
             .where(WaybillUpload.normalized_air_waybill_number == normalized)
             .with_for_update(of=WaybillUpload)

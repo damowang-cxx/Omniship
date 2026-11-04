@@ -91,7 +91,24 @@ class WaybillExtraFeeUpdateRequest(BaseModel):
         return value
 
 
+class WaybillFeeItem(BaseModel):
+    entry_id: UUID = Field(alias="entryId")
+    fee_type: str = Field(alias="feeType")
+    fee_name: str = Field(alias="feeName")
+    quantity: float
+    currency: str = "EUR"
+    unit_rate: Decimal = Field(alias="unitRate")
+    amount: Decimal
+    status: str
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class WaybillItem(BaseModel):
+    billing_balance: Decimal | None = Field(default=None, alias="billingBalance")
+    gbp_balance: Decimal | None = Field(default=None, alias="gbpBalance")
+    billing_fees: list[WaybillFeeItem] = Field(default_factory=list, alias="billingFees")
+    operation_fee_status: str = Field(default="unpaid", alias="operationFeeStatus")
+    can_backfill_operation_fee: bool = Field(default=False, alias="canBackfillOperationFee")
     id: UUID
     public_code: str = Field(alias="publicCode")
     upload_id: UUID = Field(alias="uploadId")

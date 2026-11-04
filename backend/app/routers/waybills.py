@@ -22,6 +22,7 @@ from app.schemas.waybill import (
 )
 from app.services.waybill_service import (
     WaybillPermissionError,
+    WaybillBillingConflictError,
     WaybillService,
     WaybillValidationError,
 )
@@ -242,6 +243,21 @@ def delete_waybill_extra_fee(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@router.post("/{public_code}/operation-fee/backfill", response_model=WaybillItem)
+def backfill_operation_fee(
+    public_code: str, request: Request, db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> WaybillItem:
+    try:
+        return WaybillService(db).backfill_operation_fee(current_user, public_code=public_code, request=request)
+    except WaybillBillingConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WaybillPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WaybillValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{public_code}", response_model=WaybillItem)
 def get_waybill(
     public_code: str,
@@ -273,5 +289,7 @@ def update_waybill(
         )
     except WaybillPermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WaybillBillingConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except WaybillValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

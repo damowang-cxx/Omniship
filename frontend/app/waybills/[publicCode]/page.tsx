@@ -7,6 +7,7 @@ import { CheckCircle2, CircleDollarSign, CircleSlash, Plus, Trash2 } from "lucid
 import { AppShell } from "@/components/AppShell";
 import { AppMessage } from "@/components/InfoCenter";
 import {
+  backfillOperationFee,
   deleteWaybillPodFile,
   deleteWaybillExtraFee,
   deleteWaybillExtraFeeType,
@@ -231,6 +232,24 @@ export default function WaybillDetailPage() {
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(
     null
   );
+
+  const [isBackfillingOperationFee, setIsBackfillingOperationFee] = useState(false);
+  async function handleBackfillOperationFee() {
+    if (!waybill || isBackfillingOperationFee) return;
+    setIsBackfillingOperationFee(true);
+    setNotice(null);
+    try {
+      const updated = await backfillOperationFee(waybill.publicCode);
+      setWaybill(updated);
+      const fee = updated.billingFees?.find((item) => item.feeType === "declaration_operation_fee");
+      setNotice({ tone: "success", text: `申报行操作费已补扣 ${formatEuro(fee?.amount ?? "0.00")} · 客户余额 ${formatEuro(updated.billingBalance ?? "0.00")}` });
+      if (waybill.userId === currentUser?.id && updated.billingBalance) setCurrentUser({ ...currentUser, balance: updated.billingBalance });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "申报行操作费补扣失败" });
+    } finally {
+      setIsBackfillingOperationFee(false);
+    }
+  }
 
   const isAdmin = currentUser?.role === "admin";
   const podFiles = waybill?.podFiles ?? [];
@@ -797,6 +816,28 @@ export default function WaybillDetailPage() {
               </div>
             )}
           </form>
+
+          <section className={styles.billingSection} aria-labelledby="billing-fees-title">
+            <div className={styles.sectionHeader}>
+              <div><p className={styles.eyebrow}>Billing</p><h3 id="billing-fees-title">扣费明细</h3></div>
+              {isAdmin && waybill.canBackfillOperationFee && (
+                <button className={styles.backfillButton} disabled={isBackfillingOperationFee} onClick={() => void handleBackfillOperationFee()} type="button">
+                  <CircleDollarSign aria-hidden="true" size={16} />{isBackfillingOperationFee ? "补扣中..." : "补扣申报行操作费"}
+                </button>
+              )}
+            </div>
+            <div className={styles.billingFeeGrid}>
+              {(waybill.airportOfArrival === "LHR" ? ["lhr_clearance", "lhr_weight_handling"] : ["customs_tax", "declaration_operation_fee"]).map((type) => {
+                const fee = waybill.billingFees?.find((item) => item.feeType === type);
+                return <article className={styles.billingFeeCard} key={type}>
+                  <div><span>{fee?.feeName || ({ customs_tax: "Customs tax / 原有税费", declaration_operation_fee: "申报行操作费", lhr_clearance: "LHR 清关费", lhr_weight_handling: "LHR 操作费" } as Record<string, string>)[type]}</span><small data-status={fee?.status ?? "unpaid"}>{fee?.status === "paid" ? "已收取" : fee?.status === "reversed" ? "已撤销退款" : "未收取"}</small></div>
+                  <strong>{fee ? new Intl.NumberFormat("en-GB", { style: "currency", currency: fee.currency || "EUR" }).format(Number(fee.amount)) : "—"}</strong>
+                  <p>{fee ? `${fee.quantity} ${type === "lhr_weight_handling" ? "kg" : type === "declaration_operation_fee" ? "行" : "票/units"} × ${new Intl.NumberFormat("en-GB", { style: "currency", currency: fee.currency || "EUR" }).format(Number(fee.unitRate))}` : type === "declaration_operation_fee" ? "固定 €2.00 / 数据行" : type === "lhr_weight_handling" ? "固定 £0.50 / kg" : type === "lhr_clearance" ? "固定 €45.00 / 票" : "按现有供应商规则计算"}</p>
+                </article>;
+              })}
+            </div>
+            {waybill.operationFeeStatus === "reversed" && <p className={styles.billingFeeNote}>操作费已撤销，保留收费记录，不可再次补扣。</p>}
+          </section>
 
           <section className={styles.extraFeeSection}>
             <div className={styles.extraFeeHeader}>

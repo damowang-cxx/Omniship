@@ -347,7 +347,7 @@ def test_users_and_admins_export_customer_billing_as_excel(client, db_session):
         sheet.cell(row=row_number, column=3).value: row_number
         for row_number in (9, 10)
     }
-    reversal_row = rows_by_entry["Tax cancellation"]
+    reversal_row = rows_by_entry["Customs tax cancellation"]
     deduction_row = rows_by_entry["Customs tax deduction"]
     assert sheet.cell(row=reversal_row, column=2).value == "784-84063276"
     assert sheet.cell(row=reversal_row, column=11).value == 15
@@ -398,7 +398,14 @@ def test_estimates_three_euros_for_each_eu_shipment(client, db_session):
         "billableUnitCount": 3,
         "unitRate": "3.00",
         "estimatedTax": "9.00",
+        "operationRowCount": 3,
+        "operationUnitRate": "2.00",
+        "estimatedOperationFee": "6.00",
+        "estimatedTotal": "15.00",
         "warningCount": 0,
         "warnings": [],
         "currency": "EUR",
+        "lhrWeightFeeGbp": "0.00",
+        "lhrClearanceEur": "0.00",
+        "lhrWeightKg": "0.00",
     }

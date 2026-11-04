@@ -92,9 +92,10 @@ export default function CancelledWaybillsPage() {
       items.reduce(
         (summary, item) => ({
           taxDeleted: summary.taxDeleted + Number(item.taxAmountDeleted || 0),
+          operationDeleted: summary.operationDeleted + Number(item.operationFeeAmountDeleted || 0),
           refunded: summary.refunded + Number(item.refundedAmount || 0)
         }),
-        { taxDeleted: 0, refunded: 0 }
+        { taxDeleted: 0, operationDeleted: 0, refunded: 0 }
       ),
     [items]
   );
@@ -137,7 +138,7 @@ export default function CancelledWaybillsPage() {
             <p className={styles.eyebrow}>Administrator audit trail</p>
             <h2>Cancelled Waybills</h2>
             <p>
-              Permanent snapshots of removed waybills and their customs refunds.
+              Permanent snapshots of removed waybills and their fee refunds.
             </p>
           </div>
           <button
@@ -167,6 +168,7 @@ export default function CancelledWaybillsPage() {
             <div>
               <small>Tax records removed</small>
               <strong>{formatMoney(totals.taxDeleted.toFixed(2))}</strong>
+              <small>申报行操作费: {formatMoney(totals.operationDeleted.toFixed(2))}</small>
             </div>
           </article>
           <article>
@@ -239,16 +241,16 @@ export default function CancelledWaybillsPage() {
                           {item.originalStatus.replace("_", " ")}
                         </span>
                       </td>
-                      <td>{formatMoney(item.taxAmountDeleted, item.currency)}</td>
+                      <td>{formatMoney(item.taxAmountDeleted, "EUR")}<small>申报行操作费: {formatMoney(item.operationFeeAmountDeleted ?? "0.00", "EUR")}</small><small>LHR 清关费: {formatMoney(item.lhrClearanceAmountDeleted ?? "0.00", "EUR")}</small><small>LHR 操作费: {formatMoney(item.gbpFeeAmountDeleted ?? "0.00", "GBP")}</small></td>
                       <td>
                         <strong className={styles.refundValue}>
-                          +{formatMoney(item.refundedAmount, item.currency)}
+                          +{formatMoney(item.refundedAmount, "EUR")} / +{formatMoney(item.gbpRefundedAmount ?? "0.00", "GBP")}
                         </strong>
                       </td>
                       <td>
                         {item.balanceAfterRefund == null
                           ? "-"
-                          : formatMoney(item.balanceAfterRefund, item.currency)}
+                          : formatMoney(item.balanceAfterRefund, "EUR")}
                       </td>
                       <td>{item.cancelledByEmail}</td>
                       <td>{formatDateTime(item.cancelledAt)}</td>

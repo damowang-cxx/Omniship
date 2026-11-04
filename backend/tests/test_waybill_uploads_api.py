@@ -528,34 +528,15 @@ def test_admin_can_upload_for_target_user(client, db_session):
     assert response.json()["boundUserId"] == str(target_user.id)
 
 
-def test_user_can_delete_local_upload(client, db_session):
+def test_user_cannot_delete_upload_with_only_operation_fee(client, db_session):
     create_test_user(db_session, email="user@example.com", username="User")
     assert login(client, email="user@example.com").status_code == 200
-
-    upload_response = client.post(
-        "/api/v1/waybill-uploads/file",
-        data=pre_alert_data(airportOfArrival="LHR"),
-        files=pre_alert_files(),
-    )
-    assert upload_response.status_code == 201
-    upload_id = upload_response.json()["uploadId"]
-
-    delete_response = client.delete(f"/api/v1/waybill-uploads/{upload_id}")
-    assert delete_response.status_code == 200
-    assert delete_response.json() == {
-        "status": "deleted",
-        "uploadId": upload_id,
-    }
-
-    list_response = client.get("/api/v1/waybill-uploads")
-    assert list_response.status_code == 200
-    assert list_response.json()["items"] == []
-
-    actions = {
-        row.action
-        for row in db_session.execute(select(AuditLog)).scalars().all()
-    }
-    assert "delete_waybill_upload" in actions
+    uploaded = client.post("/api/v1/waybill-uploads/file", data=pre_alert_data(airportOfArrival="FRA"), files=pre_alert_files())
+    assert uploaded.status_code == 201
+    assert uploaded.json()["deductedTax"] == "0.00"
+    assert uploaded.json()["deductedOperationFee"] == "2.00"
+    assert client.delete(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}").status_code == 409
+    assert len(client.get("/api/v1/waybill-uploads").json()["items"]) == 1
 
 
 def test_admin_cancels_billed_waybill_refunds_and_archives_it(client, db_session):
@@ -601,7 +582,8 @@ def test_admin_cancels_billed_waybill_refunds_and_archives_it(client, db_session
     body = cancel_response.json()
     assert body["status"] == "cancelled"
     assert body["uploadId"] == upload_id
-    assert body["refundedAmount"] == "3.00"
+    assert body["refundedAmount"] == "5.00"
+    assert body["record"]["operationFeeAmountDeleted"] == "2.00"
     assert body["balanceAfterRefund"] == "50.00"
     assert body["record"]["airWaybillNumber"] == "784-84063276"
     assert body["record"]["taxAmountDeleted"] == "3.00"
@@ -618,7 +600,7 @@ def test_admin_cancels_billed_waybill_refunds_and_archives_it(client, db_session
     assert archived.original_status == "approved"
     assert archived.user_email == user.email
     assert archived.cancelled_by_email == admin.email
-    assert archived.refunded_amount == Decimal("3.00")
+    assert archived.refunded_amount == Decimal("5.00")
 
     list_response = client.get("/api/v1/cancelled-waybills")
     assert list_response.status_code == 200
@@ -664,7 +646,7 @@ def test_waybill_cancellation_does_not_refund_tax_twice(client, db_session):
     upload_id = upload_response.json()["uploadId"]
 
     deduction = db_session.execute(
-        select(BillingEntry).where(BillingEntry.waybill_upload_id == UUID(upload_id))
+        select(BillingEntry).where(BillingEntry.waybill_upload_id == UUID(upload_id), BillingEntry.fee_type == "customs_tax")
     ).scalar_one()
     assert login(client, email=admin.email).status_code == 200
     reversal_response = client.post(
@@ -672,14 +654,14 @@ def test_waybill_cancellation_does_not_refund_tax_twice(client, db_session):
     )
     assert reversal_response.status_code == 200
     db_session.refresh(user)
-    assert user.balance == Decimal("50.00")
+    assert user.balance == Decimal("48.00")
 
     cancel_response = client.post(
         f"/api/v1/waybill-uploads/{upload_id}/cancel",
         json={"reason": "Duplicate upload"},
     )
     assert cancel_response.status_code == 200
-    assert cancel_response.json()["refundedAmount"] == "0.00"
+    assert cancel_response.json()["refundedAmount"] == "2.00"
     assert cancel_response.json()["balanceAfterRefund"] == "50.00"
 
     db_session.expire_all()
@@ -688,7 +670,7 @@ def test_waybill_cancellation_does_not_refund_tax_twice(client, db_session):
     assert db_session.execute(select(BillingEntry)).scalars().all() == []
     archived = db_session.execute(select(CancelledWaybill)).scalar_one()
     assert archived.tax_amount_deleted == Decimal("3.00")
-    assert archived.refunded_amount == Decimal("0.00")
+    assert archived.refunded_amount == Decimal("2.00")
 
 
 def test_admin_filters_uploads_and_users_cannot_filter_into_other_users(

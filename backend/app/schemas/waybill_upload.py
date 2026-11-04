@@ -26,6 +26,13 @@ class WaybillUploadUserItem(BaseModel):
 
 
 class WaybillPreAlertUploadResponse(BaseModel):
+    lhr_weight_fee_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightFeeGbp")
+    lhr_clearance_eur: Decimal = Field(default=Decimal("0.00"), alias="lhrClearanceEur")
+    gbp_balance_after: Decimal = Field(default=Decimal("0.00"), alias="gbpBalanceAfter")
+    operation_row_count: int = Field(alias="operationRowCount")
+    operation_unit_rate: Decimal = Field(alias="operationUnitRate")
+    deducted_operation_fee: Decimal = Field(alias="deductedOperationFee")
+    deducted_total: Decimal = Field(alias="deductedTotal")
     upload_id: UUID = Field(alias="uploadId")
     air_waybill_number: str = Field(alias="airWaybillNumber")
     airport_of_departure: str = Field(alias="airportOfDeparture")

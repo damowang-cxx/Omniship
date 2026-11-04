@@ -162,7 +162,11 @@ describe("WaybillUploadsPage", () => {
       billableUnitCount: 2,
       unitRate: "3.00",
       deductedTax: "6.00",
-      balanceAfter: "114.00",
+      operationRowCount: 2,
+      operationUnitRate: "2.00",
+      deductedOperationFee: "4.00",
+      deductedTotal: "10.00",
+      balanceAfter: "110.00",
       validationIssueCount: 0,
       validationIssues: []
     });
@@ -175,6 +179,10 @@ describe("WaybillUploadsPage", () => {
       billableUnitCount: 2,
       unitRate: "3.00",
       estimatedTax: "6.00",
+      operationRowCount: 2,
+      operationUnitRate: "2.00",
+      estimatedOperationFee: "4.00",
+      estimatedTotal: "10.00",
       warningCount: 0,
       warnings: [],
       currency: "EUR"
@@ -207,10 +215,31 @@ describe("WaybillUploadsPage", () => {
       supplierId: "supplier-id"
     });
     expect(
-      await screen.findByText("Upload saved for 784-84063276. Tax deducted: €6.00")
+      await screen.findByText("Upload saved for 784-84063276. Tax deducted: €6.00 · 申报行操作费: €4.00 · Total deducted: €10.00")
     ).toBeInTheDocument();
     expect(screen.getByText("Select Pre Alert")).toBeInTheDocument();
     expect(screen.queryByText("€6.00")).not.toBeInTheDocument();
+  });
+
+  it("shows separate EUR and GBP estimates for LHR using the waybill weight", async () => {
+    apiMock.estimatePreAlertTax.mockResolvedValue({
+      supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
+      supplierVersionNumber: 1, taxableAirport: false, billableUnitCount: 0,
+      unitRate: "0.00", estimatedTax: "0.00", operationRowCount: 0,
+      operationUnitRate: "2.00", estimatedOperationFee: "0.00", estimatedTotal: "45.00",
+      lhrClearanceEur: "45.00", lhrWeightFeeGbp: "6.25", lhrWeightKg: "12.5",
+      warningCount: 0, warnings: [], currency: "EUR"
+    });
+    render(<WaybillUploadsPage />);
+    expect(await screen.findByRole("heading", { name: "Upload Pre Alert" })).toBeInTheDocument();
+    fillRequiredFields();
+    fireEvent.change(screen.getByLabelText("Airport of Arrival"), { target: { value: "LHR" } });
+    await waitFor(() => expect(apiMock.estimatePreAlertTax).toHaveBeenCalledWith(
+      expect.any(File), "supplier-id", "LHR", "12.5"
+    ));
+    expect((await screen.findAllByText(/£6.25/)).length).toBeGreaterThan(0);
+    expect(screen.getByText("12.5 kg × £0.50")).toBeInTheDocument();
+    expect(screen.getByText("1 票 × €45.00")).toBeInTheDocument();
   });
 
   it("shows backend Excel validation errors in a dialog", async () => {
@@ -333,4 +362,15 @@ describe("WaybillUploadsPage", () => {
       expect(routerMock.replace).toHaveBeenCalledWith("/");
     });
   });
+  it("shows customs, fixed row fees and their combined estimate before upload", async () => {
+    render(<WaybillUploadsPage />);
+    await screen.findByRole("heading", { name: "Upload Pre Alert" });
+    fillRequiredFields();
+    expect(await screen.findByText("€10.00")).toBeInTheDocument();
+    expect(screen.getByText("€6.00")).toBeInTheDocument();
+    expect(screen.getByText("€4.00")).toBeInTheDocument();
+    expect(screen.getByText("2 rows × €2.00")).toBeInTheDocument();
+    expect(screen.getByText("合计预扣 / Total estimated deduction")).toBeInTheDocument();
+  });
+
 });

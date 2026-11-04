@@ -16,6 +16,7 @@ class BillingReceiptItem(BaseModel):
 
 
 class BillingEntryItem(BaseModel):
+    fee_type: str | None = Field(default=None, alias="feeType")
     id: UUID
     entry_type: str = Field(alias="entryType")
     amount: Decimal
@@ -28,6 +29,7 @@ class BillingEntryItem(BaseModel):
     supplier_version_number: int | None = Field(default=None, alias="supplierVersionNumber")
     arrival_airport: str | None = Field(default=None, alias="arrivalAirport")
     billable_unit_count: int | None = Field(default=None, alias="billableUnitCount")
+    quantity: Decimal | None = None
     unit_rate: Decimal | None = Field(default=None, alias="unitRate")
     billing_source: str | None = Field(default=None, alias="billingSource")
     reversal_of_entry_id: UUID | None = Field(
@@ -52,6 +54,13 @@ class BillingAccountResponse(BaseModel):
 
 
 class BillingTaxEstimateResponse(BaseModel):
+    lhr_weight_fee_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightFeeGbp")
+    lhr_clearance_eur: Decimal = Field(default=Decimal("0.00"), alias="lhrClearanceEur")
+    lhr_weight_kg: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightKg")
+    operation_row_count: int = Field(alias="operationRowCount")
+    operation_unit_rate: Decimal = Field(alias="operationUnitRate")
+    estimated_operation_fee: Decimal = Field(alias="estimatedOperationFee")
+    estimated_total: Decimal = Field(alias="estimatedTotal")
     supplier_id: UUID = Field(alias="supplierId")
     supplier_name: str = Field(alias="supplierName")
     supplier_version_id: UUID = Field(alias="supplierVersionId")

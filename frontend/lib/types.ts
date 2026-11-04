@@ -8,6 +8,7 @@ export interface AppUser {
   role: UserRole;
   status: UserStatus;
   balance: string;
+  gbpBalance?: string;
   payerCompanyName?: string | null;
   payerAddressInfo?: string | null;
   lastLoginAt?: string | null;
@@ -35,7 +36,10 @@ export interface BillingReceiptItem {
   sizeBytes: number;
 }
 
+export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance";
+
 export interface BillingEntryItem {
+  feeType?: BillingFeeType | null;
   id: string;
   entryType: "recharge" | "recharge_reversal" | "deduction" | "deduction_reversal";
   amount: string;
@@ -48,6 +52,7 @@ export interface BillingEntryItem {
   supplierVersionNumber?: number | null;
   arrivalAirport?: string | null;
   billableUnitCount?: number | null;
+  quantity?: string | null;
   unitRate?: string | null;
   billingSource?: "upload" | "retroactive" | "cancellation" | null;
   reversalOfEntryId?: string | null;
@@ -77,6 +82,9 @@ export interface InvoiceSettingsItem {
 }
 
 export interface InvoiceEligibleDeductionItem {
+  feeType: BillingFeeType;
+  feeName: string;
+  currency?: "EUR" | "GBP";
   id: string;
   waybillNumber: string;
   quantity: number;
@@ -88,6 +96,9 @@ export interface InvoiceEligibleDeductionItem {
 }
 
 export interface InvoiceLineItem {
+  feeType: BillingFeeType;
+  feeName: string;
+  currency?: "EUR" | "GBP";
   id: string;
   billingEntryId: string;
   lineNumber: number;
@@ -106,6 +117,7 @@ export interface InvoiceItem {
   issuedDate: string;
   dueDate: string;
   totalAmount: string;
+  currency?: "EUR" | "GBP";
   payer: { companyName: string; addressInfo: string };
   lines: InvoiceLineItem[];
   createdAt: string;
@@ -114,6 +126,13 @@ export interface InvoiceItem {
 }
 
 export interface BillingTaxEstimateResponse {
+  lhrWeightFeeGbp?: string;
+  lhrClearanceEur?: string;
+  lhrWeightKg?: string;
+  operationRowCount: number;
+  operationUnitRate: string;
+  estimatedOperationFee: string;
+  estimatedTotal: string;
   supplierId: string;
   supplierName: string;
   supplierVersionId: string;
@@ -278,6 +297,13 @@ export interface WaybillPreAlertUploadPayload {
 }
 
 export interface WaybillPreAlertUploadResponse {
+  lhrWeightFeeGbp?: string;
+  lhrClearanceEur?: string;
+  gbpBalanceAfter?: string;
+  operationRowCount: number;
+  operationUnitRate: string;
+  deductedOperationFee: string;
+  deductedTotal: string;
   uploadId: string;
   airWaybillNumber: string;
   airportOfDeparture: string;
@@ -374,7 +400,12 @@ export interface CancelledWaybillItem {
   uploadedAt: string;
   fileCount: number;
   taxAmountDeleted: string;
+  operationFeeAmountDeleted?: string;
   refundedAmount: string;
+  gbpFeeAmountDeleted?: string;
+  lhrClearanceAmountDeleted?: string;
+  gbpRefundedAmount?: string;
+  gbpBalanceAfterRefund?: string | null;
   balanceAfterRefund?: string | null;
   currency: string;
   reason: string;
@@ -391,6 +422,8 @@ export interface CancelWaybillResponse {
   status: "cancelled";
   uploadId: string;
   refundedAmount: string;
+  gbpRefundedAmount?: string;
+  gbpBalanceAfterRefund?: string;
   balanceAfterRefund: string;
   record: CancelledWaybillItem;
 }
@@ -458,7 +491,23 @@ export interface WaybillParcelBulkUpdatePayload {
   specialInstruction?: boolean;
 }
 
+export interface WaybillFeeItem {
+  entryId: string;
+  feeType: BillingFeeType;
+  feeName: string;
+  currency?: "EUR" | "GBP";
+  quantity: number;
+  unitRate: string;
+  amount: string;
+  status: "paid" | "reversed";
+}
+
 export interface WaybillItem {
+  gbpBalance?: string;
+  billingFees?: WaybillFeeItem[];
+  operationFeeStatus?: "unpaid" | "paid" | "reversed";
+  canBackfillOperationFee?: boolean;
+  billingBalance?: string;
   id: string;
   publicCode: string;
   uploadId: string;

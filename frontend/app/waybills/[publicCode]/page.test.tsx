@@ -8,6 +8,7 @@ const routerMock = vi.hoisted(() => ({
 }));
 
 const apiMock = vi.hoisted(() => ({
+  backfillOperationFee: vi.fn(),
   createWaybillExtraFeeType: vi.fn(),
   deleteWaybillPodFile: vi.fn(),
   deleteWaybillExtraFee: vi.fn(),
@@ -351,4 +352,39 @@ describe("WaybillDetailPage", () => {
       expect(routerMock.replace).toHaveBeenCalledWith("/");
     });
   });
+  it("backfills operation fee once, refreshes balance and hides the button", async () => {
+    apiMock.getWaybill.mockResolvedValue({ ...waybillItem, canBackfillOperationFee: true, operationFeeStatus: "unpaid" });
+    let finish: (value: unknown) => void = () => {};
+    apiMock.backfillOperationFee.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<WaybillDetailPage />);
+    const button = await screen.findByRole("button", { name: "补扣申报行操作费" });
+    fireEvent.click(button);
+    expect(await screen.findByRole("button", { name: "补扣中..." })).toBeDisabled();
+    finish({ ...waybillItem, canBackfillOperationFee: false, operationFeeStatus: "paid", billingBalance: "14.00", billingFees: [
+      { entryId: "fee-id", feeType: "declaration_operation_fee", feeName: "申报行操作费", quantity: 3, unitRate: "2.00", amount: "6.00", status: "paid" }
+    ] });
+    expect(await screen.findByText("申报行操作费已补扣 €6.00 · 客户余额 €14.00")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "补扣申报行操作费" })).not.toBeInTheDocument();
+    expect(apiMock.backfillOperationFee).toHaveBeenCalledTimes(1);
+    expect(apiMock.backfillOperationFee).toHaveBeenCalledWith("A7K2P9QX");
+    expect(screen.getByText("3 行 × €2.00")).toBeInTheDocument();
+  });
+
+  it("keeps the backfill button available after insufficient balance", async () => {
+    apiMock.getWaybill.mockResolvedValue({ ...waybillItem, canBackfillOperationFee: true });
+    apiMock.backfillOperationFee.mockRejectedValue(new Error("Insufficient balance"));
+    render(<WaybillDetailPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "补扣申报行操作费" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Insufficient balance");
+    expect(screen.getByRole("button", { name: "补扣申报行操作费" })).toBeEnabled();
+  });
+
+  it("never shows backfill for a customer or a reversed fee", async () => {
+    apiMock.getCurrentUser.mockResolvedValue({ user: { ...adminUser, role: "user" } });
+    apiMock.getWaybill.mockResolvedValue({ ...waybillItem, canBackfillOperationFee: true, operationFeeStatus: "reversed" });
+    render(<WaybillDetailPage />);
+    expect(await screen.findByText("操作费已撤销，保留收费记录，不可再次补扣。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "补扣申报行操作费" })).not.toBeInTheDocument();
+  });
+
 });

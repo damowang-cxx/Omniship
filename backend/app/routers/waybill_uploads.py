@@ -16,6 +16,7 @@ from app.schemas.waybill_upload import (
 )
 from app.schemas.cancelled_waybill import CancelWaybillRequest, CancelWaybillResponse
 from app.services.waybill_upload_service import (
+    WaybillUploadConflictError,
     WaybillUploadInsufficientBalanceError,
     WaybillUploadPermissionError,
     WaybillUploadService,
@@ -88,6 +89,7 @@ async def _create_pre_alert_upload(
                 "required": str(exc.required),
                 "balance": str(exc.balance),
                 "shortfall": str(exc.shortfall),
+                **({"currency": exc.currency} if exc.currency != "EUR" else {}),
             },
         ) from exc
     except WaybillUploadValidationError as exc:
@@ -274,6 +276,8 @@ def cancel_waybill_upload(
             reason=payload.reason,
             request=request,
         )
+    except WaybillUploadConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except WaybillUploadPermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except WaybillUploadValidationError as exc:

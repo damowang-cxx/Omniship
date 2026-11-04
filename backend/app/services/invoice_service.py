@@ -12,6 +12,7 @@ from fastapi import Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import PROJECT_ROOT, Settings, get_settings
+from app.services.operation_fee import fee_name
 from app.db.models import BillingEntry, Invoice, InvoiceLine, InvoiceSettings, User
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.invoice_repository import InvoiceRepository
@@ -115,10 +116,10 @@ class InvoiceService:
         extra_fee_totals = self.invoices.extra_fee_totals_for_entries([entry.id for entry in entries])
         return [
             InvoiceEligibleDeductionItem(
-                id=entry.id, waybill_number=entry.waybill_number or "-", quantity=entry.billable_unit_count or 0,
+                id=entry.id, fee_type=entry.fee_type, fee_name=fee_name(entry.fee_type), waybill_number=entry.waybill_number or "-", quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0, currency=entry.currency,
                 unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount,
-                extra_fee_total=Decimal(extra_fee_totals.get(entry.id, 0)),
-                total_amount=Decimal(entry.amount) + Decimal(extra_fee_totals.get(entry.id, 0)),
+                extra_fee_total=Decimal(extra_fee_totals.get(entry.id, Decimal("0.00"))),
+                total_amount=Decimal(entry.amount) + Decimal(extra_fee_totals.get(entry.id, Decimal("0.00"))),
                 recorded_at=entry.created_at,
             )
             for entry in entries
@@ -171,8 +172,10 @@ class InvoiceService:
         issuer_snapshot = self._issuer_snapshot(settings)
         created: list[Invoice] = []
         try:
-            for start in range(0, len(ordered), DETAIL_MAX_LINES):
-                lines = ordered[start : start + DETAIL_MAX_LINES]
+            for currency in ("EUR", "GBP"):
+              currency_entries = [entry for entry in ordered if entry.currency == currency]
+              for start in range(0, len(currency_entries), DETAIL_MAX_LINES):
+                lines = currency_entries[start : start + DETAIL_MAX_LINES]
                 total = sum(
                     (Decimal(line.amount) + extra_fee_totals.get(line.id, Decimal("0.00")) for line in lines),
                     Decimal("0.00"),
@@ -184,6 +187,7 @@ class InvoiceService:
                     issued_date=payload.issuedDate,
                     due_date=payload.issuedDate + timedelta(days=4),
                     total_amount=total,
+                    currency=currency,
                     payer_snapshot=payer_snapshot,
                     issuer_snapshot=issuer_snapshot,
                     stamp_storage_path=settings.stamp_storage_path,
@@ -195,7 +199,9 @@ class InvoiceService:
                 for line_number, entry in enumerate(lines, start=1):
                     self.db.add(InvoiceLine(
                         invoice_id=invoice.id, billing_entry_id=entry.id, line_number=line_number,
-                        waybill_number=entry.waybill_number or "-", quantity=entry.billable_unit_count or 0,
+                        fee_type=entry.fee_type, fee_name=fee_name(entry.fee_type),
+                        waybill_number=entry.waybill_number or "-", quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0,
+                        currency=currency,
                         unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount,
                         extra_fee_total=extra_fee_totals.get(entry.id, Decimal("0.00")),
                     ))
@@ -279,7 +285,7 @@ class InvoiceService:
 
     @staticmethod
     def _is_eligible_entry(entry: BillingEntry) -> bool:
-        return entry.entry_type == "deduction" and entry.billable_unit_count is not None and entry.unit_rate is not None
+        return entry.entry_type == "deduction" and (entry.quantity is not None or entry.billable_unit_count is not None) and entry.unit_rate is not None
 
     @staticmethod
     def _settings_complete(settings: InvoiceSettings | None) -> bool:
@@ -310,11 +316,12 @@ class InvoiceService:
             raise InvoiceValidationError("Invoice not found")
         return InvoiceItem(
             id=invoice.id, invoice_number=invoice.invoice_number, status=invoice.status,
-            issued_date=invoice.issued_date, due_date=invoice.due_date, total_amount=invoice.total_amount,
+            issued_date=invoice.issued_date, due_date=invoice.due_date, total_amount=invoice.total_amount, currency=invoice.currency,
             payer=InvoicePayerItem(**invoice.payer_snapshot),
             lines=[InvoiceLineItem(
                 id=line.id, billing_entry_id=line.billing_entry_id, line_number=line.line_number,
-                waybill_number=line.waybill_number, quantity=line.quantity, unit_rate=line.unit_rate, amount=line.amount,
+                fee_type=line.fee_type, fee_name=line.fee_name,
+                waybill_number=line.waybill_number, quantity=line.quantity, currency=line.currency, unit_rate=line.unit_rate, amount=line.amount,
                 extra_fee_total=line.extra_fee_total,
                 total_amount=line.amount + line.extra_fee_total,
             ) for line in invoice.lines],

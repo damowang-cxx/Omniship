@@ -44,6 +44,12 @@ function formatEuro(value: string | undefined) {
     minimumFractionDigits: 2
   }).format(Number(value || 0));
 }
+function money(value: string | undefined, currency = "EUR") {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(Number(value || 0));
+}
+function feeName(type?: string | null) {
+  return ({ customs_tax: "Customs tax", declaration_operation_fee: "申报行操作费", lhr_weight_handling: "LHR 操作费", lhr_clearance: "LHR 清关费" } as Record<string, string>)[type || "customs_tax"] || "Fee";
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -72,6 +78,7 @@ export default function UsersPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState("");
+  const [rechargeCurrency, setRechargeCurrency] = useState<"EUR" | "GBP">("EUR");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecharging, setIsRecharging] = useState(false);
   const [cancellingDeductionId, setCancellingDeductionId] = useState<string | null>(null);
@@ -238,7 +245,9 @@ export default function UsersPage() {
     setIsRecharging(true);
     setDetailError(null);
     try {
-      const account = await rechargeUser(detailUser.id, rechargeAmount, receiptFile);
+      const account = rechargeCurrency === "GBP"
+        ? await rechargeUser(detailUser.id, rechargeAmount, receiptFile, "GBP")
+        : await rechargeUser(detailUser.id, rechargeAmount, receiptFile);
       setBilling(account);
       setDetailUser(account.user);
       setBillingTab("recharges");
@@ -262,7 +271,9 @@ export default function UsersPage() {
       return;
     }
     const confirmed = window.confirm(
-      `Cancel customs tax for ${entry.waybillNumber || "this waybill"}? ${formatEuro(entry.amount)} will be returned to the customer balance.`
+      entry.currency === "GBP"
+        ? `Cancel ${feeName(entry.feeType)} for ${entry.waybillNumber || "this waybill"}? ${money(entry.amount, entry.currency)} will be returned to the GBP balance.`
+        : `Cancel ${entry.feeType === "declaration_operation_fee" ? "申报行操作费" : "customs tax"} for ${entry.waybillNumber || "this waybill"}? ${formatEuro(entry.amount)} will be returned to the customer balance.`
     );
     if (!confirmed) return;
 
@@ -279,7 +290,7 @@ export default function UsersPage() {
         return;
       }
       setDetailError(
-        error instanceof Error ? error.message : "Unable to cancel customs tax"
+        error instanceof Error ? error.message : "Unable to cancel fee"
       );
     } finally {
       setCancellingDeductionId(null);
@@ -291,7 +302,7 @@ export default function UsersPage() {
       return;
     }
     const confirmed = window.confirm(
-      `Cancel this recharge of ${formatEuro(entry.amount)}? The amount will be deducted from the customer balance and the balance may become negative.`
+      `Cancel this recharge of ${money(entry.amount, entry.currency)}? The amount will be deducted from the ${entry.currency === "GBP" ? "GBP" : "customer"} balance and the balance may become negative.`
     );
     if (!confirmed) return;
 
@@ -399,7 +410,7 @@ export default function UsersPage() {
                       </td>
                       <td>{user.username}</td>
                       <td>{user.role === "admin" ? "Admin" : "User"}</td>
-                      <td><span className={styles.balanceCell}>{formatEuro(user.balance)}</span></td>
+                      <td><span className={styles.balanceCell}>{formatEuro(user.balance)} · {money(user.gbpBalance, "GBP")}</span></td>
                       <td><span className={styles.statusPill} data-status={user.status}>{user.status === "active" ? "Active" : "Disabled"}</span></td>
                       <td>
                         <div className={styles.actions}>
@@ -433,7 +444,7 @@ export default function UsersPage() {
               <div><span>Username</span><strong>{detailUser.username}</strong></div>
               <div><span>Role</span><strong>{detailUser.role === "admin" ? "Admin" : "User"}</strong></div>
               <div><span>Status</span><strong>{detailUser.status === "active" ? "Active" : "Disabled"}</strong></div>
-              <div className={styles.summaryBalance}><span>Balance</span><strong>{formatEuro(detailUser.balance)}</strong></div>
+              <div className={styles.summaryBalance}><span>Balance</span><strong>{formatEuro(detailUser.balance)} · {money(detailUser.gbpBalance, "GBP")}</strong></div>
             </div>
 
             <form className={styles.resetPanel} onSubmit={handleSavePayer}>
@@ -473,27 +484,28 @@ export default function UsersPage() {
             ) : billingTab === "deductions" ? (
               billing?.deductions.length ? (
                 <div className={styles.ledgerTableWrap}>
-                  <table><thead><tr><th>Air Waybill Number</th><th>Supplier</th><th>Source</th><th>Calculation</th><th>Recorded At</th><th>Amount</th><th>Balance After</th><th>Action</th></tr></thead><tbody>
+                  <table><thead><tr><th>Air Waybill Number</th><th>Fee type</th><th>Supplier</th><th>Source</th><th>Calculation</th><th>Recorded At</th><th>Amount</th><th>Balance After</th><th>Action</th></tr></thead><tbody>
                     {billing.deductions.map((entry) => {
                       const isReversal = entry.entryType === "deduction_reversal";
                       return (
                         <tr className={isReversal ? styles.reversalRow : undefined} key={entry.id}>
                           <td>{entry.waybillNumber || "-"}</td>
+                          <td>{feeName(entry.feeType)}</td>
                           <td>{entry.supplierName ? `${entry.supplierName} v${entry.supplierVersionNumber}` : "-"}</td>
-                          <td>{isReversal ? "Tax cancellation" : entry.billingSource === "retroactive" ? "Tax backfill" : "Upload"}</td>
-                          <td>{entry.billableUnitCount != null && entry.unitRate ? `${entry.billableUnitCount} × ${formatEuro(entry.unitRate)}` : "-"}</td>
+                          <td>{isReversal ? (entry.feeType === "customs_tax" ? "Tax cancellation" : "Fee cancellation") : entry.billingSource === "retroactive" ? (entry.feeType === "customs_tax" ? "Tax backfill" : "Fee backfill") : "Upload"}</td>
+                          <td>{(entry.quantity ?? entry.billableUnitCount) != null && entry.unitRate ? `${entry.quantity ?? entry.billableUnitCount} × ${money(entry.unitRate, entry.currency)}` : "-"}</td>
                           <td>{formatDateTime(entry.createdAt)}</td>
                           <td>
                             {isReversal ? (
                               <div className={styles.cancellationAmountWrap}>
-                                <span className={styles.cancellationAmount}><ArrowUpLeft aria-hidden="true" size={14} />+{formatEuro(entry.amount)}</span>
-                                <span className={styles.cancellationTag}>Tax cancelled</span>
+                                <span className={styles.cancellationAmount}><ArrowUpLeft aria-hidden="true" size={14} />+{money(entry.amount, entry.currency)}</span>
+                                <span className={styles.cancellationTag}>{entry.feeType === "customs_tax" || !entry.feeType ? "Tax cancelled" : "Fee cancelled"}</span>
                               </div>
                             ) : (
-                              <span className={styles.deductionAmount}><ArrowDownRight aria-hidden="true" size={14} />{formatEuro(entry.amount)}</span>
+                              <span className={styles.deductionAmount}><ArrowDownRight aria-hidden="true" size={14} />{money(entry.amount, entry.currency)}</span>
                             )}
                           </td>
-                          <td>{formatEuro(entry.balanceAfter)}</td>
+                          <td>{money(entry.balanceAfter, entry.currency)}</td>
                           <td>
                             {isReversal ? (
                               <span className={styles.ledgerNote}>Refund record</span>
@@ -506,7 +518,7 @@ export default function UsersPage() {
                                 onClick={() => void handleCancelDeduction(entry)}
                                 type="button"
                               >
-                                {cancellingDeductionId === entry.id ? "Cancelling..." : "Cancel tax"}
+                                {cancellingDeductionId === entry.id ? "Cancelling..." : entry.feeType === "customs_tax" || !entry.feeType ? "Cancel tax" : `Cancel ${feeName(entry.feeType)}`}
                               </button>
                             )}
                           </td>
@@ -527,12 +539,12 @@ export default function UsersPage() {
                         <td>{isReversal ? <span className={styles.rechargeCancellationTag}>Recharge cancellation</span> : "Recharge"}</td>
                         <td>
                           {isReversal ? (
-                            <span className={styles.rechargeReversalAmount}><ArrowDownRight aria-hidden="true" size={14} />-{formatEuro(entry.amount)}</span>
+                            <span className={styles.rechargeReversalAmount}><ArrowDownRight aria-hidden="true" size={14} />-{money(entry.amount, entry.currency)}</span>
                           ) : (
-                            <span className={styles.rechargeAmount}>+{formatEuro(entry.amount)}</span>
+                            <span className={styles.rechargeAmount}>+{money(entry.amount, entry.currency)}</span>
                           )}
                         </td>
-                        <td>{formatEuro(entry.balanceAfter)}</td>
+                        <td>{money(entry.balanceAfter, entry.currency)}</td>
                         <td>
                           {isReversal ? (
                             <span className={styles.ledgerNote}>Correction record</span>
@@ -575,7 +587,8 @@ export default function UsersPage() {
               <div><p>Balance adjustment</p><h3 id="recharge-title">Recharge {detailUser.email}</h3></div>
               <button aria-label="Close recharge" className={styles.iconButton} onClick={() => setIsRechargeOpen(false)} type="button"><X aria-hidden="true" size={18} /></button>
             </header>
-            <label>Recharge amount (EUR)<input inputMode="decimal" min="0.01" onChange={(event) => setRechargeAmount(event.target.value)} placeholder="0.00" required step="0.01" type="number" value={rechargeAmount} /></label>
+            <label>Currency<select aria-label="Recharge currency" onChange={(event) => setRechargeCurrency(event.target.value as "EUR" | "GBP")} value={rechargeCurrency}><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option></select></label>
+            <label>Recharge amount ({rechargeCurrency})<input inputMode="decimal" min="0.01" onChange={(event) => setRechargeAmount(event.target.value)} placeholder="0.00" required step="0.01" type="number" value={rechargeAmount} /></label>
             <label className={styles.receiptUpload}><ImageIcon aria-hidden="true" size={22} /><strong>Customer payment receipt</strong><span>Optional · JPG, PNG or WebP · up to 10 MB</span><input accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)} type="file" /><small>{receiptFile ? receiptFile.name : "No image selected"}</small></label>
             <footer><button onClick={() => setIsRechargeOpen(false)} type="button">Cancel</button><button disabled={isRecharging} type="submit">{isRecharging ? "Adding recharge..." : "Add recharge"}</button></footer>
           </form>

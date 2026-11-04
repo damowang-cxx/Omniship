@@ -228,8 +228,11 @@ export default function WaybillUploadsPage() {
     if (
       !preAlertFile ||
       !form.supplierId ||
-      !/^[A-Za-z]{3}$/.test(form.airportOfArrival.trim())
+      !/^[A-Za-z]{3}$/.test(form.airportOfArrival.trim()) ||
+      (form.airportOfArrival.trim().toUpperCase() === "LHR" && !(Number(form.grossWeightKg) > 0))
     ) {
+      estimateRequestId.current += 1;
+      setTaxEstimate(null);
       setIsEstimatingTax(false);
       return;
     }
@@ -239,7 +242,8 @@ export default function WaybillUploadsPage() {
     void estimatePreAlertTax(
       preAlertFile,
       form.supplierId,
-      form.airportOfArrival.trim().toUpperCase()
+      form.airportOfArrival.trim().toUpperCase(),
+      form.grossWeightKg.trim()
     )
       .then((estimate) => {
         if (requestId === estimateRequestId.current) {
@@ -257,7 +261,7 @@ export default function WaybillUploadsPage() {
           setIsEstimatingTax(false);
         }
       });
-  }, [form.airportOfArrival, form.supplierId, preAlertFile]);
+  }, [form.airportOfArrival, form.grossWeightKg, form.supplierId, preAlertFile]);
 
   const validateForm = useCallback(() => {
     if (!form.airWaybillNumber.trim()) {
@@ -340,16 +344,18 @@ export default function WaybillUploadsPage() {
         });
         setNotice({
           tone: "success",
-          text: `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)}`
+          text: response.airportOfArrival === "LHR"
+            ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp}。EUR 和 GBP 已分别扣款。`
+            : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)} · Total deducted: ${formatEuro(response.deductedTotal)}`
         });
         if (isAdmin) {
           setUsers((current) => current.map((user) =>
             user.id === response.boundUserId
-              ? { ...user, balance: response.balanceAfter }
+              ? { ...user, balance: response.balanceAfter, gbpBalance: response.gbpBalanceAfter }
               : user
           ));
         } else {
-          setCurrentUser((current) => current ? { ...current, balance: response.balanceAfter } : current);
+          setCurrentUser((current) => current ? { ...current, balance: response.balanceAfter, gbpBalance: response.gbpBalanceAfter } : current);
         }
         setForm((current) => ({
           ...initialForm,
@@ -668,14 +674,26 @@ export default function WaybillUploadsPage() {
               </button>
               <div className={styles.accountSnapshot}>
                 <WalletCards aria-hidden="true" size={20} />
-                <div><span>Customer balance</span><strong>{formatEuro(selectedOwner?.balance)}</strong></div>
+                <div><span>Customer balance</span><strong>{formatEuro(selectedOwner?.balance)} · £{Number(selectedOwner?.gbpBalance || 0).toFixed(2)}</strong></div>
               </div>
               <div className={styles.taxSnapshot} data-state={taxEstimateError ? "error" : taxEstimate ? "ready" : "idle"}>
                 <ReceiptEuro aria-hidden="true" size={20} />
                 <div>
-                  <span>Tax for this upload</span>
-                  <strong>{isEstimatingTax ? "Calculating..." : taxEstimate ? formatEuro(taxEstimate.estimatedTax) : taxEstimateError ? "Unavailable" : "Select Pre Alert"}</strong>
-                  {taxEstimate && <small>{taxEstimate.billableUnitCount} unique units × {formatEuro(taxEstimate.unitRate)}{taxEstimate.taxableAirport ? "" : " · non-taxable airport"}</small>}
+                  <span>{form.airportOfArrival === "LHR" ? "LHR 清关费" : "Tax for this upload"}</span>
+                  <strong>{isEstimatingTax ? "Calculating..." : taxEstimate ? formatEuro(form.airportOfArrival === "LHR" ? taxEstimate.lhrClearanceEur : taxEstimate.estimatedTax) : taxEstimateError ? "Unavailable" : "Select Pre Alert"}</strong>
+                  {taxEstimate && form.airportOfArrival !== "LHR" && <small>{taxEstimate.billableUnitCount} unique units × {formatEuro(taxEstimate.unitRate)}{taxEstimate.taxableAirport ? "" : " · non-taxable airport"}</small>}
+                  {taxEstimate && form.airportOfArrival === "LHR" && <>
+                    <small>1 票 × €45.00</small>
+                    <div className={styles.feeEstimateLine}><span>LHR 操作费</span><strong>£{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrWeightKg} kg × £0.50</small></div>
+                    <div className={styles.feeEstimateTotal}><span>预计分别扣款</span><strong>{formatEuro(taxEstimate.lhrClearanceEur)} + £{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong></div>
+                  </>}
+                  {taxEstimate && form.airportOfArrival !== "LHR" && <>
+                    <div className={styles.feeEstimateLine}><span>申报行操作费</span>
+                    <strong>{formatEuro(taxEstimate.estimatedOperationFee)}</strong>
+                    <small>{taxEstimate.operationRowCount} rows × {formatEuro(taxEstimate.operationUnitRate)}</small></div>
+                    <div className={styles.feeEstimateTotal}><span>合计预扣 / Total estimated deduction</span>
+                    <strong>{formatEuro(taxEstimate.estimatedTotal)}</strong></div>
+                  </>}
                   {taxEstimateError && <small title={taxEstimateError}>The file could not be estimated</small>}
                 </div>
               </div>

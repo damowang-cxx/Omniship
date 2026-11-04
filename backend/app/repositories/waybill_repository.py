@@ -29,7 +29,7 @@ class WaybillRepository:
                     WaybillUpload.files
                 ),
                 joinedload(WaybillTrackingRecord.upload).joinedload(
-                    WaybillUpload.billing_entry
+                    WaybillUpload.billing_entries
                 ),
                 joinedload(WaybillTrackingRecord.user),
                 joinedload(WaybillTrackingRecord.pod_files),
@@ -50,7 +50,7 @@ class WaybillRepository:
                     WaybillUpload.files
                 ),
                 joinedload(WaybillTrackingRecord.upload).joinedload(
-                    WaybillUpload.billing_entry
+                    WaybillUpload.billing_entries
                 ),
                 joinedload(WaybillTrackingRecord.user),
                 joinedload(WaybillTrackingRecord.pod_files),
@@ -86,7 +86,7 @@ class WaybillRepository:
                     WaybillUpload.files
                 ),
                 joinedload(WaybillTrackingRecord.upload).joinedload(
-                    WaybillUpload.billing_entry
+                    WaybillUpload.billing_entries
                 ),
                 joinedload(WaybillTrackingRecord.user),
                 joinedload(WaybillTrackingRecord.pod_files),
