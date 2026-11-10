@@ -20,17 +20,20 @@ import {
   createSupplier,
   getBillingSettings,
   getCurrentUser,
+  getLhrBillingSettings,
   isUnauthorizedError,
   listUsers,
   listSuppliers,
   logout,
   publishSupplierVersion,
   updateBillingSettings,
+  updateLhrBillingSettings,
   updateSupplier
 } from "@/lib/api";
 import type {
   AppUser,
   LhrBillingConfig,
+  LhrBillingSettingsItem,
   LhrSurchargeRule,
   SupplierFieldRule,
   SupplierItem,
@@ -111,7 +114,7 @@ function independentDeductionConfig(
   return {
     workbook: config.workbook,
     fields: config.fields,
-    lhrBilling: config.lhrBilling ?? null,
+    lhrBilling: null,
     billingGroupColumn: groupColumn,
     billingDistinctColumn: distinctColumn
   };
@@ -167,7 +170,8 @@ export default function SuppliersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [editing, setEditing] = useState<SupplierItem | null | "new">(null);
-  const [lhrEditing, setLhrEditing] = useState<SupplierItem | null>(null);
+  const [lhrEditing, setLhrEditing] = useState(false);
+  const [lhrSettings, setLhrSettings] = useState<LhrBillingSettingsItem | null>(null);
   const [lhrDraft, setLhrDraft] = useState<LhrBillingConfig | null>(null);
   const [lhrError, setLhrError] = useState<string | null>(null);
   const [isLhrSaving, setIsLhrSaving] = useState(false);
@@ -181,19 +185,21 @@ export default function SuppliersPage() {
 
   const load = useCallback(async () => {
     try {
-      const [account, supplierResponse, settings, userResponse] = await Promise.all([
-        getCurrentUser(),
-        listSuppliers(),
-        getBillingSettings(),
-        listUsers()
-      ]);
+      const account = await getCurrentUser();
       if (account.user.role !== "admin") {
         router.replace("/waybill-uploads");
         return;
       }
+      const [supplierResponse, settings, userResponse, lhrResponse] = await Promise.all([
+        listSuppliers(),
+        getBillingSettings(),
+        listUsers(),
+        getLhrBillingSettings()
+      ]);
       setUser(account.user);
       setSuppliers(supplierResponse.items);
       setCustomers(userResponse.items);
+      setLhrSettings(lhrResponse);
       setUnitRate(settings.unitTaxEur);
       setAirportText(settings.taxableAirports.join(", "));
       setTaxEffectiveDate(settings.taxEffectiveDate);
@@ -213,23 +219,23 @@ export default function SuppliersPage() {
   }, [load]);
 
   const openNew = () => {
-    setLhrEditing(null);
+    setLhrEditing(false);
     setEditing("new");
     setDraftName("");
     setDraftConfig(emptyConfig());
   };
 
   const openEdit = (supplier: SupplierItem) => {
-    setLhrEditing(null);
+    setLhrEditing(false);
     setEditing(supplier);
     setDraftName(supplier.name);
     setDraftConfig(independentDeductionConfig(cloneConfig(supplier.currentVersion.config)));
   };
 
-  const openLhrEdit = (supplier: SupplierItem) => {
+  const openLhrEdit = () => {
     setEditing(null);
-    setLhrEditing(supplier);
-    setLhrDraft(supplier.currentVersion.config.lhrBilling ? cloneConfig(supplier.currentVersion.config).lhrBilling ?? null : null);
+    setLhrEditing(true);
+    setLhrDraft(lhrSettings?.config ? JSON.parse(JSON.stringify(lhrSettings.config)) as LhrBillingConfig : null);
     setLhrError(null);
     setCustomerDialog(null);
   };
@@ -363,11 +369,11 @@ export default function SuppliersPage() {
     }
     setIsLhrSaving(true);
     try {
-      const config = cloneConfig(lhrEditing.currentVersion.config);
-      await publishSupplierVersion(lhrEditing.id, { ...config, lhrBilling: lhrDraft });
-      setLhrEditing(null);
+      const saved = await updateLhrBillingSettings(lhrDraft);
+      setLhrSettings(saved);
+      setLhrEditing(false);
       await load();
-      setNotice({ tone: "success", text: `${lhrEditing.name} 的 LHR 扣费配置已发布` });
+      setNotice({ tone: "success", text: "LHR 扣费配置已保存" });
     } catch (error) {
       setLhrError(error instanceof Error ? error.message : "无法保存 LHR 扣费配置");
     } finally {
@@ -429,24 +435,21 @@ export default function SuppliersPage() {
         </section>
 
         <section className={`${styles.registry} ${styles.lhrRegistry}`} aria-labelledby="lhr-registry-title">
-          <div className={styles.registryHeader}><div><p>Destination fees · LHR</p><h3 id="lhr-registry-title">LHR 扣费配置</h3></div><span>与 Pre Alert 规则分别设置</span></div>
+          <div className={styles.registryHeader}><div><p>Destination fees · LHR</p><h3 id="lhr-registry-title">LHR 扣费配置</h3></div><span>一套独立配置 · 仅用于 LHR</span></div>
           <div className={styles.lhrConfigGrid}>
-            {suppliers.map((supplier) => {
-              const billing = supplier.currentVersion.config.lhrBilling;
-              return <article className={styles.lhrConfigCard} key={supplier.id}>
-                <div className={styles.lhrConfigIdentity}><span className={styles.supplierIcon}><Factory aria-hidden="true" size={20} /></span><div><h4>{supplier.name}</h4><small>Supplier v{supplier.currentVersionNumber} · {supplier.status === "active" ? "已启用" : "已停用"}</small></div><span className={styles.lhrConfigStatus} data-configured={Boolean(billing)}>{billing ? "已配置" : "未配置"}</span></div>
-                <dl><div><dt>清关费</dt><dd>{billing ? `€${billing.clearanceFeeEur} / 票` : "—"}</dd></div><div><dt>客户报价</dt><dd>{billing ? `${billing.customerRates.length} 位客户` : "—"}</dd></div><div><dt>货站附加费</dt><dd>{billing ? `${billing.surchargeRules.length} 条规则` : "—"}</dd></div></dl>
-                <button onClick={() => openLhrEdit(supplier)} type="button">{billing ? "管理 LHR 扣费" : "设置 LHR 扣费"}</button>
-              </article>;
-            })}
+            <article className={styles.lhrConfigCard}>
+              <div className={styles.lhrConfigIdentity}><span className={styles.supplierIcon}><Factory aria-hidden="true" size={20} /></span><div><h4>LHR 专用收费</h4><small>独立配置 · {lhrSettings?.version ? `版本 ${lhrSettings.version}` : "尚未创建"}</small></div><span className={styles.lhrConfigStatus} data-configured={Boolean(lhrSettings?.config)}>{lhrSettings?.config ? "已配置" : "未配置"}</span></div>
+              <dl><div><dt>清关费</dt><dd>{lhrSettings?.config ? `€${lhrSettings.config.clearanceFeeEur} / 票` : "—"}</dd></div><div><dt>客户报价</dt><dd>{lhrSettings?.config ? `${lhrSettings.config.customerRates.length} 位客户` : "—"}</dd></div><div><dt>货站附加费</dt><dd>{lhrSettings?.config ? `${lhrSettings.config.surchargeRules.length} 条规则` : "—"}</dd></div></dl>
+              <button onClick={openLhrEdit} type="button">{lhrSettings?.config ? "管理 LHR 扣费" : "创建 LHR 扣费配置"}</button>
+            </article>
           </div>
           {lhrEditing && <form aria-labelledby="lhr-editor-title" className={`${styles.editor} ${styles.lhrInlineEditor}`} onSubmit={handleSaveLhr}>
-            <header className={styles.editorHeader}><div><p>{lhrEditing.name} · Supplier v{lhrEditing.currentVersionNumber}</p><h3 id="lhr-editor-title">LHR 扣费 · {lhrEditing.name}</h3></div><button aria-label="关闭 LHR 配置" onClick={() => setLhrEditing(null)} type="button"><X aria-hidden="true" size={18} /></button></header>
+            <header className={styles.editorHeader}><div><p>Global destination fees · LHR</p><h3 id="lhr-editor-title">LHR 扣费设置</h3></div><button aria-label="关闭 LHR 配置" onClick={() => setLhrEditing(false)} type="button"><X aria-hidden="true" size={18} /></button></header>
             {lhrError && <div className={styles.editorNotice} role="alert">{lhrError}</div>}
             <section className={`${styles.editorSection} ${styles.lhrSection}`} aria-label="LHR billing configuration">
               <div className={styles.sectionTitle}><span>UK</span><div><strong>LHR 独立扣费</strong><small>只使用提单号、提单总重量和所选客户；不读取 Pre Alert 内容计费</small></div></div>
-              <label className={styles.lhrToggle}><input checked={Boolean(lhrDraft)} onChange={(event) => setLhrDraft(event.target.checked ? { clearanceFeeEur: "45.00", customerRates: [], surchargeRules: [] } : null)} type="checkbox" />为此 Supplier 启用 LHR 扣费配置</label>
-              {!lhrDraft ? <p className={styles.lhrHint}>未配置时，该 Supplier 的 LHR 上传会提示管理员先完成扣费设置。其他目的港继续使用现有规则。</p> : <>
+              <label className={styles.lhrToggle}><input checked={Boolean(lhrDraft)} onChange={(event) => setLhrDraft(event.target.checked ? { clearanceFeeEur: "45.00", customerRates: [], surchargeRules: [] } : null)} type="checkbox" />启用 LHR 扣费配置</label>
+              {!lhrDraft ? <p className={styles.lhrHint}>未配置时，LHR 上传会提示管理员先完成扣费设置。其他目的港继续使用现有规则。</p> : <>
                 <div className={styles.lhrGroup}>
                   <div className={styles.lhrGroupHead}><div><strong>01 · 清关费</strong><small>按 Air Waybill Number，一次上传计一票</small></div></div>
                   <label className={styles.lhrMoneyField}>每票金额 (EUR)<input min="0.01" onChange={(event) => setLhrBilling((billing) => ({ ...billing, clearanceFeeEur: event.target.value }))} required step="0.01" type="number" value={lhrDraft.clearanceFeeEur} /></label>
@@ -456,7 +459,7 @@ export default function SuppliersPage() {
                   {lhrDraft.customerRates.length ? <div className={styles.customerRateList}>{lhrDraft.customerRates.map((rate) => {
                     const customer = customers.find((item) => item.id === rate.userId);
                     return <div className={styles.customerRateRow} key={rate.userId}><div><strong>{customer?.username || "已删除客户"}</strong><small>{customer?.email || rate.userId}</small></div><b>£{rate.rateGbpPerKg} / kg</b><button onClick={() => { setCustomerDialog({ userId: rate.userId, rate: rate.rateGbpPerKg, editing: true }); setCustomerDialogError(null); }} type="button">修改</button><button aria-label={`删除 ${customer?.username || rate.userId} 报价`} onClick={() => setLhrBilling((billing) => ({ ...billing, customerRates: billing.customerRates.filter((item) => item.userId !== rate.userId) }))} type="button"><X size={15} /></button></div>;
-                  })}</div> : <p className={styles.lhrHint}>尚无客户报价；该 Supplier 的 LHR 上传会被阻止，直到添加该客户报价并发布新版本。</p>}
+                  })}</div> : <p className={styles.lhrHint}>尚无客户报价；LHR 上传会被阻止，直到添加该客户报价并保存配置。</p>}
                 </div>
                 <div className={styles.lhrGroup}>
                   <div className={styles.lhrGroupHead}><div><strong>03 · 货站附加费</strong><small>同一三位提单前缀只能归属一条规则；未匹配时不收附加费</small></div><div className={styles.lhrActions}><button className={styles.addRule} onClick={() => addSurchargeRule("fixed")} type="button"><Plus size={15} />固定金额</button><button className={styles.addRule} onClick={() => addSurchargeRule("weight_bands")} type="button"><Plus size={15} />重量段</button></div></div>
@@ -468,7 +471,7 @@ export default function SuppliersPage() {
                 </div>
               </>}
             </section>
-            <footer className={styles.editorFooter}><span>此配置只用于目的港 LHR，保存后作为新的 Supplier 版本生效。</span><div><button onClick={() => setLhrEditing(null)} type="button">取消</button><button disabled={isLhrSaving || (!lhrDraft && !lhrEditing.currentVersion.config.lhrBilling)} type="submit"><Save size={16} />{isLhrSaving ? "正在发布..." : "保存 LHR 扣费"}</button></div></footer>
+            <footer className={styles.editorFooter}><span>此配置只用于目的港 LHR，保存后立即用于新的预估与上传。</span><div><button onClick={() => setLhrEditing(false)} type="button">取消</button><button disabled={isLhrSaving || (!lhrDraft && !lhrSettings?.config)} type="submit"><Save size={16} />{isLhrSaving ? "正在保存..." : "保存 LHR 扣费"}</button></div></footer>
           </form>}
         </section>
       </section>
@@ -522,7 +525,7 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {customerDialog && <div className={`${styles.backdrop} ${styles.customerBackdrop}`} role="presentation"><div aria-labelledby="customer-rate-title" aria-modal="true" className={styles.customerModal} role="dialog"><header><div><small>Supplier / LHR pricing</small><h3 id="customer-rate-title">{customerDialog.editing ? "修改客户报价" : "添加客户报价"}</h3></div><button aria-label="关闭客户报价" onClick={() => setCustomerDialog(null)} type="button"><X size={18} /></button></header><div className={styles.customerModalBody}><label>客户<select disabled={customerDialog.editing} onChange={(event) => setCustomerDialog((current) => current ? { ...current, userId: event.target.value } : null)} value={customerDialog.userId}><option value="">选择客户</option>{customers.filter((item) => item.status === "active" && item.role === "user" && (customerDialog.editing || !lhrDraft?.customerRates.some((rate) => rate.userId === item.id))).map((item) => <option key={item.id} value={item.id}>{item.username} · {item.email}</option>)}</select></label><label>每公斤报价 (GBP)<input inputMode="decimal" min="0.01" onChange={(event) => setCustomerDialog((current) => current ? { ...current, rate: event.target.value } : null)} placeholder="0.50" step="0.01" type="number" value={customerDialog.rate} /></label>{customerDialogError && <p role="alert">{customerDialogError}</p>}</div><footer><button onClick={() => setCustomerDialog(null)} type="button">取消</button><button onClick={confirmCustomerRate} type="button">确认</button></footer></div></div>}
+      {customerDialog && <div className={`${styles.backdrop} ${styles.customerBackdrop}`} role="presentation"><div aria-labelledby="customer-rate-title" aria-modal="true" className={styles.customerModal} role="dialog"><header><div><small>LHR pricing</small><h3 id="customer-rate-title">{customerDialog.editing ? "修改客户报价" : "添加客户报价"}</h3></div><button aria-label="关闭客户报价" onClick={() => setCustomerDialog(null)} type="button"><X size={18} /></button></header><div className={styles.customerModalBody}><label>客户<select disabled={customerDialog.editing} onChange={(event) => setCustomerDialog((current) => current ? { ...current, userId: event.target.value } : null)} value={customerDialog.userId}><option value="">选择客户</option>{customers.filter((item) => item.status === "active" && item.role === "user" && (customerDialog.editing || !lhrDraft?.customerRates.some((rate) => rate.userId === item.id))).map((item) => <option key={item.id} value={item.id}>{item.username} · {item.email}</option>)}</select></label><label>每公斤报价 (GBP)<input inputMode="decimal" min="0.01" onChange={(event) => setCustomerDialog((current) => current ? { ...current, rate: event.target.value } : null)} placeholder="0.50" step="0.01" type="number" value={customerDialog.rate} /></label>{customerDialogError && <p role="alert">{customerDialogError}</p>}</div><footer><button onClick={() => setCustomerDialog(null)} type="button">取消</button><button onClick={confirmCustomerRate} type="button">确认</button></footer></div></div>}
 
       {isRetroactiveOpen && (
         <div className={styles.backdrop} role="presentation">

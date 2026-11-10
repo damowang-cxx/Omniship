@@ -92,6 +92,8 @@ class BillingSettings(Base):
     tax_effective_date: Mapped[date] = mapped_column(
         Date, nullable=False, default=date(2026, 7, 1)
     )
+    lhr_billing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    lhr_billing_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

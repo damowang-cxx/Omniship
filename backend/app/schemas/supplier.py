@@ -188,6 +188,15 @@ class LhrBillingConfig(BaseModel):
         return self
 
 
+class LhrBillingSettingsItem(BaseModel):
+    config: LhrBillingConfig | None = None
+    version: int = 0
+
+
+class LhrBillingSettingsUpdateRequest(BaseModel):
+    config: LhrBillingConfig | None = None
+
+
 class SupplierVersionConfig(BaseModel):
     workbook: SupplierWorkbookConfig = Field(default_factory=SupplierWorkbookConfig)
     fields: list[SupplierFieldRule] = Field(min_length=1, max_length=100)

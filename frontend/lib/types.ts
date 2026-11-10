@@ -223,6 +223,11 @@ export interface LhrBillingConfig {
   surchargeRules: LhrSurchargeRule[];
 }
 
+export interface LhrBillingSettingsItem {
+  config: LhrBillingConfig | null;
+  version: number;
+}
+
 export interface SupplierVersionItem {
   id: string;
   versionNumber: number;

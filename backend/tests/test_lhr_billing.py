@@ -17,14 +17,13 @@ from tests.test_invoices_api import ready_settings
 
 def configure_lhr(db_session, user, *, rate="0.50", surcharge_rules=None):
     repository = SupplierRepository(db_session)
-    supplier = repository.get(QLS_SUPPLIER_ID)
-    config = dict(repository.get_current_version(supplier).config)
-    config["lhrBilling"] = {
+    settings = repository.get_settings()
+    settings.lhr_billing = {
         "clearanceFeeEur": "45.00",
         "customerRates": [{"userId": str(user.id), "rateGbpPerKg": rate}],
         "surchargeRules": surcharge_rules or [],
     }
-    repository.publish_version(supplier=supplier, config=config, created_by_user_id=user.id)
+    settings.lhr_billing_version += 1
     db_session.commit()
 
 
@@ -82,23 +81,24 @@ def test_lhr_weight_bands_round_up_and_reject_duplicate_prefixes(db_session):
         LhrBillingConfig.model_validate({**payload, "surchargeRules": [{**rule, "bands": [rule["bands"][0], {**rule["bands"][1], "minWeightKg": 502}, rule["bands"][2]]}]})
 
 
-def test_admin_publishes_supplier_lhr_version(client, db_session):
+def test_admin_saves_one_global_lhr_schedule_without_changing_supplier_versions(client, db_session):
     admin = create_test_user(db_session, email="admin@example.com", role="admin")
     customer = create_test_user(db_session, email="lhr@example.com")
     login(client, email=admin.email)
-    config = {**QLS_CONFIG, "lhrBilling": {
+    config = {
         "clearanceFeeEur": "48.00",
         "customerRates": [{"userId": str(customer.id), "rateGbpPerKg": "0.75"}],
         "surchargeRules": [{"name": "Menzies", "mode": "fixed", "prefixes": ["784", "205"], "amountGbp": "21.00"}],
-    }}
-    response = client.post(f"/api/v1/suppliers/{QLS_SUPPLIER_ID}/versions", json={"config": config})
+    }
+    response = client.put("/api/v1/billing/lhr-settings", json={"config": config})
     assert response.status_code == 200, response.text
-    assert response.json()["currentVersionNumber"] == 2
-    assert response.json()["currentVersion"]["config"]["lhrBilling"]["customerRates"][0]["rateGbpPerKg"] == "0.75"
-    config["lhrBilling"]["surchargeRules"].append({"name": "Duplicate", "mode": "fixed", "prefixes": ["784"], "amountGbp": "25.00"})
-    rejected = client.post(f"/api/v1/suppliers/{QLS_SUPPLIER_ID}/versions", json={"config": config})
+    assert response.json()["version"] == 1
+    assert response.json()["config"]["customerRates"][0]["rateGbpPerKg"] == "0.75"
+    assert SupplierRepository(db_session).get(QLS_SUPPLIER_ID).current_version_number == 1
+    config["surchargeRules"].append({"name": "Duplicate", "mode": "fixed", "prefixes": ["784"], "amountGbp": "25.00"})
+    rejected = client.put("/api/v1/billing/lhr-settings", json={"config": config})
     assert rejected.status_code == 422
-    assert SupplierRepository(db_session).get(QLS_SUPPLIER_ID).current_version_number == 2
+    assert client.get("/api/v1/billing/lhr-settings").json()["version"] == 1
     customer.balance = Decimal("48.00")
     customer.gbp_balance = Decimal("30.38")
     db_session.commit()
@@ -110,6 +110,23 @@ def test_admin_publishes_supplier_lhr_version(client, db_session):
     assert uploaded.json()["lhrWeightFeeGbp"] == "9.38"
     assert uploaded.json()["lhrTerminalSurchargeGbp"] == "21.00"
     assert uploaded.json()["gbpBalanceAfter"] == "0.00"
+
+
+def test_lhr_settings_are_admin_only_and_supplier_versions_cannot_set_them(client, db_session):
+    user = create_test_user(db_session, email="user@example.com")
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    login(client, email=user.email)
+    assert client.get("/api/v1/billing/lhr-settings").status_code == 403
+    assert client.put("/api/v1/billing/lhr-settings", json={"config": None}).status_code == 403
+    login(client, email=admin.email)
+    assert client.get("/api/v1/billing/lhr-settings").json() == {"config": None, "version": 0}
+    supplier_config = {**QLS_CONFIG, "lhrBilling": {
+        "clearanceFeeEur": "45.00", "customerRates": [], "surchargeRules": [],
+    }}
+    rejected = client.post(f"/api/v1/suppliers/{QLS_SUPPLIER_ID}/versions", json={"config": supplier_config})
+    assert rejected.status_code == 400
+    assert "separate LHR billing settings" in rejected.json()["detail"]
+    assert SupplierRepository(db_session).get(QLS_SUPPLIER_ID).current_version_number == 1
 
 
 def test_lhr_gbp_shortfall_rolls_back_both_charges(client, db_session):

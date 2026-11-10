@@ -13,7 +13,7 @@ from app.schemas.billing import (
     RetroactiveBillingRequest,
     RetroactiveBillingResponse,
 )
-from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest
+from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest, LhrBillingSettingsItem, LhrBillingSettingsUpdateRequest
 from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceCreateResponse,
@@ -36,6 +36,7 @@ from app.services.billing_service import (
     BillingValidationError,
 )
 from app.services.supplier_service import SupplierService
+from app.services.lhr_settings_service import LhrSettingsService, LhrSettingsValidationError
 
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
@@ -255,6 +256,27 @@ def get_billing_settings(
     _: User = Depends(require_admin),
 ) -> BillingSettingsItem:
     return SupplierService(db).get_settings()
+
+
+@router.get("/lhr-settings", response_model=LhrBillingSettingsItem)
+def get_lhr_billing_settings(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> LhrBillingSettingsItem:
+    return LhrSettingsService(db).get()
+
+
+@router.put("/lhr-settings", response_model=LhrBillingSettingsItem)
+def update_lhr_billing_settings(
+    payload: LhrBillingSettingsUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> LhrBillingSettingsItem:
+    try:
+        return LhrSettingsService(db).update(actor=current_user, config=payload.config, request=request)
+    except LhrSettingsValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/retroactive", response_model=RetroactiveBillingResponse)

@@ -7,6 +7,8 @@ import type {
   InvoiceEligibleDeductionItem,
   InvoiceItem,
   InvoiceSettingsItem,
+  LhrBillingConfig,
+  LhrBillingSettingsItem,
   CancelledWaybillListResponse,
   CancelWaybillResponse,
   RetroactiveBillingResponse,
@@ -288,6 +290,17 @@ export function updateSupplier(
 
 export function getBillingSettings(): Promise<BillingSettingsItem> {
   return requestJson<BillingSettingsItem>("/api/v1/billing/settings");
+}
+
+export function getLhrBillingSettings(): Promise<LhrBillingSettingsItem> {
+  return requestJson<LhrBillingSettingsItem>("/api/v1/billing/lhr-settings");
+}
+
+export function updateLhrBillingSettings(config: LhrBillingConfig | null): Promise<LhrBillingSettingsItem> {
+  return requestJson<LhrBillingSettingsItem>("/api/v1/billing/lhr-settings", {
+    method: "PUT",
+    body: JSON.stringify({ config })
+  });
 }
 
 export function updateBillingSettings(

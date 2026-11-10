@@ -35,7 +35,7 @@ from app.schemas.cancelled_waybill import (
     CancelWaybillResponse,
     CancelledWaybillItem,
 )
-from app.schemas.supplier import SupplierVersionConfig
+from app.schemas.supplier import LhrBillingConfig, SupplierVersionConfig
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.waybill_service import WaybillService, WaybillValidationError
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
@@ -204,7 +204,7 @@ class WaybillUploadService:
         deducted_operation_fee = operation_row_count * OPERATION_UNIT_RATE
         try:
             lhr_charges = calculate_lhr_charges(
-                config=SupplierVersionConfig.model_validate(supplier_version.config).lhr_billing,
+                config=LhrBillingConfig.model_validate(settings.lhr_billing) if settings.lhr_billing is not None else None,
                 user_id=target_user.id, waybill_number=air_waybill_number, gross_weight_kg=gross_weight,
             ) if is_lhr else None
         except ValueError as exc:
@@ -344,6 +344,7 @@ class WaybillUploadService:
                     "lhrTerminalSurchargeDescription": lhr_charges.surcharge_description if lhr_charges else None,
                     "deductedTotalGbp": str(lhr_total_gbp),
                     "lhrClearanceEur": str(lhr_clearance_eur),
+                    "lhrBillingVersion": settings.lhr_billing_version if is_lhr else None,
                     "validationIssueCount": evaluation.issue_count,
                 },
             )

@@ -43,6 +43,7 @@
 .lhrRegistry { background: #f5faf9; border-color: #c9e4df; }
 .lhrRegistry .registryHeader > span { background: #e1f3ef; color: #0b625b; }
 .lhrConfigGrid { display: grid; gap: 13px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lhrRegistry .lhrConfigGrid { grid-template-columns: 1fr; }
 .lhrConfigCard { background: #fff; border: 1px solid #d3e8e4; border-radius: 11px; display: grid; gap: 14px; padding: 15px; }
 .lhrConfigIdentity { align-items: center; display: flex; gap: 10px; }
 .lhrConfigIdentity h4 { color: var(--text); font-size: 17px; margin: 0; }

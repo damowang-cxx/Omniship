@@ -25,7 +25,7 @@ def calculate_lhr_charges(
     waybill_number: str, gross_weight_kg: Decimal,
 ) -> LhrCharges:
     if config is None:
-        raise ValueError("Supplier LHR billing is not configured; ask an administrator to publish LHR fees")
+        raise ValueError("LHR billing is not configured; ask an administrator to set up LHR fees")
     customer_rate = next((item.rate_gbp_per_kg for item in config.customer_rates if item.user_id == user_id), None)
     if customer_rate is None:
         raise ValueError("LHR price is not configured for this customer; ask an administrator to add the customer")

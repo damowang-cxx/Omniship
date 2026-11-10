@@ -26,7 +26,7 @@ from app.schemas.billing import (
     RetroactiveBillingResponse,
     RetroactiveBillingSuccessItem,
 )
-from app.schemas.supplier import SupplierVersionConfig
+from app.schemas.supplier import LhrBillingConfig, SupplierVersionConfig
 from app.schemas.user import UserPublic
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
@@ -343,6 +343,7 @@ class BillingService:
         content = await pre_alert_file.read()
         if len(content) > ESTIMATE_MAX_BYTES:
             raise BillingValidationError("Upload Pre Alert File exceeds the 25 MB estimate limit")
+        settings = self.suppliers.get_settings()
         if airport == "LHR":
             if not (air_waybill_number or "").strip():
                 raise BillingValidationError("Air Waybill Number is required for LHR estimate")
@@ -360,7 +361,7 @@ class BillingService:
                 raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
             try:
                 charges = calculate_lhr_charges(
-                    config=SupplierVersionConfig.model_validate(version.config).lhr_billing,
+                    config=LhrBillingConfig.model_validate(settings.lhr_billing) if settings.lhr_billing is not None else None,
                     user_id=customer_id, waybill_number=air_waybill_number.strip(), gross_weight_kg=weight,
                 )
             except ValueError as exc:
@@ -388,7 +389,6 @@ class BillingService:
             )
         except SupplierStructureError as exc:
             raise BillingValidationError(str(exc)) from exc
-        settings = self.suppliers.get_settings()
         taxable = airport in settings.taxable_airports
         unit_rate = Decimal(settings.unit_tax_eur)
         estimated_tax = (

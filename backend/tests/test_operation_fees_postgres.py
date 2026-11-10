@@ -62,6 +62,7 @@ def test_migration_and_concurrent_backfill(tmp_path, monkeypatch):
             assert connection.scalar(text("SELECT balance FROM users WHERE email='history@example.com'")) == Decimal("20.00")
             assert connection.execute(text("SELECT fee_type, fee_name, amount FROM invoice_lines")).one() == ("customs_tax", "Customs tax", Decimal("6.00"))
             assert connection.scalar(text("SELECT gbp_balance FROM users WHERE email='history@example.com'")) == Decimal("0.00")
+            assert connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='billing_settings' AND column_name IN ('lhr_billing', 'lhr_billing_version') ORDER BY column_name")).scalars().all() == ["lhr_billing", "lhr_billing_version"]
             assert connection.scalar(text("SELECT currency FROM invoices WHERE invoice_number='HISTORY'")) == "EUR"
             assert connection.scalar(text("SELECT currency FROM invoice_lines WHERE billing_entry_id=:id"), {"id": eid}) == "EUR"
             assert connection.scalar(text("SELECT data_type FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='invoice_lines' AND column_name='quantity'")) == "numeric"
