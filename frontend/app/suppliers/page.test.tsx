@@ -107,14 +107,17 @@ describe("SuppliersPage", () => {
     render(<SuppliersPage />);
 
     expect(await screen.findByRole("heading", { name: "Supplier" })).toBeInTheDocument();
-    expect(screen.getByText("QLS")).toBeInTheDocument();
+    expect(screen.getAllByText("QLS")).toHaveLength(2);
     expect(screen.getByDisplayValue("3.00")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Supplier" })).toHaveAttribute("href", "/suppliers");
+    expect(screen.getByRole("heading", { name: "LHR 扣费配置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设置 LHR 扣费" })).toBeInTheDocument();
   });
 
   it("creates a supplier with the visual rule builder", async () => {
     render(<SuppliersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Add supplier" }));
+    expect(screen.queryByText("LHR 独立扣费")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Supplier name"), { target: { value: "RPL" } });
     fireEvent.change(screen.getByLabelText("Waybill number column"), { target: { value: "c" } });
     fireEvent.change(screen.getByLabelText("Carton number column"), { target: { value: "x" } });
@@ -182,7 +185,7 @@ describe("SuppliersPage", () => {
 
   it("publishes LHR customer pricing and a fixed terminal surcharge", async () => {
     render(<SuppliersPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    fireEvent.click(await screen.findByRole("button", { name: "设置 LHR 扣费" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /为此 Supplier 启用 LHR/ }));
     fireEvent.change(screen.getByLabelText("每票金额 (EUR)"), { target: { value: "48.00" } });
     fireEvent.click(screen.getByRole("button", { name: "添加客户" }));
@@ -194,7 +197,7 @@ describe("SuppliersPage", () => {
     fireEvent.change(screen.getByLabelText("规则名称"), { target: { value: "Menzies" } });
     fireEvent.change(screen.getByLabelText("提单前三位（逗号分隔）"), { target: { value: "205, 784" } });
     fireEvent.change(screen.getByLabelText("每票附加费 (GBP)"), { target: { value: "25.00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 LHR 扣费" }));
     await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
       lhrBilling: {
         clearanceFeeEur: "48.00",
@@ -202,11 +205,12 @@ describe("SuppliersPage", () => {
         surchargeRules: [{ name: "Menzies", mode: "fixed", prefixes: ["205", "784"], amountGbp: "25.00", bands: [] }]
       }
     })));
+    expect(apiMock.publishSupplierVersion.mock.calls[0][1].fields).toEqual(qls.currentVersion.config.fields);
   });
 
   it("builds consecutive LHR weight bands", async () => {
     render(<SuppliersPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    fireEvent.click(await screen.findByRole("button", { name: "设置 LHR 扣费" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /为此 Supplier 启用 LHR/ }));
     fireEvent.click(screen.getByRole("button", { name: "重量段" }));
     fireEvent.change(screen.getByLabelText("规则名称"), { target: { value: "Swissport" } });
@@ -216,7 +220,7 @@ describe("SuppliersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加重量段" }));
     expect(screen.getAllByLabelText("起始 kg")[1]).toHaveValue(501);
     fireEvent.change(screen.getAllByLabelText("附加费 (GBP)")[1], { target: { value: "30.00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 LHR 扣费" }));
     await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
       lhrBilling: expect.objectContaining({ surchargeRules: [expect.objectContaining({
         mode: "weight_bands", prefixes: ["016", "180"], bands: [
@@ -225,6 +229,21 @@ describe("SuppliersPage", () => {
         ]
       })] })
     })));
+  });
+
+  it("edits existing LHR fees only in the separate configuration area", async () => {
+    apiMock.listSuppliers.mockResolvedValueOnce({ items: [{ ...qls, currentVersion: { ...qls.currentVersion, config: {
+      ...qls.currentVersion.config,
+      lhrBilling: { clearanceFeeEur: "45.00", customerRates: [{ userId: "customer-id", rateGbpPerKg: "0.50" }], surchargeRules: [] }
+    } } }] });
+    render(<SuppliersPage />);
+    expect(await screen.findByRole("button", { name: "管理 LHR 扣费" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit & publish" }));
+    expect(screen.queryByText("LHR 独立扣费")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close supplier editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "管理 LHR 扣费" }));
+    expect(screen.getByLabelText("每票金额 (EUR)")).toHaveValue(45);
+    expect(screen.getByText("£0.50 / kg")).toBeInTheDocument();
   });
 
   it("processes and summarizes retroactive customs deductions", async () => {

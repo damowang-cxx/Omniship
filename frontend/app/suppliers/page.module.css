@@ -40,6 +40,23 @@
 .supplierCard footer { display: grid; gap: 7px; grid-template-columns: 1fr auto; }
 .supplierCard footer button { background: #fff; border: 1px solid var(--border); border-radius: 8px; color: #344054; cursor: pointer; font-weight: 900; min-height: 38px; padding: 0 11px; }
 .supplierCard footer button:first-child { border-color: #9fd3cc; color: var(--accent-strong); }
+.lhrRegistry { background: #f5faf9; border-color: #c9e4df; }
+.lhrRegistry .registryHeader > span { background: #e1f3ef; color: #0b625b; }
+.lhrConfigGrid { display: grid; gap: 13px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lhrConfigCard { background: #fff; border: 1px solid #d3e8e4; border-radius: 11px; display: grid; gap: 14px; padding: 15px; }
+.lhrConfigIdentity { align-items: center; display: flex; gap: 10px; }
+.lhrConfigIdentity h4 { color: var(--text); font-size: 17px; margin: 0; }
+.lhrConfigIdentity small { color: var(--muted); display: block; font-size: 11px; margin-top: 3px; }
+.lhrConfigStatus { background: #f2f4f7; border-radius: 999px; color: #667085; font-size: 11px; font-weight: 900; margin-left: auto; padding: 5px 8px; white-space: nowrap; }
+.lhrConfigStatus[data-configured="true"] { background: #ecfdf5; color: #047857; }
+.lhrConfigCard dl { border-top: 1px solid #e6efed; display: grid; gap: 8px; margin: 0; padding-top: 12px; }
+.lhrConfigCard dl > div { display: flex; justify-content: space-between; }
+.lhrConfigCard dt, .lhrConfigCard dd { font-size: 12px; margin: 0; }
+.lhrConfigCard dt { color: var(--muted); }
+.lhrConfigCard dd { color: #123b38; font-weight: 900; }
+.lhrConfigCard > button { background: #0f766e; border: 1px solid #0f766e; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 900; min-height: 38px; }
+.lhrInlineEditor { box-shadow: none; max-height: none; max-width: none; overflow: visible; width: 100%; }
+.lhrInlineEditor .editorHeader, .lhrInlineEditor .editorFooter { position: static; }
 .backdrop { align-items: center; background: rgba(15,23,42,.58); display: flex; inset: 0; justify-content: center; padding: 22px; position: fixed; z-index: 80; }
 .editor { background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 30px 100px rgba(15,23,42,.3); display: grid; gap: 0; max-height: calc(100vh - 44px); max-width: 1160px; overflow: auto; width: min(100%, 1160px); }
 .editorHeader { align-items: center; background: #f8fafc; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; padding: 17px 20px; position: sticky; top: 0; z-index: 3; }
@@ -149,5 +166,5 @@
 .customerModal footer button { background: #fff; border: 1px solid #d6e3e1; border-radius: 8px; cursor: pointer; font-weight: 800; min-height: 38px; padding: 0 14px; }
 .customerModal footer button:last-child { background: #0f766e; border-color: #0f766e; color: #fff; }
 @media (max-width: 680px) { .customerRateRow { grid-template-columns: 1fr auto; } .surchargeFields, .bandRow { grid-template-columns: 1fr; } }
-@media (max-width: 1040px) { .settingsCard { grid-template-columns: 1fr 1fr; } .supplierGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .editorGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .ruleGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
-@media (max-width: 680px) { .workspace { padding: 18px 14px; } .header { align-items: stretch; flex-direction: column; gap: 12px; } .headerActions { display: grid; grid-template-columns: 1fr 1fr; } .headerActions button { justify-content: center; } .settingsCard, .supplierGrid, .editorGrid, .ruleGrid, .resultSummary, .resultRow, .failureRow { grid-template-columns: 1fr; } .backdrop { padding: 8px; } .editor { max-height: calc(100vh - 16px); } .logicSummary { grid-column: auto; } .editorFooter { align-items: stretch; flex-direction: column; gap: 10px; } .editorFooter > div { justify-content: flex-end; } }
+@media (max-width: 1040px) { .settingsCard { grid-template-columns: 1fr 1fr; } .supplierGrid, .lhrConfigGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .editorGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .ruleGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (max-width: 680px) { .workspace { padding: 18px 14px; } .header { align-items: stretch; flex-direction: column; gap: 12px; } .headerActions { display: grid; grid-template-columns: 1fr 1fr; } .headerActions button { justify-content: center; } .settingsCard, .supplierGrid, .lhrConfigGrid, .editorGrid, .ruleGrid, .resultSummary, .resultRow, .failureRow { grid-template-columns: 1fr; } .backdrop { padding: 8px; } .editor { max-height: calc(100vh - 16px); } .lhrInlineEditor { max-height: none; } .logicSummary { grid-column: auto; } .editorFooter { align-items: stretch; flex-direction: column; gap: 10px; } .editorFooter > div { justify-content: flex-end; } }
