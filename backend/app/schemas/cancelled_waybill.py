@@ -49,6 +49,7 @@ class CancelledWaybillItem(BaseModel):
     gbp_fee_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="gbpFeeAmountDeleted")
     gbp_refunded_amount: Decimal = Field(default=Decimal("0.00"), alias="gbpRefundedAmount")
     lhr_clearance_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="lhrClearanceAmountDeleted")
+    lhr_terminal_surcharge_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="lhrTerminalSurchargeAmountDeleted")
     gbp_balance_after_refund: Decimal | None = Field(default=None, alias="gbpBalanceAfterRefund")
     balance_after_refund: Decimal | None = Field(
         default=None, alias="balanceAfterRefund"

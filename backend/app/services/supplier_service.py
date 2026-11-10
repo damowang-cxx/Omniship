@@ -39,6 +39,7 @@ class SupplierService:
         config: SupplierVersionConfig,
         request: Request,
     ) -> SupplierItem:
+        self._validate_lhr_customers(config)
         if self.suppliers.get_by_name(name) is not None:
             raise SupplierValidationError("Supplier name already exists")
         supplier, _ = self.suppliers.create(
@@ -65,6 +66,7 @@ class SupplierService:
         config: SupplierVersionConfig,
         request: Request,
     ) -> SupplierItem:
+        self._validate_lhr_customers(config)
         supplier = self._get_supplier(supplier_id)
         version = self.suppliers.publish_version(
             supplier=supplier,
@@ -149,6 +151,14 @@ class SupplierService:
         if supplier is None:
             raise SupplierValidationError("Supplier not found")
         return supplier
+
+    def _validate_lhr_customers(self, config: SupplierVersionConfig) -> None:
+        if config.lhr_billing is None:
+            return
+        for rate in config.lhr_billing.customer_rates:
+            customer = self.db.get(User, rate.user_id)
+            if customer is None or customer.role != "user":
+                raise SupplierValidationError(f"LHR customer {rate.user_id} was not found")
 
     def _build_item(self, supplier: Supplier) -> SupplierItem:
         version = self.suppliers.get_current_version(supplier)

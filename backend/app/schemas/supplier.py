@@ -113,6 +113,81 @@ class SupplierFieldRule(BaseModel):
         return normalized
 
 
+class LhrCustomerRate(BaseModel):
+    user_id: UUID = Field(alias="userId")
+    rate_gbp_per_kg: Decimal = Field(gt=0, max_digits=10, decimal_places=2, alias="rateGbpPerKg")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class LhrWeightBand(BaseModel):
+    min_weight_kg: int = Field(ge=0, alias="minWeightKg")
+    max_weight_kg: int | None = Field(default=None, ge=0, alias="maxWeightKg")
+    amount_gbp: Decimal = Field(gt=0, max_digits=10, decimal_places=2, alias="amountGbp")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def validate_bounds(self):
+        if self.max_weight_kg is not None and self.max_weight_kg < self.min_weight_kg:
+            raise ValueError("Weight band maximum must be at least its minimum")
+        return self
+
+
+class LhrSurchargeRule(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    mode: Literal["fixed", "weight_bands"]
+    prefixes: list[str] = Field(min_length=1, max_length=100)
+    amount_gbp: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2, alias="amountGbp")
+    bands: list[LhrWeightBand] = Field(default_factory=list, max_length=30)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("prefixes")
+    @classmethod
+    def normalize_prefixes(cls, values: list[str]) -> list[str]:
+        prefixes = [value.strip() for value in values]
+        if any(not re.fullmatch(r"\d{3}", value) for value in prefixes):
+            raise ValueError("Air waybill prefixes must be exactly three digits")
+        if len(prefixes) != len(set(prefixes)):
+            raise ValueError("Air waybill prefixes must be unique within a rule")
+        return prefixes
+
+    @model_validator(mode="after")
+    def validate_mode(self):
+        if self.mode == "fixed":
+            if self.amount_gbp is None or self.bands:
+                raise ValueError("Fixed surcharge requires an amount and no weight bands")
+        else:
+            if self.amount_gbp is not None or not self.bands:
+                raise ValueError("Weight-band surcharge requires bands and no fixed amount")
+            ordered = sorted(self.bands, key=lambda band: band.min_weight_kg)
+            if ordered[0].min_weight_kg != 0 or ordered[-1].max_weight_kg is not None:
+                raise ValueError("Weight bands must cover from 0 kg through an open-ended final band")
+            for previous, current in zip(ordered, ordered[1:]):
+                if previous.max_weight_kg is None or current.min_weight_kg != previous.max_weight_kg + 1:
+                    raise ValueError("Weight bands must be contiguous without overlaps or gaps")
+        return self
+
+
+class LhrBillingConfig(BaseModel):
+    clearance_fee_eur: Decimal = Field(gt=0, max_digits=10, decimal_places=2, alias="clearanceFeeEur")
+    customer_rates: list[LhrCustomerRate] = Field(default_factory=list, max_length=1000, alias="customerRates")
+    surcharge_rules: list[LhrSurchargeRule] = Field(default_factory=list, max_length=100, alias="surchargeRules")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def validate_uniqueness(self):
+        user_ids = [rate.user_id for rate in self.customer_rates]
+        if len(user_ids) != len(set(user_ids)):
+            raise ValueError("Each customer may have only one LHR price")
+        prefixes = [prefix for rule in self.surcharge_rules for prefix in rule.prefixes]
+        if len(prefixes) != len(set(prefixes)):
+            raise ValueError("A prefix may appear in only one LHR surcharge rule")
+        return self
+
+
 class SupplierVersionConfig(BaseModel):
     workbook: SupplierWorkbookConfig = Field(default_factory=SupplierWorkbookConfig)
     fields: list[SupplierFieldRule] = Field(min_length=1, max_length=100)
@@ -120,6 +195,7 @@ class SupplierVersionConfig(BaseModel):
     billing_distinct_column: str | None = Field(
         default=None, alias="billingDistinctColumn"
     )
+    lhr_billing: LhrBillingConfig | None = Field(default=None, alias="lhrBilling")
     # Retained only so historical supplier versions continue to parse. New versions
     # use the independent Excel columns above and do not need field-rule references.
     row_key_field_key: str | None = Field(default=None, alias="rowKeyFieldKey")

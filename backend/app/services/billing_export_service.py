@@ -37,7 +37,7 @@ def _safe_text(value: str | None) -> str:
 
 
 def _entry_label(entry: BillingEntryItem) -> str:
-    return f"{fee_name(entry.fee_type)} {'cancellation' if entry.entry_type == 'deduction_reversal' else 'deduction'}"
+    return f"{entry.fee_description or fee_name(entry.fee_type)} {'cancellation' if entry.entry_type == 'deduction_reversal' else 'deduction'}"
 
 
 def _entry_status(entry: BillingEntryItem) -> str:

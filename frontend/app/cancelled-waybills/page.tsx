@@ -241,7 +241,7 @@ export default function CancelledWaybillsPage() {
                           {item.originalStatus.replace("_", " ")}
                         </span>
                       </td>
-                      <td>{formatMoney(item.taxAmountDeleted, "EUR")}<small>申报行操作费: {formatMoney(item.operationFeeAmountDeleted ?? "0.00", "EUR")}</small><small>LHR 清关费: {formatMoney(item.lhrClearanceAmountDeleted ?? "0.00", "EUR")}</small><small>LHR 操作费: {formatMoney(item.gbpFeeAmountDeleted ?? "0.00", "GBP")}</small></td>
+                      <td>{formatMoney(item.taxAmountDeleted, "EUR")}<small>申报行操作费: {formatMoney(item.operationFeeAmountDeleted ?? "0.00", "EUR")}</small><small>LHR 清关费: {formatMoney(item.lhrClearanceAmountDeleted ?? "0.00", "EUR")}</small><small>LHR GBP 费用合计: {formatMoney(item.gbpFeeAmountDeleted ?? "0.00", "GBP")}</small><small>其中货站附加费: {formatMoney(item.lhrTerminalSurchargeAmountDeleted ?? "0.00", "GBP")}</small></td>
                       <td>
                         <strong className={styles.refundValue}>
                           +{formatMoney(item.refundedAmount, "EUR")} / +{formatMoney(item.gbpRefundedAmount ?? "0.00", "GBP")}

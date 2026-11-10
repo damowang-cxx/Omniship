@@ -4,7 +4,6 @@ import re
 import shutil
 import uuid
 from decimal import Decimal, InvalidOperation
-from decimal import ROUND_HALF_UP
 from types import SimpleNamespace
 from pathlib import Path
 from uuid import UUID
@@ -16,7 +15,8 @@ from sqlalchemy.orm import Session
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import InvoiceLine, User, WaybillUpload, WaybillUploadFile
 from app.repositories.audit_log_repository import AuditLogRepository
-from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, LHR_WEIGHT_FEE_TYPE, LHR_CLEARANCE_FEE_TYPE, LHR_WEIGHT_RATE_GBP, LHR_CLEARANCE_RATE_EUR
+from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, LHR_WEIGHT_FEE_TYPE, LHR_CLEARANCE_FEE_TYPE, LHR_TERMINAL_SURCHARGE_FEE_TYPE
+from app.services.lhr_billing import calculate_lhr_charges
 from app.repositories.billing_repository import BillingRepository
 from app.repositories.cancelled_waybill_repository import CancelledWaybillRepository
 from app.repositories.supplier_repository import SupplierRepository
@@ -202,8 +202,17 @@ class WaybillUploadService:
         except ValueError as exc:
             raise WaybillUploadValidationError(str(exc)) from exc
         deducted_operation_fee = operation_row_count * OPERATION_UNIT_RATE
-        lhr_clearance_eur = LHR_CLEARANCE_RATE_EUR if is_lhr else Decimal("0.00")
-        lhr_weight_fee_gbp = (gross_weight * LHR_WEIGHT_RATE_GBP).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if is_lhr else Decimal("0.00")
+        try:
+            lhr_charges = calculate_lhr_charges(
+                config=SupplierVersionConfig.model_validate(supplier_version.config).lhr_billing,
+                user_id=target_user.id, waybill_number=air_waybill_number, gross_weight_kg=gross_weight,
+            ) if is_lhr else None
+        except ValueError as exc:
+            raise WaybillUploadValidationError(str(exc)) from exc
+        lhr_clearance_eur = lhr_charges.clearance_eur if lhr_charges else Decimal("0.00")
+        lhr_weight_fee_gbp = lhr_charges.weight_fee_gbp if lhr_charges else Decimal("0.00")
+        lhr_surcharge_gbp = lhr_charges.surcharge_gbp if lhr_charges else Decimal("0.00")
+        lhr_total_gbp = lhr_weight_fee_gbp + lhr_surcharge_gbp
         deducted_total = deducted_tax + deducted_operation_fee + lhr_clearance_eur
 
         locked_user = self.billing.get_user_for_update(target_user.id)
@@ -215,8 +224,8 @@ class WaybillUploadService:
                 required=deducted_total,
                 balance=current_balance,
             )
-        if lhr_weight_fee_gbp > Decimal(locked_user.gbp_balance):
-            raise WaybillUploadInsufficientBalanceError(required=lhr_weight_fee_gbp, balance=Decimal(locked_user.gbp_balance), currency="GBP")
+        if lhr_total_gbp > Decimal(locked_user.gbp_balance):
+            raise WaybillUploadInsufficientBalanceError(required=lhr_total_gbp, balance=Decimal(locked_user.gbp_balance), currency="GBP")
 
         upload = self.uploads.create(
             user_id=target_user.id,
@@ -286,17 +295,28 @@ class WaybillUploadService:
                     user_id=locked_user.id, amount=lhr_clearance_eur, balance_after=locked_user.balance,
                     waybill_upload_id=upload.id, waybill_number=air_waybill_number,
                     supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
-                    arrival_airport=airport_of_arrival, billable_unit_count=1, unit_rate=LHR_CLEARANCE_RATE_EUR,
+                    arrival_airport=airport_of_arrival, billable_unit_count=1, unit_rate=lhr_clearance_eur,
                     quantity=Decimal("1"), fee_type=LHR_CLEARANCE_FEE_TYPE, created_by_user_id=actor.id,
                 )
-                locked_user.gbp_balance = (Decimal(locked_user.gbp_balance) - lhr_weight_fee_gbp).quantize(Decimal("0.01"))
-                self.billing.create_deduction(
-                    user_id=locked_user.id, amount=lhr_weight_fee_gbp, balance_after=locked_user.gbp_balance,
-                    waybill_upload_id=upload.id, waybill_number=air_waybill_number,
-                    supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
-                    arrival_airport=airport_of_arrival, billable_unit_count=None, unit_rate=LHR_WEIGHT_RATE_GBP,
-                    quantity=gross_weight, currency="GBP", fee_type=LHR_WEIGHT_FEE_TYPE, created_by_user_id=actor.id,
-                )
+                if lhr_weight_fee_gbp > 0:
+                    locked_user.gbp_balance = (Decimal(locked_user.gbp_balance) - lhr_weight_fee_gbp).quantize(Decimal("0.01"))
+                    self.billing.create_deduction(
+                        user_id=locked_user.id, amount=lhr_weight_fee_gbp, balance_after=locked_user.gbp_balance,
+                        waybill_upload_id=upload.id, waybill_number=air_waybill_number,
+                        supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                        arrival_airport=airport_of_arrival, billable_unit_count=None, unit_rate=lhr_charges.weight_rate_gbp,
+                        quantity=gross_weight, currency="GBP", fee_type=LHR_WEIGHT_FEE_TYPE, created_by_user_id=actor.id,
+                    )
+                if lhr_surcharge_gbp > 0:
+                    locked_user.gbp_balance = (Decimal(locked_user.gbp_balance) - lhr_surcharge_gbp).quantize(Decimal("0.01"))
+                    self.billing.create_deduction(
+                        user_id=locked_user.id, amount=lhr_surcharge_gbp, balance_after=locked_user.gbp_balance,
+                        waybill_upload_id=upload.id, waybill_number=air_waybill_number,
+                        supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                        arrival_airport=airport_of_arrival, billable_unit_count=1, unit_rate=lhr_surcharge_gbp,
+                        quantity=Decimal("1"), currency="GBP", fee_type=LHR_TERMINAL_SURCHARGE_FEE_TYPE,
+                        fee_description=lhr_charges.surcharge_description, created_by_user_id=actor.id,
+                    )
 
             self.audit_logs.create(
                 "upload_pre_alert",
@@ -319,6 +339,10 @@ class WaybillUploadService:
                     "deductedOperationFee": str(deducted_operation_fee),
                     "deductedTotal": str(deducted_total),
                     "lhrWeightFeeGbp": str(lhr_weight_fee_gbp),
+                    "lhrWeightRateGbp": str(lhr_charges.weight_rate_gbp) if lhr_charges else "0.00",
+                    "lhrTerminalSurchargeGbp": str(lhr_surcharge_gbp),
+                    "lhrTerminalSurchargeDescription": lhr_charges.surcharge_description if lhr_charges else None,
+                    "deductedTotalGbp": str(lhr_total_gbp),
                     "lhrClearanceEur": str(lhr_clearance_eur),
                     "validationIssueCount": evaluation.issue_count,
                 },
@@ -342,6 +366,10 @@ class WaybillUploadService:
             deducted_operation_fee=deducted_operation_fee,
             balance_after=Decimal(locked_user.balance),
             lhr_weight_fee_gbp=lhr_weight_fee_gbp,
+            lhr_weight_rate_gbp=lhr_charges.weight_rate_gbp if lhr_charges else Decimal("0.00"),
+            lhr_terminal_surcharge_gbp=lhr_surcharge_gbp,
+            lhr_terminal_surcharge_description=lhr_charges.surcharge_description if lhr_charges else None,
+            deducted_total_gbp=lhr_total_gbp,
             lhr_clearance_eur=lhr_clearance_eur,
             gbp_balance_after=Decimal(locked_user.gbp_balance),
         )
@@ -466,6 +494,7 @@ class WaybillUploadService:
         refunded_amount = sum((Decimal(entry.amount) for entry in deductions if entry.currency == "EUR" and reversals[entry.id] is None), Decimal("0.00"))
         gbp_fee_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.currency == "GBP"), Decimal("0.00"))
         lhr_clearance_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.fee_type == LHR_CLEARANCE_FEE_TYPE), Decimal("0.00"))
+        lhr_terminal_surcharge_amount_deleted = sum((Decimal(entry.amount) for entry in deductions if entry.fee_type == "lhr_terminal_surcharge"), Decimal("0.00"))
         gbp_refunded_amount = sum((Decimal(entry.amount) for entry in deductions if entry.currency == "GBP" and reversals[entry.id] is None), Decimal("0.00"))
         current_balance = Decimal(owner.balance)
         balance_after_refund = (current_balance + refunded_amount).quantize(
@@ -489,6 +518,7 @@ class WaybillUploadService:
                 gbp_fee_amount_deleted=gbp_fee_amount_deleted,
                 gbp_refunded_amount=gbp_refunded_amount,
                 lhr_clearance_amount_deleted=lhr_clearance_amount_deleted,
+                lhr_terminal_surcharge_amount_deleted=lhr_terminal_surcharge_amount_deleted,
                 gbp_balance_after_refund=gbp_balance_after_refund,
             )
 
@@ -518,6 +548,7 @@ class WaybillUploadService:
                     "balanceAfterRefund": str(balance_after_refund),
                     "gbpFeeAmountDeleted": str(gbp_fee_amount_deleted),
                     "lhrClearanceAmountDeleted": str(lhr_clearance_amount_deleted),
+                    "lhrTerminalSurchargeAmountDeleted": str(lhr_terminal_surcharge_amount_deleted),
                     "gbpRefundedAmount": str(gbp_refunded_amount),
                     "gbpBalanceAfterRefund": str(gbp_balance_after_refund),
                     "previouslyReversed": any(reversals.values()),
@@ -588,6 +619,10 @@ class WaybillUploadService:
         deducted_operation_fee: Decimal,
         balance_after: Decimal,
         lhr_weight_fee_gbp: Decimal,
+        lhr_weight_rate_gbp: Decimal,
+        lhr_terminal_surcharge_gbp: Decimal,
+        lhr_terminal_surcharge_description: str | None,
+        deducted_total_gbp: Decimal,
         lhr_clearance_eur: Decimal,
         gbp_balance_after: Decimal,
     ) -> WaybillPreAlertUploadResponse:
@@ -595,6 +630,10 @@ class WaybillUploadService:
             operation_unit_rate=OPERATION_UNIT_RATE,
             deducted_total=deducted_tax + deducted_operation_fee + lhr_clearance_eur,
             lhr_weight_fee_gbp=lhr_weight_fee_gbp,
+            lhr_weight_rate_gbp=lhr_weight_rate_gbp,
+            lhr_terminal_surcharge_gbp=lhr_terminal_surcharge_gbp,
+            lhr_terminal_surcharge_description=lhr_terminal_surcharge_description,
+            deducted_total_gbp=deducted_total_gbp,
             lhr_clearance_eur=lhr_clearance_eur,
             gbp_balance_after=gbp_balance_after,
             upload_id=upload.id,

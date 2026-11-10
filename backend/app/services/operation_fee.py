@@ -11,8 +11,7 @@ CUSTOMS_FEE_TYPE = "customs_tax"
 OPERATION_UNIT_RATE = Decimal("2.00")
 LHR_WEIGHT_FEE_TYPE = "lhr_weight_handling"
 LHR_CLEARANCE_FEE_TYPE = "lhr_clearance"
-LHR_WEIGHT_RATE_GBP = Decimal("0.50")
-LHR_CLEARANCE_RATE_EUR = Decimal("45.00")
+LHR_TERMINAL_SURCHARGE_FEE_TYPE = "lhr_terminal_surcharge"
 
 
 def fee_name(fee_type: str | None) -> str:
@@ -20,6 +19,7 @@ def fee_name(fee_type: str | None) -> str:
         OPERATION_FEE_TYPE: "申报行操作费",
         LHR_WEIGHT_FEE_TYPE: "LHR 重量操作费",
         LHR_CLEARANCE_FEE_TYPE: "LHR 清关费",
+        LHR_TERMINAL_SURCHARGE_FEE_TYPE: "LHR 货站附加费",
     }.get(fee_type, "Customs tax")
 
 

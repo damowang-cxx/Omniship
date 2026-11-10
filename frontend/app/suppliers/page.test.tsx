@@ -10,6 +10,7 @@ const apiMock = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   isUnauthorizedError: vi.fn(() => false),
   listSuppliers: vi.fn(),
+  listUsers: vi.fn(),
   logout: vi.fn(),
   publishSupplierVersion: vi.fn(),
   updateBillingSettings: vi.fn(),
@@ -69,6 +70,7 @@ describe("SuppliersPage", () => {
     vi.clearAllMocks();
     apiMock.getCurrentUser.mockResolvedValue({ user: admin });
     apiMock.listSuppliers.mockResolvedValue({ items: [qls] });
+    apiMock.listUsers.mockResolvedValue({ items: [admin, { ...admin, id: "customer-id", username: "LHR Customer", email: "customer@example.com", role: "user" }] });
     apiMock.getBillingSettings.mockResolvedValue({
       unitTaxEur: "3.00",
       taxableAirports: ["AMS"],
@@ -176,6 +178,53 @@ describe("SuppliersPage", () => {
     expect(published).not.toHaveProperty("rowKeyFieldKey");
     expect(published).not.toHaveProperty("billingGroupFieldKey");
     expect(published).not.toHaveProperty("billingDistinctFieldKey");
+  });
+
+  it("publishes LHR customer pricing and a fixed terminal surcharge", async () => {
+    render(<SuppliersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /为此 Supplier 启用 LHR/ }));
+    fireEvent.change(screen.getByLabelText("每票金额 (EUR)"), { target: { value: "48.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加客户" }));
+    fireEvent.change(screen.getByLabelText("客户"), { target: { value: "customer-id" } });
+    fireEvent.change(screen.getByLabelText("每公斤报价 (GBP)"), { target: { value: "0.75" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    expect(screen.getByText("£0.75 / kg")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "固定金额" }));
+    fireEvent.change(screen.getByLabelText("规则名称"), { target: { value: "Menzies" } });
+    fireEvent.change(screen.getByLabelText("提单前三位（逗号分隔）"), { target: { value: "205, 784" } });
+    fireEvent.change(screen.getByLabelText("每票附加费 (GBP)"), { target: { value: "25.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+    await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
+      lhrBilling: {
+        clearanceFeeEur: "48.00",
+        customerRates: [{ userId: "customer-id", rateGbpPerKg: "0.75" }],
+        surchargeRules: [{ name: "Menzies", mode: "fixed", prefixes: ["205", "784"], amountGbp: "25.00", bands: [] }]
+      }
+    })));
+  });
+
+  it("builds consecutive LHR weight bands", async () => {
+    render(<SuppliersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /为此 Supplier 启用 LHR/ }));
+    fireEvent.click(screen.getByRole("button", { name: "重量段" }));
+    fireEvent.change(screen.getByLabelText("规则名称"), { target: { value: "Swissport" } });
+    fireEvent.change(screen.getByLabelText("提单前三位（逗号分隔）"), { target: { value: "016, 180" } });
+    fireEvent.change(screen.getByLabelText("结束 kg"), { target: { value: "500" } });
+    fireEvent.change(screen.getByLabelText("附加费 (GBP)"), { target: { value: "25.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加重量段" }));
+    expect(screen.getAllByLabelText("起始 kg")[1]).toHaveValue(501);
+    fireEvent.change(screen.getAllByLabelText("附加费 (GBP)")[1], { target: { value: "30.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+    await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
+      lhrBilling: expect.objectContaining({ surchargeRules: [expect.objectContaining({
+        mode: "weight_bands", prefixes: ["016", "180"], bands: [
+          { minWeightKg: 0, maxWeightKg: 500, amountGbp: "25.00" },
+          { minWeightKg: 501, maxWeightKg: null, amountGbp: "30.00" }
+        ]
+      })] })
+    })));
   });
 
   it("processes and summarizes retroactive customs deductions", async () => {

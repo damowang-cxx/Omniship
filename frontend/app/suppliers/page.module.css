@@ -106,5 +106,48 @@
 .failureRow { display: grid; gap: 10px; grid-template-columns: 180px 1fr; padding: 10px 11px; }
 .failureRow strong { color: #9f1239; font-size: 12px; }
 .failureRow span { color: #667085; font-size: 12px; }
+.lhrSection { background: linear-gradient(135deg, #f7fbfa, #fff); }
+.editorNotice { background: #fff1f2; border-bottom: 1px solid #fecdd3; color: #9f1239; font-size: 12px; font-weight: 800; padding: 11px 20px; }
+.lhrToggle { align-items: center; display: flex !important; flex-direction: row; gap: 9px !important; font-size: 12px !important; text-transform: none !important; }
+.lhrToggle input { min-height: auto; accent-color: #0f766e; }
+.lhrHint { color: #667085; font-size: 12px; line-height: 1.5; margin: 8px 0 0; }
+.lhrGroup { background: #fff; border: 1px solid #dbe7e5; border-radius: 12px; display: grid; gap: 12px; margin-top: 14px; padding: 16px; }
+.lhrGroupHead { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.lhrGroupHead strong, .lhrGroupHead small { display: block; }
+.lhrGroupHead strong { color: #123b38; font-size: 13px; }
+.lhrGroupHead small { color: #667085; font-size: 11px; margin-top: 3px; }
+.lhrGroupHead .addRule { margin-left: 0; }
+.lhrMoneyField { max-width: 230px; }
+.customerRateList, .surchargeList, .bandList { display: grid; gap: 9px; }
+.customerRateRow { align-items: center; background: #f8fafc; border: 1px solid #e5eaef; border-radius: 9px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) auto auto auto; padding: 10px 12px; }
+.customerRateRow strong, .customerRateRow small { display: block; }
+.customerRateRow strong { font-size: 12px; }
+.customerRateRow small { color: #667085; font-size: 11px; margin-top: 2px; }
+.customerRateRow b { color: #075e57; font-size: 12px; }
+.customerRateRow button, .surchargeTitle button, .bandRow button { background: #fff; border: 1px solid #d6e3e1; border-radius: 7px; color: #0b625b; cursor: pointer; min-height: 32px; padding: 0 9px; }
+.lhrActions { display: flex; flex-wrap: wrap; gap: 7px; }
+.surchargeCard { background: #f8fafc; border: 1px solid #dce8e5; border-radius: 10px; display: grid; gap: 12px; padding: 12px; }
+.surchargeTitle { align-items: center; display: flex; justify-content: space-between; }
+.surchargeTitle strong { color: #123b38; font-size: 12px; }
+.surchargeFields { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bandList { border-top: 1px solid #e4e9ee; padding-top: 10px; }
+.bandList p { color: #667085; font-size: 11px; margin: 0; }
+.bandList .addRule { justify-self: start; margin-left: 0; }
+.bandRow { align-items: end; display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+.customerBackdrop { z-index: 100; }
+.customerModal { background: #fff; border: 1px solid #cce5df; border-radius: 14px; box-shadow: 0 24px 70px rgba(8, 35, 32, .3); max-width: 460px; overflow: hidden; width: 100%; }
+.customerModal header, .customerModal footer { align-items: center; display: flex; justify-content: space-between; padding: 16px 20px; }
+.customerModal header { background: #0b3b38; color: #fff; }
+.customerModal header small { color: #a6d5ce; font-size: 10px; text-transform: uppercase; }
+.customerModal h3 { font-size: 18px; margin: 3px 0 0; }
+.customerModal header button { background: transparent; border: 0; color: #fff; cursor: pointer; }
+.customerModalBody { display: grid; gap: 14px; padding: 20px; }
+.customerModalBody label { color: #344054; display: grid; font-size: 11px; font-weight: 900; gap: 6px; }
+.customerModalBody input, .customerModalBody select { border: 1px solid #d6e3e1; border-radius: 8px; font: inherit; min-height: 40px; padding: 0 10px; }
+.customerModalBody p { color: #be123c; font-size: 12px; margin: 0; }
+.customerModal footer { background: #f8fafc; gap: 8px; justify-content: flex-end; }
+.customerModal footer button { background: #fff; border: 1px solid #d6e3e1; border-radius: 8px; cursor: pointer; font-weight: 800; min-height: 38px; padding: 0 14px; }
+.customerModal footer button:last-child { background: #0f766e; border-color: #0f766e; color: #fff; }
+@media (max-width: 680px) { .customerRateRow { grid-template-columns: 1fr auto; } .surchargeFields, .bandRow { grid-template-columns: 1fr; } }
 @media (max-width: 1040px) { .settingsCard { grid-template-columns: 1fr 1fr; } .supplierGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .editorGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .ruleGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width: 680px) { .workspace { padding: 18px 14px; } .header { align-items: stretch; flex-direction: column; gap: 12px; } .headerActions { display: grid; grid-template-columns: 1fr 1fr; } .headerActions button { justify-content: center; } .settingsCard, .supplierGrid, .editorGrid, .ruleGrid, .resultSummary, .resultRow, .failureRow { grid-template-columns: 1fr; } .backdrop { padding: 8px; } .editor { max-height: calc(100vh - 16px); } .logicSummary { grid-column: auto; } .editorFooter { align-items: stretch; flex-direction: column; gap: 10px; } .editorFooter > div { justify-content: flex-end; } }

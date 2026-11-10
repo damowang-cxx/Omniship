@@ -835,6 +835,7 @@ class WaybillService:
             billingBalance=record.user.balance if record.user else None,
             gbpBalance=record.user.gbp_balance if record.user else None,
             billingFees=[dict(entryId=entry.id, feeType=entry.fee_type, feeName=fee_name(entry.fee_type),
+                              feeDescription=entry.fee_description,
                               quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0,
                               currency=entry.currency, unitRate=entry.unit_rate or Decimal("0.00"),
                               amount=entry.amount, status="reversed" if entry.id in reversed_ids else "paid") for entry in entries],

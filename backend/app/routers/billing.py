@@ -230,8 +230,10 @@ async def estimate_pre_alert_tax(
     supplier_id: UUID = Form(..., alias="supplierId"),
     airport_of_arrival: str = Form(..., alias="airportOfArrival"),
     gross_weight_kg: str | None = Form(default=None, alias="grossWeightKg"),
+    air_waybill_number: str | None = Form(default=None, alias="airWaybillNumber"),
+    target_user_id: UUID | None = Form(default=None, alias="targetUserId"),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> BillingTaxEstimateResponse:
     try:
         return await BillingService(db).estimate_tax(
@@ -239,8 +241,11 @@ async def estimate_pre_alert_tax(
             supplier_id=supplier_id,
             airport_of_arrival=airport_of_arrival,
             gross_weight_kg=gross_weight_kg,
+            air_waybill_number=air_waybill_number,
+            target_user_id=target_user_id,
+            actor=current_user,
         )
-    except BillingValidationError as exc:
+    except (BillingValidationError, BillingPermissionError) as exc:
         raise _billing_error(exc) from exc
 
 

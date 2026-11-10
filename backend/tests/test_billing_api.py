@@ -406,6 +406,10 @@ def test_estimates_three_euros_for_each_eu_shipment(client, db_session):
         "warnings": [],
         "currency": "EUR",
         "lhrWeightFeeGbp": "0.00",
+        "lhrWeightRateGbp": "0.00",
+        "lhrTerminalSurchargeGbp": "0.00",
+        "lhrTerminalSurchargeDescription": None,
+        "estimatedTotalGbp": "0.00",
         "lhrClearanceEur": "0.00",
         "lhrWeightKg": "0.00",
     }

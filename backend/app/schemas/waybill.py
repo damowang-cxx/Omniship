@@ -95,6 +95,7 @@ class WaybillFeeItem(BaseModel):
     entry_id: UUID = Field(alias="entryId")
     fee_type: str = Field(alias="feeType")
     fee_name: str = Field(alias="feeName")
+    fee_description: str | None = Field(default=None, alias="feeDescription")
     quantity: float
     currency: str = "EUR"
     unit_rate: Decimal = Field(alias="unitRate")

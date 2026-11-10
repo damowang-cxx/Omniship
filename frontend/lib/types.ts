@@ -36,10 +36,11 @@ export interface BillingReceiptItem {
   sizeBytes: number;
 }
 
-export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance";
+export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance" | "lhr_terminal_surcharge";
 
 export interface BillingEntryItem {
   feeType?: BillingFeeType | null;
+  feeDescription?: string | null;
   id: string;
   entryType: "recharge" | "recharge_reversal" | "deduction" | "deduction_reversal";
   amount: string;
@@ -126,6 +127,10 @@ export interface InvoiceItem {
 }
 
 export interface BillingTaxEstimateResponse {
+  lhrWeightRateGbp?: string;
+  lhrTerminalSurchargeGbp?: string;
+  lhrTerminalSurchargeDescription?: string | null;
+  estimatedTotalGbp?: string;
   lhrWeightFeeGbp?: string;
   lhrClearanceEur?: string;
   lhrWeightKg?: string;
@@ -177,6 +182,7 @@ export interface SupplierFieldRule {
 }
 
 export interface SupplierVersionConfig {
+  lhrBilling?: LhrBillingConfig | null;
   workbook: {
     sheetMode: "first" | "named";
     sheetName?: string | null;
@@ -190,6 +196,31 @@ export interface SupplierVersionConfig {
   rowKeyFieldKey?: string | null;
   billingGroupFieldKey?: string | null;
   billingDistinctFieldKey?: string | null;
+}
+
+export interface LhrCustomerRate {
+  userId: string;
+  rateGbpPerKg: string;
+}
+
+export interface LhrWeightBand {
+  minWeightKg: number;
+  maxWeightKg: number | null;
+  amountGbp: string;
+}
+
+export interface LhrSurchargeRule {
+  name: string;
+  mode: "fixed" | "weight_bands";
+  prefixes: string[];
+  amountGbp: string | null;
+  bands: LhrWeightBand[];
+}
+
+export interface LhrBillingConfig {
+  clearanceFeeEur: string;
+  customerRates: LhrCustomerRate[];
+  surchargeRules: LhrSurchargeRule[];
 }
 
 export interface SupplierVersionItem {
@@ -297,6 +328,10 @@ export interface WaybillPreAlertUploadPayload {
 }
 
 export interface WaybillPreAlertUploadResponse {
+  lhrWeightRateGbp?: string;
+  lhrTerminalSurchargeGbp?: string;
+  lhrTerminalSurchargeDescription?: string | null;
+  deductedTotalGbp?: string;
   lhrWeightFeeGbp?: string;
   lhrClearanceEur?: string;
   gbpBalanceAfter?: string;
@@ -380,6 +415,7 @@ export interface WaybillUploadDeleteResponse {
 }
 
 export interface CancelledWaybillItem {
+  lhrTerminalSurchargeAmountDeleted?: string;
   id: string;
   originalUploadId: string;
   userId?: string | null;
@@ -492,6 +528,7 @@ export interface WaybillParcelBulkUpdatePayload {
 }
 
 export interface WaybillFeeItem {
+  feeDescription?: string | null;
   entryId: string;
   feeType: BillingFeeType;
   feeName: string;

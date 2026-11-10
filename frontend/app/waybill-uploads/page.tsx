@@ -229,7 +229,7 @@ export default function WaybillUploadsPage() {
       !preAlertFile ||
       !form.supplierId ||
       !/^[A-Za-z]{3}$/.test(form.airportOfArrival.trim()) ||
-      (form.airportOfArrival.trim().toUpperCase() === "LHR" && !(Number(form.grossWeightKg) > 0))
+      (form.airportOfArrival.trim().toUpperCase() === "LHR" && (!(Number(form.grossWeightKg) > 0) || !form.airWaybillNumber.trim() || !selectedOwner))
     ) {
       estimateRequestId.current += 1;
       setTaxEstimate(null);
@@ -243,7 +243,9 @@ export default function WaybillUploadsPage() {
       preAlertFile,
       form.supplierId,
       form.airportOfArrival.trim().toUpperCase(),
-      form.grossWeightKg.trim()
+      form.grossWeightKg.trim(),
+      form.airportOfArrival.trim().toUpperCase() === "LHR" ? form.airWaybillNumber.trim() : undefined,
+      form.airportOfArrival.trim().toUpperCase() === "LHR" && isAdmin ? selectedOwner?.id : undefined
     )
       .then((estimate) => {
         if (requestId === estimateRequestId.current) {
@@ -261,7 +263,7 @@ export default function WaybillUploadsPage() {
           setIsEstimatingTax(false);
         }
       });
-  }, [form.airportOfArrival, form.grossWeightKg, form.supplierId, preAlertFile]);
+  }, [form.airWaybillNumber, form.airportOfArrival, form.grossWeightKg, form.supplierId, isAdmin, preAlertFile, selectedOwner]);
 
   const validateForm = useCallback(() => {
     if (!form.airWaybillNumber.trim()) {
@@ -345,7 +347,7 @@ export default function WaybillUploadsPage() {
         setNotice({
           tone: "success",
           text: response.airportOfArrival === "LHR"
-            ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp}。EUR 和 GBP 已分别扣款。`
+            ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp} · 货站附加费 £${response.lhrTerminalSurchargeGbp || "0.00"}。EUR 和 GBP 已分别扣款。`
             : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)} · Total deducted: ${formatEuro(response.deductedTotal)}`
         });
         if (isAdmin) {
@@ -683,9 +685,10 @@ export default function WaybillUploadsPage() {
                   <strong>{isEstimatingTax ? "Calculating..." : taxEstimate ? formatEuro(form.airportOfArrival === "LHR" ? taxEstimate.lhrClearanceEur : taxEstimate.estimatedTax) : taxEstimateError ? "Unavailable" : "Select Pre Alert"}</strong>
                   {taxEstimate && form.airportOfArrival !== "LHR" && <small>{taxEstimate.billableUnitCount} unique units × {formatEuro(taxEstimate.unitRate)}{taxEstimate.taxableAirport ? "" : " · non-taxable airport"}</small>}
                   {taxEstimate && form.airportOfArrival === "LHR" && <>
-                    <small>1 票 × €45.00</small>
-                    <div className={styles.feeEstimateLine}><span>LHR 操作费</span><strong>£{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrWeightKg} kg × £0.50</small></div>
-                    <div className={styles.feeEstimateTotal}><span>预计分别扣款</span><strong>{formatEuro(taxEstimate.lhrClearanceEur)} + £{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong></div>
+                    <small>1 票 × {formatEuro(taxEstimate.lhrClearanceEur)}</small>
+                    <div className={styles.feeEstimateLine}><span>LHR 操作费</span><strong>£{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrWeightKg} kg × £{Number(taxEstimate.lhrWeightRateGbp || 0).toFixed(2)}</small></div>
+                    <div className={styles.feeEstimateLine}><span>货站附加费</span><strong>£{Number(taxEstimate.lhrTerminalSurchargeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrTerminalSurchargeDescription || "提单前三位未匹配附加费规则"}</small></div>
+                    <div className={styles.feeEstimateTotal}><span>预计分别扣款</span><strong>{formatEuro(taxEstimate.lhrClearanceEur)} + £{Number(taxEstimate.estimatedTotalGbp || 0).toFixed(2)}</strong></div>
                   </>}
                   {taxEstimate && form.airportOfArrival !== "LHR" && <>
                     <div className={styles.feeEstimateLine}><span>申报行操作费</span>

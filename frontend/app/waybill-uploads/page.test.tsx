@@ -227,7 +227,9 @@ describe("WaybillUploadsPage", () => {
       supplierVersionNumber: 1, taxableAirport: false, billableUnitCount: 0,
       unitRate: "0.00", estimatedTax: "0.00", operationRowCount: 0,
       operationUnitRate: "2.00", estimatedOperationFee: "0.00", estimatedTotal: "45.00",
-      lhrClearanceEur: "45.00", lhrWeightFeeGbp: "6.25", lhrWeightKg: "12.5",
+      lhrClearanceEur: "45.00", lhrWeightFeeGbp: "6.25", lhrWeightRateGbp: "0.50",
+      lhrTerminalSurchargeGbp: "0.00", lhrTerminalSurchargeDescription: null,
+      estimatedTotalGbp: "6.25", lhrWeightKg: "12.5",
       warningCount: 0, warnings: [], currency: "EUR"
     });
     render(<WaybillUploadsPage />);
@@ -235,7 +237,7 @@ describe("WaybillUploadsPage", () => {
     fillRequiredFields();
     fireEvent.change(screen.getByLabelText("Airport of Arrival"), { target: { value: "LHR" } });
     await waitFor(() => expect(apiMock.estimatePreAlertTax).toHaveBeenCalledWith(
-      expect.any(File), "supplier-id", "LHR", "12.5"
+      expect.any(File), "supplier-id", "LHR", "12.5", "784-84063276", undefined
     ));
     expect((await screen.findAllByText(/£6.25/)).length).toBeGreaterThan(0);
     expect(screen.getByText("12.5 kg × £0.50")).toBeInTheDocument();

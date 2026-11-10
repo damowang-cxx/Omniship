@@ -116,7 +116,7 @@ class InvoiceService:
         extra_fee_totals = self.invoices.extra_fee_totals_for_entries([entry.id for entry in entries])
         return [
             InvoiceEligibleDeductionItem(
-                id=entry.id, fee_type=entry.fee_type, fee_name=fee_name(entry.fee_type), waybill_number=entry.waybill_number or "-", quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0, currency=entry.currency,
+                id=entry.id, fee_type=entry.fee_type, fee_name=entry.fee_description or fee_name(entry.fee_type), waybill_number=entry.waybill_number or "-", quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0, currency=entry.currency,
                 unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount,
                 extra_fee_total=Decimal(extra_fee_totals.get(entry.id, Decimal("0.00"))),
                 total_amount=Decimal(entry.amount) + Decimal(extra_fee_totals.get(entry.id, Decimal("0.00"))),
@@ -199,7 +199,7 @@ class InvoiceService:
                 for line_number, entry in enumerate(lines, start=1):
                     self.db.add(InvoiceLine(
                         invoice_id=invoice.id, billing_entry_id=entry.id, line_number=line_number,
-                        fee_type=entry.fee_type, fee_name=fee_name(entry.fee_type),
+                        fee_type=entry.fee_type, fee_name=entry.fee_description or fee_name(entry.fee_type),
                         waybill_number=entry.waybill_number or "-", quantity=entry.quantity if entry.quantity is not None else entry.billable_unit_count or 0,
                         currency=currency,
                         unit_rate=entry.unit_rate or Decimal("0.00"), amount=entry.amount,

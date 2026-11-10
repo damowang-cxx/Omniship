@@ -827,12 +827,12 @@ export default function WaybillDetailPage() {
               )}
             </div>
             <div className={styles.billingFeeGrid}>
-              {(waybill.airportOfArrival === "LHR" ? ["lhr_clearance", "lhr_weight_handling"] : ["customs_tax", "declaration_operation_fee"]).map((type) => {
+              {(waybill.airportOfArrival === "LHR" ? ["lhr_clearance", "lhr_weight_handling", "lhr_terminal_surcharge"] : ["customs_tax", "declaration_operation_fee"]).map((type) => {
                 const fee = waybill.billingFees?.find((item) => item.feeType === type);
                 return <article className={styles.billingFeeCard} key={type}>
-                  <div><span>{fee?.feeName || ({ customs_tax: "Customs tax / 原有税费", declaration_operation_fee: "申报行操作费", lhr_clearance: "LHR 清关费", lhr_weight_handling: "LHR 操作费" } as Record<string, string>)[type]}</span><small data-status={fee?.status ?? "unpaid"}>{fee?.status === "paid" ? "已收取" : fee?.status === "reversed" ? "已撤销退款" : "未收取"}</small></div>
+                  <div><span>{fee?.feeName || ({ customs_tax: "Customs tax / 原有税费", declaration_operation_fee: "申报行操作费", lhr_clearance: "LHR 清关费", lhr_weight_handling: "LHR 操作费", lhr_terminal_surcharge: "LHR 货站附加费" } as Record<string, string>)[type]}</span><small data-status={fee?.status ?? "unpaid"}>{fee?.status === "paid" ? "已收取" : fee?.status === "reversed" ? "已撤销退款" : type === "lhr_terminal_surcharge" ? "未匹配" : "未收取"}</small></div>
                   <strong>{fee ? new Intl.NumberFormat("en-GB", { style: "currency", currency: fee.currency || "EUR" }).format(Number(fee.amount)) : "—"}</strong>
-                  <p>{fee ? `${fee.quantity} ${type === "lhr_weight_handling" ? "kg" : type === "declaration_operation_fee" ? "行" : "票/units"} × ${new Intl.NumberFormat("en-GB", { style: "currency", currency: fee.currency || "EUR" }).format(Number(fee.unitRate))}` : type === "declaration_operation_fee" ? "固定 €2.00 / 数据行" : type === "lhr_weight_handling" ? "固定 £0.50 / kg" : type === "lhr_clearance" ? "固定 €45.00 / 票" : "按现有供应商规则计算"}</p>
+                  <p>{fee?.feeDescription || (fee ? `${fee.quantity} ${type === "lhr_weight_handling" ? "kg" : type === "declaration_operation_fee" ? "行" : "票/units"} × ${new Intl.NumberFormat("en-GB", { style: "currency", currency: fee.currency || "EUR" }).format(Number(fee.unitRate))}` : type === "declaration_operation_fee" ? "固定 €2.00 / 数据行" : type === "lhr_weight_handling" ? "按客户报价 / kg" : type === "lhr_clearance" ? "按 Supplier 配置 / 票" : type === "lhr_terminal_surcharge" ? "按提单前三位与重量段匹配" : "按现有供应商规则计算")}</p>
                 </article>;
               })}
             </div>

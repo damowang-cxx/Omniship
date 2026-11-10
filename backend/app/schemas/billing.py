@@ -17,6 +17,7 @@ class BillingReceiptItem(BaseModel):
 
 class BillingEntryItem(BaseModel):
     fee_type: str | None = Field(default=None, alias="feeType")
+    fee_description: str | None = Field(default=None, alias="feeDescription")
     id: UUID
     entry_type: str = Field(alias="entryType")
     amount: Decimal
@@ -54,6 +55,10 @@ class BillingAccountResponse(BaseModel):
 
 
 class BillingTaxEstimateResponse(BaseModel):
+    lhr_weight_rate_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightRateGbp")
+    lhr_terminal_surcharge_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrTerminalSurchargeGbp")
+    lhr_terminal_surcharge_description: str | None = Field(default=None, alias="lhrTerminalSurchargeDescription")
+    estimated_total_gbp: Decimal = Field(default=Decimal("0.00"), alias="estimatedTotalGbp")
     lhr_weight_fee_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightFeeGbp")
     lhr_clearance_eur: Decimal = Field(default=Decimal("0.00"), alias="lhrClearanceEur")
     lhr_weight_kg: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightKg")

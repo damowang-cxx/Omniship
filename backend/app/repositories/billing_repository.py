@@ -155,6 +155,7 @@ class BillingRepository:
         fee_type: str = "customs_tax",
         currency: str = "EUR",
         quantity: Decimal | None = None,
+        fee_description: str | None = None,
     ) -> BillingEntry:
         entry = BillingEntry(
             user_id=user_id,
@@ -163,6 +164,7 @@ class BillingRepository:
             amount=amount,
             currency=currency,
             quantity=quantity,
+            fee_description=fee_description,
             balance_after=balance_after,
             waybill_upload_id=waybill_upload_id,
             waybill_number=waybill_number,
@@ -200,6 +202,7 @@ class BillingRepository:
             arrival_airport=original.arrival_airport,
             billable_unit_count=original.billable_unit_count,
             quantity=original.quantity,
+            fee_description=original.fee_description,
             unit_rate=original.unit_rate,
             billing_source="cancellation",
             reversal_of_entry_id=original.id,

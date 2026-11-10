@@ -498,13 +498,17 @@ export function estimatePreAlertTax(
   preAlertFile: File,
   supplierId: string,
   airportOfArrival: string,
-  grossWeightKg?: string
+  grossWeightKg?: string,
+  airWaybillNumber?: string,
+  targetUserId?: string
 ): Promise<BillingTaxEstimateResponse> {
   const formData = new FormData();
   formData.append("preAlertFile", preAlertFile);
   formData.append("supplierId", supplierId);
   formData.append("airportOfArrival", airportOfArrival);
   if (grossWeightKg) formData.append("grossWeightKg", grossWeightKg);
+  if (airWaybillNumber) formData.append("airWaybillNumber", airWaybillNumber);
+  if (targetUserId) formData.append("targetUserId", targetUserId);
   return requestJson<BillingTaxEstimateResponse>("/api/v1/billing/estimate", {
     method: "POST",
     body: formData,

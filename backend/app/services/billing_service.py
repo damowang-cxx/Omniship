@@ -30,7 +30,8 @@ from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.user import UserPublic
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
-from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, LHR_WEIGHT_RATE_GBP, LHR_CLEARANCE_RATE_EUR, fee_name
+from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
+from app.services.lhr_billing import calculate_lhr_charges
 from app.services.billing_export_service import build_billing_workbook
 
 
@@ -322,6 +323,9 @@ class BillingService:
         supplier_id: UUID,
         airport_of_arrival: str,
         gross_weight_kg: str | None = None,
+        air_waybill_number: str | None = None,
+        target_user_id: UUID | None = None,
+        actor: User,
     ) -> BillingTaxEstimateResponse:
         if not pre_alert_file.filename:
             raise BillingValidationError("Upload Pre Alert File is required")
@@ -340,18 +344,37 @@ class BillingService:
         if len(content) > ESTIMATE_MAX_BYTES:
             raise BillingValidationError("Upload Pre Alert File exceeds the 25 MB estimate limit")
         if airport == "LHR":
+            if not (air_waybill_number or "").strip():
+                raise BillingValidationError("Air Waybill Number is required for LHR estimate")
+            customer_id = target_user_id or actor.id
+            if customer_id != actor.id and actor.role != "admin":
+                raise BillingPermissionError("Cannot estimate another customer's LHR fee")
+            customer = self.users.get_by_id(customer_id)
+            if customer is None or customer.status != "active":
+                raise BillingValidationError("LHR customer was not found or is inactive")
             try:
                 weight = Decimal((gross_weight_kg or "").strip())
             except InvalidOperation as exc:
                 raise BillingValidationError("Air Waybill Gross Weight (KG) must be a number") from exc
             if not weight.is_finite() or weight <= 0 or weight.as_tuple().exponent < -3 or weight >= Decimal("1000000000"):
                 raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
+            try:
+                charges = calculate_lhr_charges(
+                    config=SupplierVersionConfig.model_validate(version.config).lhr_billing,
+                    user_id=customer_id, waybill_number=air_waybill_number.strip(), gross_weight_kg=weight,
+                )
+            except ValueError as exc:
+                raise BillingValidationError(str(exc)) from exc
             return BillingTaxEstimateResponse(
-                lhr_weight_fee_gbp=(weight * LHR_WEIGHT_RATE_GBP).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-                lhr_clearance_eur=LHR_CLEARANCE_RATE_EUR,
+                lhr_weight_fee_gbp=charges.weight_fee_gbp,
+                lhr_weight_rate_gbp=charges.weight_rate_gbp,
+                lhr_terminal_surcharge_gbp=charges.surcharge_gbp,
+                lhr_terminal_surcharge_description=charges.surcharge_description,
+                estimated_total_gbp=charges.total_gbp,
+                lhr_clearance_eur=charges.clearance_eur,
                 lhr_weight_kg=weight,
                 operation_row_count=0, operation_unit_rate=OPERATION_UNIT_RATE,
-                estimated_operation_fee=Decimal("0.00"), estimated_total=LHR_CLEARANCE_RATE_EUR,
+                estimated_operation_fee=Decimal("0.00"), estimated_total=charges.clearance_eur,
                 supplier_id=supplier.id, supplier_name=supplier.name,
                 supplier_version_id=version.id, supplier_version_number=version.version_number,
                 taxable_airport=False, billable_unit_count=0, unit_rate=Decimal("0.00"),
@@ -689,6 +712,7 @@ class BillingService:
             id=entry.id,
             entry_type=entry.entry_type,
             fee_type=entry.fee_type,
+            fee_description=entry.fee_description,
             amount=entry.amount,
             currency=entry.currency,
             balance_after=entry.balance_after,

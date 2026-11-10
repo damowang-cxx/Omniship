@@ -32,6 +32,7 @@ class CancelledWaybillRepository:
         gbp_fee_amount_deleted: Decimal = Decimal("0.00"),
         gbp_refunded_amount: Decimal = Decimal("0.00"),
         lhr_clearance_amount_deleted: Decimal = Decimal("0.00"),
+        lhr_terminal_surcharge_amount_deleted: Decimal = Decimal("0.00"),
         gbp_balance_after_refund: Decimal | None = None,
     ) -> CancelledWaybill:
         record = CancelledWaybill(
@@ -60,6 +61,7 @@ class CancelledWaybillRepository:
             gbp_fee_amount_deleted=gbp_fee_amount_deleted,
             gbp_refunded_amount=gbp_refunded_amount,
             lhr_clearance_amount_deleted=lhr_clearance_amount_deleted,
+            lhr_terminal_surcharge_amount_deleted=lhr_terminal_surcharge_amount_deleted,
             gbp_balance_after_refund=gbp_balance_after_refund,
             currency="EUR",
             reason=reason,

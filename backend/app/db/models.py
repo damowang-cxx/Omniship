@@ -481,6 +481,7 @@ class CancelledWaybill(Base):
     gbp_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     gbp_refunded_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     lhr_clearance_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
+    lhr_terminal_surcharge_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     gbp_balance_after_refund: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     balance_after_refund: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True
@@ -553,10 +554,11 @@ class BillingEntry(Base):
     __tablename__ = "billing_entries"
     __table_args__ = (
         Index("uq_upload_fee_type", "waybill_upload_id", "fee_type", unique=True),
-        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance'))", name="ck_billing_fee_type"),
+        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance', 'lhr_terminal_surcharge'))", name="ck_billing_fee_type"),
     )
 
     fee_type: Mapped[str | None] = mapped_column(String(40), nullable=True, default="customs_tax")
+    fee_description: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
