@@ -836,6 +836,7 @@ export default function WaybillDetailPage() {
                 </article>;
               })}
             </div>
+            {waybill.airportOfArrival === "LHR" && !waybill.billingFees?.some((fee) => fee.feeType.startsWith("lhr_")) && <p className={styles.billingFeeNote}>本票无 LHR 扣费记录，未扣除清关费、操作费及货站附加费。</p>}
             {waybill.operationFeeStatus === "reversed" && <p className={styles.billingFeeNote}>操作费已撤销，保留收费记录，不可再次补扣。</p>}
           </section>
 

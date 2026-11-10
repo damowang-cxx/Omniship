@@ -143,6 +143,14 @@ describe("WaybillDetailPage", () => {
     expect(apiMock.listWaybillParcels).toHaveBeenCalledWith("A7K2P9QX");
   });
 
+  it("shows that an LHR waybill with no fee entries was not charged", async () => {
+    apiMock.getWaybill.mockResolvedValueOnce({ ...waybillItem, airportOfArrival: "LHR", billingFees: [] });
+
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByText("本票无 LHR 扣费记录，未扣除清关费、操作费及货站附加费。")).toBeInTheDocument();
+  });
+
   it("keeps the waybill detail available when optional parcel loading fails", async () => {
     apiMock.listWaybillParcels.mockRejectedValueOnce(
       new Error("Request failed with 404: Billing distinct field contains no valid values")

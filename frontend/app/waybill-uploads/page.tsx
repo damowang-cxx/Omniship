@@ -347,7 +347,9 @@ export default function WaybillUploadsPage() {
         setNotice({
           tone: "success",
           text: response.airportOfArrival === "LHR"
-            ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp} · 货站附加费 £${response.lhrTerminalSurchargeGbp || "0.00"}。EUR 和 GBP 已分别扣款。`
+            ? Number(response.lhrWeightRateGbp || 0) > 0
+              ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp} · 货站附加费 £${response.lhrTerminalSurchargeGbp || "0.00"}。EUR 和 GBP 已分别扣款。`
+              : `Upload saved for ${response.airWaybillNumber}. 该客户未加入 LHR 扣费名单，本票未扣费。`
             : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)} · Total deducted: ${formatEuro(response.deductedTotal)}`
         });
         if (isAdmin) {
@@ -685,10 +687,12 @@ export default function WaybillUploadsPage() {
                   <strong>{isEstimatingTax ? "Calculating..." : taxEstimate ? formatEuro(form.airportOfArrival === "LHR" ? taxEstimate.lhrClearanceEur : taxEstimate.estimatedTax) : taxEstimateError ? "Unavailable" : "Select Pre Alert"}</strong>
                   {taxEstimate && form.airportOfArrival !== "LHR" && <small>{taxEstimate.billableUnitCount} unique units × {formatEuro(taxEstimate.unitRate)}{taxEstimate.taxableAirport ? "" : " · non-taxable airport"}</small>}
                   {taxEstimate && form.airportOfArrival === "LHR" && <>
-                    <small>1 票 × {formatEuro(taxEstimate.lhrClearanceEur)}</small>
-                    <div className={styles.feeEstimateLine}><span>LHR 操作费</span><strong>£{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrWeightKg} kg × £{Number(taxEstimate.lhrWeightRateGbp || 0).toFixed(2)}</small></div>
-                    <div className={styles.feeEstimateLine}><span>货站附加费</span><strong>£{Number(taxEstimate.lhrTerminalSurchargeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrTerminalSurchargeDescription || "提单前三位未匹配附加费规则"}</small></div>
-                    <div className={styles.feeEstimateTotal}><span>预计分别扣款</span><strong>{formatEuro(taxEstimate.lhrClearanceEur)} + £{Number(taxEstimate.estimatedTotalGbp || 0).toFixed(2)}</strong></div>
+                    {Number(taxEstimate.lhrWeightRateGbp || 0) > 0 ? <>
+                      <small>1 票 × {formatEuro(taxEstimate.lhrClearanceEur)}</small>
+                      <div className={styles.feeEstimateLine}><span>LHR 操作费</span><strong>£{Number(taxEstimate.lhrWeightFeeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrWeightKg} kg × £{Number(taxEstimate.lhrWeightRateGbp || 0).toFixed(2)}</small></div>
+                      <div className={styles.feeEstimateLine}><span>货站附加费</span><strong>£{Number(taxEstimate.lhrTerminalSurchargeGbp || 0).toFixed(2)}</strong><small>{taxEstimate.lhrTerminalSurchargeDescription || "提单前三位未匹配附加费规则"}</small></div>
+                    </> : <small>该客户未加入 LHR 扣费名单，本票可上传且不扣费。</small>}
+                    <div className={styles.feeEstimateTotal}><span>{Number(taxEstimate.lhrWeightRateGbp || 0) > 0 ? "预计分别扣款" : "预计扣款"}</span><strong>{formatEuro(taxEstimate.lhrClearanceEur)} + £{Number(taxEstimate.estimatedTotalGbp || 0).toFixed(2)}</strong></div>
                   </>}
                   {taxEstimate && form.airportOfArrival !== "LHR" && <>
                     <div className={styles.feeEstimateLine}><span>申报行操作费</span>

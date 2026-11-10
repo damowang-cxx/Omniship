@@ -449,17 +449,17 @@ export default function SuppliersPage() {
             <section className={`${styles.editorSection} ${styles.lhrSection}`} aria-label="LHR billing configuration">
               <div className={styles.sectionTitle}><span>UK</span><div><strong>LHR 独立扣费</strong><small>只使用提单号、提单总重量和所选客户；不读取 Pre Alert 内容计费</small></div></div>
               <label className={styles.lhrToggle}><input checked={Boolean(lhrDraft)} onChange={(event) => setLhrDraft(event.target.checked ? { clearanceFeeEur: "45.00", customerRates: [], surchargeRules: [] } : null)} type="checkbox" />启用 LHR 扣费配置</label>
-              {!lhrDraft ? <p className={styles.lhrHint}>未配置时，LHR 上传会提示管理员先完成扣费设置。其他目的港继续使用现有规则。</p> : <>
+              {!lhrDraft ? <p className={styles.lhrHint}>未创建收费名单时，LHR 提单仍可上传，且不会扣除 LHR 费用。</p> : <>
                 <div className={styles.lhrGroup}>
                   <div className={styles.lhrGroupHead}><div><strong>01 · 清关费</strong><small>按 Air Waybill Number，一次上传计一票</small></div></div>
                   <label className={styles.lhrMoneyField}>每票金额 (EUR)<input min="0.01" onChange={(event) => setLhrBilling((billing) => ({ ...billing, clearanceFeeEur: event.target.value }))} required step="0.01" type="number" value={lhrDraft.clearanceFeeEur} /></label>
                 </div>
                 <div className={styles.lhrGroup}>
-                  <div className={styles.lhrGroupHead}><div><strong>02 · 客户每公斤报价</strong><small>上传时按 Target User 查价，未配置客户则阻止 LHR 上传</small></div><button className={styles.addRule} onClick={() => { setCustomerDialog({ userId: "", rate: "", editing: false }); setCustomerDialogError(null); }} type="button"><Plus size={15} />添加客户</button></div>
+                  <div className={styles.lhrGroupHead}><div><strong>02 · 客户每公斤报价</strong><small>只有加入列表的客户才收取 LHR 清关费、重量费和匹配的货站附加费</small></div><button className={styles.addRule} onClick={() => { setCustomerDialog({ userId: "", rate: "", editing: false }); setCustomerDialogError(null); }} type="button"><Plus size={15} />添加客户</button></div>
                   {lhrDraft.customerRates.length ? <div className={styles.customerRateList}>{lhrDraft.customerRates.map((rate) => {
                     const customer = customers.find((item) => item.id === rate.userId);
                     return <div className={styles.customerRateRow} key={rate.userId}><div><strong>{customer?.username || "已删除客户"}</strong><small>{customer?.email || rate.userId}</small></div><b>£{rate.rateGbpPerKg} / kg</b><button onClick={() => { setCustomerDialog({ userId: rate.userId, rate: rate.rateGbpPerKg, editing: true }); setCustomerDialogError(null); }} type="button">修改</button><button aria-label={`删除 ${customer?.username || rate.userId} 报价`} onClick={() => setLhrBilling((billing) => ({ ...billing, customerRates: billing.customerRates.filter((item) => item.userId !== rate.userId) }))} type="button"><X size={15} /></button></div>;
-                  })}</div> : <p className={styles.lhrHint}>尚无客户报价；LHR 上传会被阻止，直到添加该客户报价并保存配置。</p>}
+                  })}</div> : <p className={styles.lhrHint}>尚无收费客户；所有客户仍可上传 LHR 提单，且不扣除 LHR 费用。</p>}
                 </div>
                 <div className={styles.lhrGroup}>
                   <div className={styles.lhrGroupHead}><div><strong>03 · 货站附加费</strong><small>同一三位提单前缀只能归属一条规则；未匹配时不收附加费</small></div><div className={styles.lhrActions}><button className={styles.addRule} onClick={() => addSurchargeRule("fixed")} type="button"><Plus size={15} />固定金额</button><button className={styles.addRule} onClick={() => addSurchargeRule("weight_bands")} type="button"><Plus size={15} />重量段</button></div></div>

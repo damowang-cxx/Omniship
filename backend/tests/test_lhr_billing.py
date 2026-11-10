@@ -146,19 +146,39 @@ def test_lhr_gbp_shortfall_rolls_back_both_charges(client, db_session):
     assert db_session.scalars(select(WaybillUpload)).all() == []
 
 
-def test_lhr_customer_without_supplier_rate_cannot_upload(client, db_session):
+def test_lhr_customer_outside_fee_list_uploads_without_any_charge(client, db_session):
     configured = create_test_user(db_session, email="configured@example.com", balance="45.00")
-    user = create_test_user(db_session, email="missing-rate@example.com", balance="45.00")
-    user.gbp_balance = Decimal("100.00")
+    user = create_test_user(db_session, email="missing-rate@example.com", balance="0.00")
     db_session.commit()
-    configure_lhr(db_session, configured)
+    configure_lhr(db_session, configured, surcharge_rules=[{"name": "Menzies", "mode": "fixed", "prefixes": ["784"], "amountGbp": "25.00"}])
+    login(client, email=user.email)
+    estimate = client.post(
+        "/api/v1/billing/estimate",
+        data={"supplierId": str(QLS_SUPPLIER_ID), "airportOfArrival": "LHR", "grossWeightKg": "12.5", "airWaybillNumber": "784-84063276"},
+        files={"preAlertFile": ("data.xlsx", workbook_bytes([]))},
+    )
+    assert estimate.status_code == 200, estimate.text
+    assert estimate.json()["lhrClearanceEur"] == "0.00"
+    assert estimate.json()["lhrWeightRateGbp"] == "0.00"
+    assert estimate.json()["estimatedTotalGbp"] == "0.00"
+    response = client.post("/api/v1/waybill-uploads/file", data=upload_data(airport="LHR"), files=upload_files(workbook_bytes([])))
+    assert response.status_code == 201, response.text
+    assert response.json()["deductedTotal"] == "0.00"
+    assert response.json()["deductedTotalGbp"] == "0.00"
+    db_session.refresh(user)
+    assert user.balance == Decimal("0.00")
+    assert user.gbp_balance == Decimal("0.00")
+    assert db_session.scalars(select(BillingEntry)).all() == []
+    assert len(db_session.scalars(select(WaybillUpload)).all()) == 1
+
+
+def test_lhr_upload_without_global_fee_schedule_is_free(client, db_session):
+    user = create_test_user(db_session, email="lhr@example.com", balance="0.00")
     login(client, email=user.email)
     response = client.post("/api/v1/waybill-uploads/file", data=upload_data(airport="LHR"), files=upload_files(workbook_bytes([])))
-    assert response.status_code == 400
-    assert "price is not configured for this customer" in response.json()["detail"]
-    db_session.refresh(user)
-    assert user.balance == Decimal("45.00")
-    assert user.gbp_balance == Decimal("100.00")
+    assert response.status_code == 201, response.text
+    assert response.json()["lhrClearanceEur"] == "0.00"
+    assert response.json()["deductedTotalGbp"] == "0.00"
     assert db_session.scalars(select(BillingEntry)).all() == []
 
 

@@ -244,6 +244,31 @@ describe("WaybillUploadsPage", () => {
     expect(screen.getByText("1 票 × €45.00")).toBeInTheDocument();
   });
 
+  it("allows an unlisted LHR customer to upload without a deduction", async () => {
+    apiMock.estimatePreAlertTax.mockResolvedValue({
+      supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
+      supplierVersionNumber: 1, taxableAirport: false, billableUnitCount: 0,
+      unitRate: "0.00", estimatedTax: "0.00", operationRowCount: 0,
+      operationUnitRate: "2.00", estimatedOperationFee: "0.00", estimatedTotal: "0.00",
+      lhrClearanceEur: "0.00", lhrWeightFeeGbp: "0.00", lhrWeightRateGbp: "0.00",
+      lhrTerminalSurchargeGbp: "0.00", lhrTerminalSurchargeDescription: null,
+      estimatedTotalGbp: "0.00", lhrWeightKg: "12.5", warningCount: 0, warnings: [], currency: "EUR"
+    });
+    apiMock.uploadPreAlertFile.mockResolvedValue({
+      uploadId: "upload-id", airWaybillNumber: "784-84063276", airportOfArrival: "LHR",
+      boundUserId: "user-id", supplierId: "supplier-id", lhrClearanceEur: "0.00",
+      lhrWeightFeeGbp: "0.00", lhrWeightRateGbp: "0.00", lhrTerminalSurchargeGbp: "0.00",
+      deductedTotal: "0.00", deductedTotalGbp: "0.00", balanceAfter: "120.00", gbpBalanceAfter: "0.00"
+    });
+    render(<WaybillUploadsPage />);
+    expect(await screen.findByRole("heading", { name: "Upload Pre Alert" })).toBeInTheDocument();
+    fillRequiredFields();
+    fireEvent.change(screen.getByLabelText("Airport of Arrival"), { target: { value: "LHR" } });
+    expect(await screen.findByText("该客户未加入 LHR 扣费名单，本票可上传且不扣费。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Upload Pre Alert" }));
+    expect(await screen.findByText("Upload saved for 784-84063276. 该客户未加入 LHR 扣费名单，本票未扣费。")).toBeInTheDocument();
+  });
+
   it("shows backend Excel validation errors in a dialog", async () => {
     apiMock.uploadPreAlertFile.mockRejectedValueOnce(
       new Error(

@@ -290,14 +290,15 @@ class WaybillUploadService:
                 )
 
             if is_lhr:
-                locked_user.balance = (current_balance - deducted_total).quantize(Decimal("0.01"))
-                self.billing.create_deduction(
-                    user_id=locked_user.id, amount=lhr_clearance_eur, balance_after=locked_user.balance,
-                    waybill_upload_id=upload.id, waybill_number=air_waybill_number,
-                    supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
-                    arrival_airport=airport_of_arrival, billable_unit_count=1, unit_rate=lhr_clearance_eur,
-                    quantity=Decimal("1"), fee_type=LHR_CLEARANCE_FEE_TYPE, created_by_user_id=actor.id,
-                )
+                if lhr_clearance_eur > 0:
+                    locked_user.balance = (current_balance - deducted_total).quantize(Decimal("0.01"))
+                    self.billing.create_deduction(
+                        user_id=locked_user.id, amount=lhr_clearance_eur, balance_after=locked_user.balance,
+                        waybill_upload_id=upload.id, waybill_number=air_waybill_number,
+                        supplier_id=supplier.id, supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                        arrival_airport=airport_of_arrival, billable_unit_count=1, unit_rate=lhr_clearance_eur,
+                        quantity=Decimal("1"), fee_type=LHR_CLEARANCE_FEE_TYPE, created_by_user_id=actor.id,
+                    )
                 if lhr_weight_fee_gbp > 0:
                     locked_user.gbp_balance = (Decimal(locked_user.gbp_balance) - lhr_weight_fee_gbp).quantize(Decimal("0.01"))
                     self.billing.create_deduction(

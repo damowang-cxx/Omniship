@@ -1,4 +1,4 @@
-"""LHR charges derived from the saved Supplier version and waybill fields."""
+"""LHR charges for customers enrolled in the global fee schedule."""
 import re
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
@@ -24,11 +24,16 @@ def calculate_lhr_charges(
     *, config: LhrBillingConfig | None, user_id: UUID,
     waybill_number: str, gross_weight_kg: Decimal,
 ) -> LhrCharges:
-    if config is None:
-        raise ValueError("LHR billing is not configured; ask an administrator to set up LHR fees")
-    customer_rate = next((item.rate_gbp_per_kg for item in config.customer_rates if item.user_id == user_id), None)
+    customer_rate = next((item.rate_gbp_per_kg for item in config.customer_rates if item.user_id == user_id), None) if config is not None else None
     if customer_rate is None:
-        raise ValueError("LHR price is not configured for this customer; ask an administrator to add the customer")
+        return LhrCharges(
+            clearance_eur=Decimal("0.00"),
+            weight_rate_gbp=Decimal("0.00"),
+            weight_fee_gbp=Decimal("0.00"),
+            surcharge_gbp=Decimal("0.00"),
+            surcharge_description=None,
+        )
+    assert config is not None
     weight_fee = (gross_weight_kg * customer_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     prefix_match = re.match(r"^\s*(\d{3})", waybill_number)
     if prefix_match is None:
