@@ -197,6 +197,35 @@ class LhrBillingSettingsUpdateRequest(BaseModel):
     config: LhrBillingConfig | None = None
 
 
+class AmsCustomerRate(BaseModel):
+    user_id: UUID = Field(alias="userId")
+    rate_eur_per_kg: Decimal = Field(gt=0, max_digits=10, decimal_places=2, alias="rateEurPerKg")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AmsBillingConfig(BaseModel):
+    customer_rates: list[AmsCustomerRate] = Field(default_factory=list, max_length=1000, alias="customerRates")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def validate_unique_customers(self):
+        user_ids = [rate.user_id for rate in self.customer_rates]
+        if len(user_ids) != len(set(user_ids)):
+            raise ValueError("Each customer may have only one AMS price")
+        return self
+
+
+class AmsBillingSettingsItem(BaseModel):
+    config: AmsBillingConfig | None = None
+    version: int = 0
+
+
+class AmsBillingSettingsUpdateRequest(BaseModel):
+    config: AmsBillingConfig | None = None
+
+
 class SupplierVersionConfig(BaseModel):
     workbook: SupplierWorkbookConfig = Field(default_factory=SupplierWorkbookConfig)
     fields: list[SupplierFieldRule] = Field(min_length=1, max_length=100)

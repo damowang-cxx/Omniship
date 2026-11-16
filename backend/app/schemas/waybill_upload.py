@@ -26,6 +26,8 @@ class WaybillUploadUserItem(BaseModel):
 
 
 class WaybillPreAlertUploadResponse(BaseModel):
+    ams_weight_rate_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightRateEur")
+    ams_weight_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightFeeEur")
     lhr_weight_rate_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrWeightRateGbp")
     lhr_terminal_surcharge_gbp: Decimal = Field(default=Decimal("0.00"), alias="lhrTerminalSurchargeGbp")
     lhr_terminal_surcharge_description: str | None = Field(default=None, alias="lhrTerminalSurchargeDescription")

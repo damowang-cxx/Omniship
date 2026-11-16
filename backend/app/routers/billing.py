@@ -13,7 +13,7 @@ from app.schemas.billing import (
     RetroactiveBillingRequest,
     RetroactiveBillingResponse,
 )
-from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest, LhrBillingSettingsItem, LhrBillingSettingsUpdateRequest
+from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest, LhrBillingSettingsItem, LhrBillingSettingsUpdateRequest, AmsBillingSettingsItem, AmsBillingSettingsUpdateRequest
 from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceCreateResponse,
@@ -37,6 +37,7 @@ from app.services.billing_service import (
 )
 from app.services.supplier_service import SupplierService
 from app.services.lhr_settings_service import LhrSettingsService, LhrSettingsValidationError
+from app.services.ams_settings_service import AmsSettingsService, AmsSettingsValidationError
 
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
@@ -264,6 +265,27 @@ def get_lhr_billing_settings(
     _: User = Depends(require_admin),
 ) -> LhrBillingSettingsItem:
     return LhrSettingsService(db).get()
+
+
+@router.get("/ams-settings", response_model=AmsBillingSettingsItem)
+def get_ams_billing_settings(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> AmsBillingSettingsItem:
+    return AmsSettingsService(db).get()
+
+
+@router.put("/ams-settings", response_model=AmsBillingSettingsItem)
+def update_ams_billing_settings(
+    payload: AmsBillingSettingsUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AmsBillingSettingsItem:
+    try:
+        return AmsSettingsService(db).update(actor=current_user, config=payload.config, request=request)
+    except AmsSettingsValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.put("/lhr-settings", response_model=LhrBillingSettingsItem)

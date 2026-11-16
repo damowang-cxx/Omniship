@@ -41,6 +41,10 @@
 .supplierCard footer button { background: #fff; border: 1px solid var(--border); border-radius: 8px; color: #344054; cursor: pointer; font-weight: 900; min-height: 38px; padding: 0 11px; }
 .supplierCard footer button:first-child { border-color: #9fd3cc; color: var(--accent-strong); }
 .lhrRegistry { background: #f5faf9; border-color: #c9e4df; }
+.amsRegistry { background: #f3f7fd; border-color: #c9d9ef; }
+.amsRegistry .registryHeader > span { background: #e4efff; color: #275078; }
+.amsRegistry .lhrConfigCard { border-color: #d5e3f4; }
+.amsRegistry .lhrConfigCard > button { background: #235b89; border-color: #235b89; }
 .lhrRegistry .registryHeader > span { background: #e1f3ef; color: #0b625b; }
 .lhrConfigGrid { display: grid; gap: 13px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lhrRegistry .lhrConfigGrid { grid-template-columns: 1fr; }
@@ -143,6 +147,14 @@
 .customerRateRow small { color: #667085; font-size: 11px; margin-top: 2px; }
 .customerRateRow b { color: #075e57; font-size: 12px; }
 .customerRateRow button, .surchargeTitle button, .bandRow button { background: #fff; border: 1px solid #d6e3e1; border-radius: 7px; color: #0b625b; cursor: pointer; min-height: 32px; padding: 0 9px; }
+.amsRateHeader { align-items: center; display: flex; justify-content: space-between; }
+.amsRateHeader strong { color: #123b38; font-size: 13px; }
+.amsRegistry .customerRateRow { grid-template-columns: minmax(0, 1fr) 150px auto; }
+.amsRateField { min-width: 0; }
+.amsRateField input { width: 100%; }
+.amsAddForm { align-items: end; background: #f7faff; border: 1px solid #d5e3f4; border-radius: 9px; display: grid; gap: 10px; grid-template-columns: minmax(180px, 1fr) 170px auto auto; padding: 12px; }
+.amsAddForm button { background: #fff; border: 1px solid #bbd1e8; border-radius: 8px; color: #235b89; cursor: pointer; font-weight: 800; min-height: 40px; padding: 0 12px; }
+.amsAddForm button:nth-last-child(2) { background: #235b89; color: #fff; }
 .lhrActions { display: flex; flex-wrap: wrap; gap: 7px; }
 .surchargeCard { background: #f8fafc; border: 1px solid #dce8e5; border-radius: 10px; display: grid; gap: 12px; padding: 12px; }
 .surchargeTitle { align-items: center; display: flex; justify-content: space-between; }
@@ -169,3 +181,4 @@
 @media (max-width: 680px) { .customerRateRow { grid-template-columns: 1fr auto; } .surchargeFields, .bandRow { grid-template-columns: 1fr; } }
 @media (max-width: 1040px) { .settingsCard { grid-template-columns: 1fr 1fr; } .supplierGrid, .lhrConfigGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .editorGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .ruleGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width: 680px) { .workspace { padding: 18px 14px; } .header { align-items: stretch; flex-direction: column; gap: 12px; } .headerActions { display: grid; grid-template-columns: 1fr 1fr; } .headerActions button { justify-content: center; } .settingsCard, .supplierGrid, .lhrConfigGrid, .editorGrid, .ruleGrid, .resultSummary, .resultRow, .failureRow { grid-template-columns: 1fr; } .backdrop { padding: 8px; } .editor { max-height: calc(100vh - 16px); } .lhrInlineEditor { max-height: none; } .logicSummary { grid-column: auto; } .editorFooter { align-items: stretch; flex-direction: column; gap: 10px; } .editorFooter > div { justify-content: flex-end; } }
+@media (max-width: 680px) { .amsAddForm { grid-template-columns: 1fr 1fr; } .amsAddForm label { grid-column: span 2; } .amsRegistry .customerRateRow { grid-template-columns: 1fr auto; } .amsRateField { grid-column: span 2; } }

@@ -48,7 +48,7 @@ function money(value: string | undefined, currency = "EUR") {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(Number(value || 0));
 }
 function feeName(type?: string | null) {
-  return ({ customs_tax: "Customs tax", declaration_operation_fee: "申报行操作费", lhr_weight_handling: "LHR 操作费", lhr_clearance: "LHR 清关费", lhr_terminal_surcharge: "LHR 货站附加费" } as Record<string, string>)[type || "customs_tax"] || "Fee";
+  return ({ customs_tax: "Customs tax", declaration_operation_fee: "申报行操作费", lhr_weight_handling: "LHR 操作费", lhr_clearance: "LHR 清关费", lhr_terminal_surcharge: "LHR 货站附加费", ams_weight_handling: "AMS 重量附加费" } as Record<string, string>)[type || "customs_tax"] || "Fee";
 }
 
 function formatDateTime(value: string) {
@@ -273,7 +273,7 @@ export default function UsersPage() {
     const confirmed = window.confirm(
       entry.currency === "GBP"
         ? `Cancel ${feeName(entry.feeType)} for ${entry.waybillNumber || "this waybill"}? ${money(entry.amount, entry.currency)} will be returned to the GBP balance.`
-        : `Cancel ${entry.feeType === "declaration_operation_fee" ? "申报行操作费" : "customs tax"} for ${entry.waybillNumber || "this waybill"}? ${formatEuro(entry.amount)} will be returned to the customer balance.`
+        : `Cancel ${!entry.feeType || entry.feeType === "customs_tax" ? "customs tax" : feeName(entry.feeType)} for ${entry.waybillNumber || "this waybill"}? ${formatEuro(entry.amount)} will be returned to the customer balance.`
     );
     if (!confirmed) return;
 

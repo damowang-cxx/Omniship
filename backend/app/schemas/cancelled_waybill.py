@@ -44,6 +44,7 @@ class CancelledWaybillItem(BaseModel):
     uploaded_at: datetime = Field(alias="uploadedAt")
     file_count: int = Field(alias="fileCount")
     operation_fee_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="operationFeeAmountDeleted")
+    ams_weight_fee_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="amsWeightFeeAmountDeleted")
     tax_amount_deleted: Decimal = Field(alias="taxAmountDeleted")
     refunded_amount: Decimal = Field(alias="refundedAmount")
     gbp_fee_amount_deleted: Decimal = Field(default=Decimal("0.00"), alias="gbpFeeAmountDeleted")

@@ -9,6 +9,8 @@ import type {
   InvoiceSettingsItem,
   LhrBillingConfig,
   LhrBillingSettingsItem,
+  AmsBillingConfig,
+  AmsBillingSettingsItem,
   CancelledWaybillListResponse,
   CancelWaybillResponse,
   DownstreamBindingSummary,
@@ -297,6 +299,17 @@ export function getBillingSettings(): Promise<BillingSettingsItem> {
 
 export function getLhrBillingSettings(): Promise<LhrBillingSettingsItem> {
   return requestJson<LhrBillingSettingsItem>("/api/v1/billing/lhr-settings");
+}
+
+export function getAmsBillingSettings(): Promise<AmsBillingSettingsItem> {
+  return requestJson<AmsBillingSettingsItem>("/api/v1/billing/ams-settings");
+}
+
+export function updateAmsBillingSettings(config: AmsBillingConfig | null): Promise<AmsBillingSettingsItem> {
+  return requestJson<AmsBillingSettingsItem>("/api/v1/billing/ams-settings", {
+    method: "PUT",
+    body: JSON.stringify({ config })
+  });
 }
 
 export function updateLhrBillingSettings(config: LhrBillingConfig | null): Promise<LhrBillingSettingsItem> {

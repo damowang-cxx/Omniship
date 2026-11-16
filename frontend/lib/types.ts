@@ -36,7 +36,7 @@ export interface BillingReceiptItem {
   sizeBytes: number;
 }
 
-export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance" | "lhr_terminal_surcharge";
+export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance" | "lhr_terminal_surcharge" | "ams_weight_handling";
 
 export interface BillingEntryItem {
   feeType?: BillingFeeType | null;
@@ -127,6 +127,8 @@ export interface InvoiceItem {
 }
 
 export interface BillingTaxEstimateResponse {
+  amsWeightRateEur?: string;
+  amsWeightFeeEur?: string;
   lhrWeightRateGbp?: string;
   lhrTerminalSurchargeGbp?: string;
   lhrTerminalSurchargeDescription?: string | null;
@@ -225,6 +227,20 @@ export interface LhrBillingConfig {
 
 export interface LhrBillingSettingsItem {
   config: LhrBillingConfig | null;
+  version: number;
+}
+
+export interface AmsCustomerRate {
+  userId: string;
+  rateEurPerKg: string;
+}
+
+export interface AmsBillingConfig {
+  customerRates: AmsCustomerRate[];
+}
+
+export interface AmsBillingSettingsItem {
+  config: AmsBillingConfig | null;
   version: number;
 }
 
@@ -333,6 +349,8 @@ export interface WaybillPreAlertUploadPayload {
 }
 
 export interface WaybillPreAlertUploadResponse {
+  amsWeightRateEur?: string;
+  amsWeightFeeEur?: string;
   lhrWeightRateGbp?: string;
   lhrTerminalSurchargeGbp?: string;
   lhrTerminalSurchargeDescription?: string | null;
@@ -423,6 +441,7 @@ export interface WaybillUploadDeleteResponse {
 }
 
 export interface CancelledWaybillItem {
+  amsWeightFeeAmountDeleted?: string;
   lhrTerminalSurchargeAmountDeleted?: string;
   id: string;
   originalUploadId: string;

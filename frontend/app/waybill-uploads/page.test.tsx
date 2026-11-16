@@ -215,7 +215,7 @@ describe("WaybillUploadsPage", () => {
       supplierId: "supplier-id"
     });
     expect(
-      await screen.findByText("Upload saved for 784-84063276. Tax deducted: €6.00 · 申报行操作费: €4.00 · Total deducted: €10.00")
+      await screen.findByText("Upload saved for 784-84063276. Tax deducted: €6.00 · 申报行操作费: €4.00 · AMS 重量附加费: €0.00 · Total deducted: €10.00")
     ).toBeInTheDocument();
     expect(screen.getByText("Select Pre Alert")).toBeInTheDocument();
     expect(screen.queryByText("€6.00")).not.toBeInTheDocument();
@@ -242,6 +242,27 @@ describe("WaybillUploadsPage", () => {
     expect((await screen.findAllByText(/£6.25/)).length).toBeGreaterThan(0);
     expect(screen.getByText("12.5 kg × £0.50")).toBeInTheDocument();
     expect(screen.getByText("1 票 × €45.00")).toBeInTheDocument();
+  });
+
+  it("shows the AMS customer weight charge in the estimate", async () => {
+    apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
+    apiMock.estimatePreAlertTax.mockResolvedValue({
+      supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
+      supplierVersionNumber: 1, taxableAirport: true, billableUnitCount: 2,
+      unitRate: "3.00", estimatedTax: "6.00", operationRowCount: 2,
+      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "19.38",
+      amsWeightRateEur: "0.75", amsWeightFeeEur: "9.38",
+      warningCount: 0, warnings: [], currency: "EUR"
+    });
+    render(<WaybillUploadsPage />);
+    expect(await screen.findByLabelText("Target User")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Target User"), { target: { value: "user-id" } });
+    fillRequiredFields();
+    await waitFor(() => expect(apiMock.estimatePreAlertTax).toHaveBeenCalledWith(
+      expect.any(File), "supplier-id", "AMS", "12.5", undefined, "user-id"
+    ));
+    expect(await screen.findByText("12.5 kg × €0.75")).toBeInTheDocument();
+    expect(screen.getByText("€9.38")).toBeInTheDocument();
   });
 
   it("allows an unlisted LHR customer to upload without a deduction", async () => {

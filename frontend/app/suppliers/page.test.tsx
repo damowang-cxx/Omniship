@@ -8,6 +8,7 @@ const apiMock = vi.hoisted(() => ({
   createSupplier: vi.fn(),
   getBillingSettings: vi.fn(),
   getCurrentUser: vi.fn(),
+  getAmsBillingSettings: vi.fn(),
   getLhrBillingSettings: vi.fn(),
   isUnauthorizedError: vi.fn(() => false),
   listSuppliers: vi.fn(),
@@ -15,6 +16,7 @@ const apiMock = vi.hoisted(() => ({
   logout: vi.fn(),
   publishSupplierVersion: vi.fn(),
   updateBillingSettings: vi.fn(),
+  updateAmsBillingSettings: vi.fn(),
   updateLhrBillingSettings: vi.fn(),
   updateSupplier: vi.fn()
 }));
@@ -74,6 +76,8 @@ describe("SuppliersPage", () => {
     apiMock.listSuppliers.mockResolvedValue({ items: [qls] });
     apiMock.listUsers.mockResolvedValue({ items: [admin, { ...admin, id: "customer-id", username: "LHR Customer", email: "customer@example.com", role: "user" }] });
     apiMock.getLhrBillingSettings.mockResolvedValue({ config: null, version: 0 });
+    apiMock.getAmsBillingSettings.mockResolvedValue({ config: null, version: 0 });
+    apiMock.updateAmsBillingSettings.mockImplementation(async (config) => ({ config, version: 1 }));
     apiMock.updateLhrBillingSettings.mockImplementation(async (config) => ({ config, version: 1 }));
     apiMock.getBillingSettings.mockResolvedValue({
       unitTaxEur: "3.00",
@@ -115,8 +119,24 @@ describe("SuppliersPage", () => {
     expect(screen.getByDisplayValue("3.00")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Supplier" })).toHaveAttribute("href", "/suppliers");
     expect(screen.getByRole("heading", { name: "LHR 扣费配置" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "AMS 扣费配置" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建 LHR 扣费配置" })).toBeInTheDocument();
     expect(screen.getByText("LHR 专用收费")).toBeInTheDocument();
+  });
+
+  it("adds a customer quote in the separate AMS container", async () => {
+    render(<SuppliersPage />);
+    const ams = await screen.findByRole("region", { name: "AMS 扣费配置" });
+    fireEvent.click(within(ams).getByRole("button", { name: "创建 AMS 扣费配置" }));
+    fireEvent.click(within(ams).getByRole("button", { name: "添加客户" }));
+    fireEvent.change(within(ams).getByLabelText("AMS 客户"), { target: { value: "customer-id" } });
+    fireEvent.change(within(ams).getByLabelText("AMS 每公斤报价"), { target: { value: "0.75" } });
+    fireEvent.click(within(ams).getByRole("button", { name: "添加" }));
+    fireEvent.click(within(ams).getByRole("button", { name: "保存 AMS 扣费" }));
+    await waitFor(() => expect(apiMock.updateAmsBillingSettings).toHaveBeenCalledWith({
+      customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75" }]
+    }));
+    expect(apiMock.publishSupplierVersion).not.toHaveBeenCalled();
   });
 
   it("does not repeat AMS suppliers inside the global LHR container", async () => {

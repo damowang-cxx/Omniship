@@ -94,6 +94,8 @@ class BillingSettings(Base):
     )
     lhr_billing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     lhr_billing_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    ams_billing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    ams_billing_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -474,6 +476,7 @@ class CancelledWaybill(Base):
     )
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     operation_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
+    ams_weight_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     tax_amount_deleted: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
@@ -556,7 +559,7 @@ class BillingEntry(Base):
     __tablename__ = "billing_entries"
     __table_args__ = (
         Index("uq_upload_fee_type", "waybill_upload_id", "fee_type", unique=True),
-        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance', 'lhr_terminal_surcharge'))", name="ck_billing_fee_type"),
+        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance', 'lhr_terminal_surcharge', 'ams_weight_handling'))", name="ck_billing_fee_type"),
     )
 
     fee_type: Mapped[str | None] = mapped_column(String(40), nullable=True, default="customs_tax")
