@@ -128,12 +128,14 @@ describe("SuppliersPage", () => {
     render(<SuppliersPage />);
     const ams = await screen.findByRole("region", { name: "AMS 扣费配置" });
     fireEvent.click(within(ams).getByRole("button", { name: "创建 AMS 扣费配置" }));
+    fireEvent.change(within(ams).getByLabelText("AMS 税金手续费 (EUR / 票)"), { target: { value: "4.25" } });
     fireEvent.click(within(ams).getByRole("button", { name: "添加客户" }));
     fireEvent.change(within(ams).getByLabelText("AMS 客户"), { target: { value: "customer-id" } });
     fireEvent.change(within(ams).getByLabelText("AMS 每公斤报价"), { target: { value: "0.75" } });
     fireEvent.click(within(ams).getByRole("button", { name: "添加" }));
     fireEvent.click(within(ams).getByRole("button", { name: "保存 AMS 扣费" }));
     await waitFor(() => expect(apiMock.updateAmsBillingSettings).toHaveBeenCalledWith({
+      taxHandlingFeeEur: "4.25",
       customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75" }]
     }));
     expect(apiMock.publishSupplierVersion).not.toHaveBeenCalled();

@@ -433,7 +433,7 @@ class WaybillService:
             ):
                 raise WaybillBillingConflictError("Cannot switch a billed waybill into or out of LHR")
             if arrival != "AMS" and any(
-                entry.entry_type == "deduction" and entry.fee_type == "ams_weight_handling"
+                entry.entry_type == "deduction" and entry.fee_type in {"ams_weight_handling", "ams_tax_handling"}
                 for entry in record.upload.billing_entries
             ):
                 raise WaybillBillingConflictError("Cannot change the arrival airport of a waybill with an AMS weight fee")

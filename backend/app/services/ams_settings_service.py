@@ -49,6 +49,7 @@ class AmsSettingsService:
                 "version": settings.ams_billing_version,
                 "enabled": config is not None,
                 "customerRateCount": len(config.customer_rates) if config is not None else 0,
+                "taxHandlingFeeEur": str(config.tax_handling_fee_eur) if config is not None else "0.00",
             },
         )
         try:

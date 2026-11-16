@@ -13,6 +13,7 @@ LHR_WEIGHT_FEE_TYPE = "lhr_weight_handling"
 LHR_CLEARANCE_FEE_TYPE = "lhr_clearance"
 LHR_TERMINAL_SURCHARGE_FEE_TYPE = "lhr_terminal_surcharge"
 AMS_WEIGHT_FEE_TYPE = "ams_weight_handling"
+AMS_TAX_HANDLING_FEE_TYPE = "ams_tax_handling"
 
 
 def fee_name(fee_type: str | None) -> str:
@@ -22,6 +23,7 @@ def fee_name(fee_type: str | None) -> str:
         LHR_CLEARANCE_FEE_TYPE: "LHR 清关费",
         LHR_TERMINAL_SURCHARGE_FEE_TYPE: "LHR 货站附加费",
         AMS_WEIGHT_FEE_TYPE: "AMS 重量附加费",
+        AMS_TAX_HANDLING_FEE_TYPE: "AMS 税金手续费",
     }.get(fee_type, "Customs tax")
 
 

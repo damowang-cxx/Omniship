@@ -32,7 +32,7 @@ from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
 from app.services.lhr_billing import calculate_lhr_charges
-from app.services.ams_billing import calculate_ams_weight_fee
+from app.services.ams_billing import calculate_ams_tax_handling_fee, calculate_ams_weight_fee
 from app.services.billing_export_service import build_billing_workbook
 
 
@@ -294,7 +294,7 @@ class BillingService:
                 created_by_user_id=actor.id,
             )
             self.audit_logs.create(
-                "cancel_operation_fee" if deduction.fee_type == OPERATION_FEE_TYPE else "cancel_customs_tax" if deduction.fee_type == "customs_tax" else "cancel_ams_fee" if deduction.fee_type == "ams_weight_handling" else "cancel_lhr_fee",
+                "cancel_operation_fee" if deduction.fee_type == OPERATION_FEE_TYPE else "cancel_customs_tax" if deduction.fee_type == "customs_tax" else "cancel_ams_fee" if deduction.fee_type in {"ams_weight_handling", "ams_tax_handling"} else "cancel_lhr_fee",
                 actor_user_id=actor.id,
                 target_type="billing_entry",
                 target_id=str(deduction.id),
@@ -400,6 +400,8 @@ class BillingService:
         except ValueError as exc:
             raise BillingValidationError(str(exc)) from exc
         operation_fee = row_count * OPERATION_UNIT_RATE
+        ams_config = AmsBillingConfig.model_validate(settings.ams_billing) if settings.ams_billing is not None else None
+        ams_tax_handling_fee_eur = calculate_ams_tax_handling_fee(ams_config) if airport == "AMS" else Decimal("0.00")
         ams_weight_rate_eur = Decimal("0.00")
         ams_weight_fee_eur = Decimal("0.00")
         if airport == "AMS" and (target_user_id is not None or actor.role == "user"):
@@ -409,22 +411,22 @@ class BillingService:
             customer = self.users.get_by_id(customer_id)
             if customer is None or customer.status != "active":
                 raise BillingValidationError("AMS customer was not found or is inactive")
-            config = AmsBillingConfig.model_validate(settings.ams_billing) if settings.ams_billing is not None else None
-            if config is not None and any(rate.user_id == customer_id for rate in config.customer_rates):
+            if ams_config is not None and any(rate.user_id == customer_id for rate in ams_config.customer_rates):
                 try:
                     weight = Decimal((gross_weight_kg or "").strip())
                 except InvalidOperation as exc:
                     raise BillingValidationError("Air Waybill Gross Weight (KG) must be a number") from exc
                 if not weight.is_finite() or weight <= 0 or weight.as_tuple().exponent < -3 or weight >= Decimal("1000000000"):
                     raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
-                ams_weight_rate_eur, ams_weight_fee_eur = calculate_ams_weight_fee(config, customer_id, weight)
+                ams_weight_rate_eur, ams_weight_fee_eur = calculate_ams_weight_fee(ams_config, customer_id, weight)
         return BillingTaxEstimateResponse(
             operation_row_count=row_count,
             operation_unit_rate=OPERATION_UNIT_RATE,
             estimated_operation_fee=operation_fee,
-            estimated_total=estimated_tax + operation_fee + ams_weight_fee_eur,
+            estimated_total=estimated_tax + operation_fee + ams_weight_fee_eur + ams_tax_handling_fee_eur,
             ams_weight_rate_eur=ams_weight_rate_eur,
             ams_weight_fee_eur=ams_weight_fee_eur,
+            ams_tax_handling_fee_eur=ams_tax_handling_fee_eur,
             supplier_id=supplier.id,
             supplier_name=supplier.name,
             supplier_version_id=version.id,

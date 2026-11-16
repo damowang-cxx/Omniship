@@ -12,7 +12,7 @@ def test_ams_customer_weight_fee_estimate_upload_and_cancellation(client, db_ses
     admin = create_test_user(db_session, email="admin@example.com", role="admin")
     customer = create_test_user(db_session, email="customer@example.com", balance="100.00")
     login(client, email=admin.email)
-    config = {"customerRates": [{"userId": str(customer.id), "rateEurPerKg": "0.75"}]}
+    config = {"taxHandlingFeeEur": "4.25", "customerRates": [{"userId": str(customer.id), "rateEurPerKg": "0.75"}]}
     saved = client.put("/api/v1/billing/ams-settings", json={"config": config})
     assert saved.status_code == 200, saved.text
     assert saved.json()["config"] == config
@@ -30,19 +30,22 @@ def test_ams_customer_weight_fee_estimate_upload_and_cancellation(client, db_ses
     assert estimated.status_code == 200, estimated.text
     assert estimated.json()["amsWeightRateEur"] == "0.75"
     assert estimated.json()["amsWeightFeeEur"] == "9.38"
-    assert estimated.json()["estimatedTotal"] == "19.38"
+    assert estimated.json()["amsTaxHandlingFeeEur"] == "4.25"
+    assert estimated.json()["estimatedTotal"] == "23.63"
 
     uploaded = client.post("/api/v1/waybill-uploads/file", data=upload_data(), files=upload_files(content))
     assert uploaded.status_code == 201, uploaded.text
     assert uploaded.json()["amsWeightFeeEur"] == "9.38"
-    assert uploaded.json()["deductedTotal"] == "19.38"
-    assert uploaded.json()["balanceAfter"] == "80.62"
+    assert uploaded.json()["amsTaxHandlingFeeEur"] == "4.25"
+    assert uploaded.json()["deductedTotal"] == "23.63"
+    assert uploaded.json()["balanceAfter"] == "76.37"
     entries = {entry.fee_type: entry for entry in db_session.scalars(select(BillingEntry).where(BillingEntry.entry_type == "deduction")).all()}
-    assert set(entries) == {"customs_tax", "declaration_operation_fee", "ams_weight_handling"}
+    assert set(entries) == {"customs_tax", "declaration_operation_fee", "ams_weight_handling", "ams_tax_handling"}
     assert entries["ams_weight_handling"].amount == Decimal("9.38")
     assert entries["ams_weight_handling"].quantity == Decimal("12.5")
     assert entries["ams_weight_handling"].unit_rate == Decimal("0.75")
     assert entries["ams_weight_handling"].currency == "EUR"
+    assert entries["ams_tax_handling"].amount == Decimal("4.25")
     assert any(item["feeType"] == "ams_weight_handling" for item in client.get("/api/v1/billing/me/invoices/eligible").json())
 
     login(client, email=admin.email)
@@ -54,8 +57,9 @@ def test_ams_customer_weight_fee_estimate_upload_and_cancellation(client, db_ses
     assert client.patch(f"/api/v1/waybills/{tracking['publicCode']}", json={"airportOfArrival": "FRA"}).status_code == 409
     cancelled = client.post(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}/cancel", json={"reason": "test cancellation"})
     assert cancelled.status_code == 200, cancelled.text
-    assert cancelled.json()["refundedAmount"] == "19.38"
+    assert cancelled.json()["refundedAmount"] == "23.63"
     assert cancelled.json()["record"]["amsWeightFeeAmountDeleted"] == "9.38"
+    assert cancelled.json()["record"]["amsTaxHandlingAmountDeleted"] == "4.25"
     db_session.refresh(customer)
     assert customer.balance == Decimal("100.00")
 
@@ -108,3 +112,85 @@ def test_ams_fee_is_included_in_balance_check_before_upload(client, db_session):
     assert "11.25" in response.text
     assert client.get("/api/v1/waybill-uploads").json()["items"] == []
     assert db_session.scalars(select(BillingEntry)).all() == []
+
+
+def test_ams_tax_handling_fee_charges_every_customer_and_refunds_on_cancellation(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    customer = create_test_user(db_session, email="customer@example.com", balance="100.00")
+    login(client, email=admin.email)
+    config = {"taxHandlingFeeEur": "4.25", "customerRates": []}
+    saved = client.put("/api/v1/billing/ams-settings", json={"config": config})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["config"] == config
+
+    content = workbook_bytes(["P1"])
+    admin_estimate = client.post(
+        "/api/v1/billing/estimate",
+        data={"supplierId": str(QLS_SUPPLIER_ID), "airportOfArrival": "AMS"},
+        files={"preAlertFile": ("data.xlsx", content)},
+    )
+    assert admin_estimate.status_code == 200, admin_estimate.text
+    assert admin_estimate.json()["amsTaxHandlingFeeEur"] == "4.25"
+    assert admin_estimate.json()["estimatedTotal"] == "9.25"
+
+    login(client, email=customer.email)
+    estimate = client.post(
+        "/api/v1/billing/estimate",
+        data={"supplierId": str(QLS_SUPPLIER_ID), "airportOfArrival": "AMS"},
+        files={"preAlertFile": ("data.xlsx", content)},
+    )
+    assert estimate.status_code == 200, estimate.text
+    assert estimate.json()["amsWeightFeeEur"] == "0.00"
+    assert estimate.json()["amsTaxHandlingFeeEur"] == "4.25"
+    assert estimate.json()["estimatedTotal"] == "9.25"
+
+    uploaded = client.post("/api/v1/waybill-uploads/file", data=upload_data(), files=upload_files(content))
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["amsTaxHandlingFeeEur"] == "4.25"
+    assert uploaded.json()["deductedTotal"] == "9.25"
+    assert uploaded.json()["balanceAfter"] == "90.75"
+    fees = db_session.scalars(select(BillingEntry).where(BillingEntry.fee_type == "ams_tax_handling")).all()
+    assert len(fees) == 1
+    assert fees[0].amount == Decimal("4.25")
+    assert fees[0].unit_rate == Decimal("4.25")
+    assert fees[0].quantity == Decimal("1")
+    assert fees[0].currency == "EUR"
+    assert any(item["feeType"] == "ams_tax_handling" for item in client.get("/api/v1/billing/me/invoices/eligible").json())
+
+    login(client, email=admin.email)
+    approved = client.patch(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}/status", json={"status": "approved"})
+    assert approved.status_code == 200, approved.text
+    tracking = client.get("/api/v1/waybills").json()["items"][0]
+    detail = client.get(f"/api/v1/waybills/{tracking['publicCode']}").json()
+    assert next(fee for fee in detail["billingFees"] if fee["feeType"] == "ams_tax_handling")["amount"] == "4.25"
+    assert client.patch(f"/api/v1/waybills/{tracking['publicCode']}", json={"airportOfArrival": "FRA"}).status_code == 409
+    cancelled = client.post(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}/cancel", json={"reason": "test cancellation"})
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["refundedAmount"] == "9.25"
+    assert cancelled.json()["record"]["amsTaxHandlingAmountDeleted"] == "4.25"
+    db_session.refresh(customer)
+    assert customer.balance == Decimal("100.00")
+
+
+def test_ams_tax_handling_fee_skips_other_airports_and_rejects_invalid_config(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    customer = create_test_user(db_session, email="customer@example.com", balance="5.00")
+    login(client, email=admin.email)
+    assert client.put("/api/v1/billing/ams-settings", json={"config": {"taxHandlingFeeEur": "-1.00", "customerRates": []}}).status_code == 422
+    assert client.put("/api/v1/billing/ams-settings", json={"config": {"taxHandlingFeeEur": "4.25", "customerRates": []}}).status_code == 200
+    login(client, email=customer.email)
+    insufficient = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=upload_data(), files=upload_files(workbook_bytes(["P1"])),
+    )
+    assert insufficient.status_code == 402, insufficient.text
+    assert "9.25" in insufficient.text
+    assert not db_session.scalars(select(BillingEntry)).all()
+    uploaded = client.post(
+        "/api/v1/waybill-uploads/file",
+        data=upload_data(airport="FRA"), files=upload_files(workbook_bytes(["P1"])),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["amsTaxHandlingFeeEur"] == "0.00"
+    assert uploaded.json()["deductedTotal"] == "2.00"
+    assert not db_session.scalars(select(BillingEntry).where(BillingEntry.fee_type == "ams_tax_handling")).all()

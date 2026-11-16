@@ -215,7 +215,7 @@ describe("WaybillUploadsPage", () => {
       supplierId: "supplier-id"
     });
     expect(
-      await screen.findByText("Upload saved for 784-84063276. Tax deducted: €6.00 · 申报行操作费: €4.00 · AMS 重量附加费: €0.00 · Total deducted: €10.00")
+      await screen.findByText("Upload saved for 784-84063276. Tax deducted: €6.00 · 申报行操作费: €4.00 · AMS 重量附加费: €0.00 · 税金手续费: €0.00 · Total deducted: €10.00")
     ).toBeInTheDocument();
     expect(screen.getByText("Select Pre Alert")).toBeInTheDocument();
     expect(screen.queryByText("€6.00")).not.toBeInTheDocument();
@@ -250,8 +250,8 @@ describe("WaybillUploadsPage", () => {
       supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
       supplierVersionNumber: 1, taxableAirport: true, billableUnitCount: 2,
       unitRate: "3.00", estimatedTax: "6.00", operationRowCount: 2,
-      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "19.38",
-      amsWeightRateEur: "0.75", amsWeightFeeEur: "9.38",
+      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "23.63",
+      amsWeightRateEur: "0.75", amsWeightFeeEur: "9.38", amsTaxHandlingFeeEur: "4.25",
       warningCount: 0, warnings: [], currency: "EUR"
     });
     render(<WaybillUploadsPage />);
@@ -263,6 +263,8 @@ describe("WaybillUploadsPage", () => {
     ));
     expect(await screen.findByText("12.5 kg × €0.75")).toBeInTheDocument();
     expect(screen.getByText("€9.38")).toBeInTheDocument();
+    expect(screen.getByText("AMS 税金手续费")).toBeInTheDocument();
+    expect(screen.getByText("€4.25")).toBeInTheDocument();
   });
 
   it("allows an unlisted LHR customer to upload without a deduction", async () => {

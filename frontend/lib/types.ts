@@ -36,7 +36,7 @@ export interface BillingReceiptItem {
   sizeBytes: number;
 }
 
-export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance" | "lhr_terminal_surcharge" | "ams_weight_handling";
+export type BillingFeeType = "customs_tax" | "declaration_operation_fee" | "lhr_weight_handling" | "lhr_clearance" | "lhr_terminal_surcharge" | "ams_weight_handling" | "ams_tax_handling";
 
 export interface BillingEntryItem {
   feeType?: BillingFeeType | null;
@@ -127,6 +127,7 @@ export interface InvoiceItem {
 }
 
 export interface BillingTaxEstimateResponse {
+  amsTaxHandlingFeeEur?: string;
   amsWeightRateEur?: string;
   amsWeightFeeEur?: string;
   lhrWeightRateGbp?: string;
@@ -236,6 +237,7 @@ export interface AmsCustomerRate {
 }
 
 export interface AmsBillingConfig {
+  taxHandlingFeeEur: string;
   customerRates: AmsCustomerRate[];
 }
 
@@ -349,6 +351,7 @@ export interface WaybillPreAlertUploadPayload {
 }
 
 export interface WaybillPreAlertUploadResponse {
+  amsTaxHandlingFeeEur?: string;
   amsWeightRateEur?: string;
   amsWeightFeeEur?: string;
   lhrWeightRateGbp?: string;
@@ -441,6 +444,7 @@ export interface WaybillUploadDeleteResponse {
 }
 
 export interface CancelledWaybillItem {
+  amsTaxHandlingAmountDeleted?: string;
   amsWeightFeeAmountDeleted?: string;
   lhrTerminalSurchargeAmountDeleted?: string;
   id: string;

@@ -477,6 +477,7 @@ class CancelledWaybill(Base):
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     operation_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     ams_weight_fee_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
+    ams_tax_handling_amount_deleted: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0")
     tax_amount_deleted: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
@@ -559,7 +560,7 @@ class BillingEntry(Base):
     __tablename__ = "billing_entries"
     __table_args__ = (
         Index("uq_upload_fee_type", "waybill_upload_id", "fee_type", unique=True),
-        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance', 'lhr_terminal_surcharge', 'ams_weight_handling'))", name="ck_billing_fee_type"),
+        CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance', 'lhr_terminal_surcharge', 'ams_weight_handling', 'ams_tax_handling'))", name="ck_billing_fee_type"),
     )
 
     fee_type: Mapped[str | None] = mapped_column(String(40), nullable=True, default="customs_tax")

@@ -1,8 +1,12 @@
-"""Optional AMS weight charge for enrolled customers."""
+"""AMS per-waybill tax handling and optional customer weight charges."""
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from app.schemas.supplier import AmsBillingConfig
+
+
+def calculate_ams_tax_handling_fee(config: AmsBillingConfig | None) -> Decimal:
+    return config.tax_handling_fee_eur if config is not None else Decimal("0.00")
 
 
 def calculate_ams_weight_fee(

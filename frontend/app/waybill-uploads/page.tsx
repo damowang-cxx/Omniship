@@ -351,7 +351,7 @@ export default function WaybillUploadsPage() {
             ? Number(response.lhrWeightRateGbp || 0) > 0
               ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp} · 货站附加费 £${response.lhrTerminalSurchargeGbp || "0.00"}。EUR 和 GBP 已分别扣款。`
               : `Upload saved for ${response.airWaybillNumber}. 该客户未加入 LHR 扣费名单，本票未扣费。`
-            : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)}${response.airportOfArrival === "AMS" ? ` · AMS 重量附加费: ${formatEuro(response.amsWeightFeeEur || "0.00")}` : ""} · Total deducted: ${formatEuro(response.deductedTotal)}`
+            : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)}${response.airportOfArrival === "AMS" ? ` · AMS 重量附加费: ${formatEuro(response.amsWeightFeeEur || "0.00")} · 税金手续费: ${formatEuro(response.amsTaxHandlingFeeEur || "0.00")}` : ""} · Total deducted: ${formatEuro(response.deductedTotal)}`
         });
         if (isAdmin) {
           setUsers((current) => current.map((user) =>
@@ -699,7 +699,7 @@ export default function WaybillUploadsPage() {
                     <div className={styles.feeEstimateLine}><span>申报行操作费</span>
                     <strong>{formatEuro(taxEstimate.estimatedOperationFee)}</strong>
                     <small>{taxEstimate.operationRowCount} rows × {formatEuro(taxEstimate.operationUnitRate)}</small></div>
-                    {form.airportOfArrival === "AMS" && <div className={styles.feeEstimateLine}><span>AMS 重量附加费</span><strong>{formatEuro(taxEstimate.amsWeightFeeEur || "0.00")}</strong><small>{Number(taxEstimate.amsWeightRateEur || 0) > 0 ? `${form.grossWeightKg} kg × ${formatEuro(taxEstimate.amsWeightRateEur)}` : "该客户未加入 AMS 扣费名单，不额外扣费"}</small></div>}
+                    {form.airportOfArrival === "AMS" && <><div className={styles.feeEstimateLine}><span>AMS 重量附加费</span><strong>{formatEuro(taxEstimate.amsWeightFeeEur || "0.00")}</strong><small>{Number(taxEstimate.amsWeightRateEur || 0) > 0 ? `${form.grossWeightKg} kg × ${formatEuro(taxEstimate.amsWeightRateEur)}` : "该客户未加入 AMS 重量收费名单，不收重量附加费"}</small></div><div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>所有 AMS 提单 · 每票固定金额</small></div></>}
                     <div className={styles.feeEstimateTotal}><span>合计预扣 / Total estimated deduction</span>
                     <strong>{formatEuro(taxEstimate.estimatedTotal)}</strong></div>
                   </>}

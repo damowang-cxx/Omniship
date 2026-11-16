@@ -205,6 +205,7 @@ class AmsCustomerRate(BaseModel):
 
 
 class AmsBillingConfig(BaseModel):
+    tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2, alias="taxHandlingFeeEur")
     customer_rates: list[AmsCustomerRate] = Field(default_factory=list, max_length=1000, alias="customerRates")
 
     model_config = ConfigDict(populate_by_name=True)
