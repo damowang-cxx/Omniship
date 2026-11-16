@@ -118,6 +118,19 @@ describe("WaybillUploadManagementPage", () => {
     expect(screen.getAllByText("admin@example.com").length).toBeGreaterThan(0);
   });
 
+  it("requests the selected management page and page size", async () => {
+    apiMock.listWaybillUploads.mockResolvedValue({ items: [uploadItem], total: 120 });
+    render(<WaybillUploadManagementPage />);
+
+    expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
+    expect(apiMock.listWaybillUploads).toHaveBeenCalledWith({ page: 1, pageSize: 50 });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(apiMock.listWaybillUploads).toHaveBeenLastCalledWith({ page: 2, pageSize: 50 }));
+    fireEvent.change(screen.getByLabelText("Management waybills per page"), { target: { value: "100" } });
+    await waitFor(() => expect(apiMock.listWaybillUploads).toHaveBeenLastCalledWith({ page: 1, pageSize: 100 }));
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+  });
+
   it("filters uploads by user, status, and number", async () => {
     render(<WaybillUploadManagementPage />);
 
@@ -137,7 +150,9 @@ describe("WaybillUploadManagementPage", () => {
       expect(apiMock.listWaybillUploads).toHaveBeenLastCalledWith({
         userId: "user-id",
         status: "pending_review",
-        q: "78484063276"
+        q: "78484063276",
+        page: 1,
+        pageSize: 50
       });
     });
   });

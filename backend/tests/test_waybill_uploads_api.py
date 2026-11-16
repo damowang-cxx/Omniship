@@ -129,6 +129,14 @@ def test_user_uploads_pre_alert_and_admin_can_review(client, db_session):
     assert login(client, email="admin@example.com").status_code == 200
     admin_list_response = client.get("/api/v1/waybill-uploads")
     assert admin_list_response.status_code == 200
+    first_page = client.get("/api/v1/waybill-uploads?page=1&pageSize=50")
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 1
+    assert len(first_page.json()["items"]) == 1
+    second_page = client.get("/api/v1/waybill-uploads?page=2&pageSize=50")
+    assert second_page.status_code == 200
+    assert second_page.json() == {"items": [], "total": 1}
+    assert client.get("/api/v1/waybill-uploads?page=1&pageSize=75").status_code == 400
     admin_items = admin_list_response.json()["items"]
     assert admin_items[0]["airWaybillNumber"] == "784-84063276"
     assert admin_items[0]["airportOfDeparture"] == "HKG"

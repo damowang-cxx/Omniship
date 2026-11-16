@@ -38,6 +38,7 @@ from app.schemas.cancelled_waybill import (
 from app.schemas.supplier import LhrBillingConfig, SupplierVersionConfig
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.waybill_service import WaybillService, WaybillValidationError
+from app.services.downstream_sync import DownstreamService
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 
 
@@ -90,25 +91,45 @@ class WaybillUploadService:
         user_id: UUID | None = None,
         status: str | None = None,
         query: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> WaybillUploadListResponse:
         if status and status not in UPLOAD_STATUSES:
             raise WaybillUploadValidationError("Upload status is invalid")
+        if page_size is not None and page_size not in (50, 100):
+            raise WaybillUploadValidationError("Page size must be 50 or 100")
+        if page is not None and page < 1:
+            raise WaybillUploadValidationError("Page must be at least 1")
 
+        paginated = page is not None or page_size is not None
+        if paginated:
+            page = page or 1
+            page_size = page_size or 50
+            total = self.uploads.count(
+                user_id=user_id if actor.role == "admin" else actor.id,
+                status=status,
+                query=query,
+            )
         uploads = (
             self.uploads.list_all(
                 user_id=user_id,
                 status=status,
                 query=query,
+                page=page,
+                page_size=page_size,
             )
             if actor.role == "admin"
             else self.uploads.list_for_user(
                 actor.id,
                 status=status,
                 query=query,
+                page=page,
+                page_size=page_size,
             )
         )
         return WaybillUploadListResponse(
-            items=[WaybillUploadItem.model_validate(upload) for upload in uploads]
+            items=[WaybillUploadItem.model_validate(upload) for upload in uploads],
+            total=total if paginated else len(uploads),
         )
 
     def get_upload(self, *, actor: User, upload_id: UUID) -> WaybillUploadItem:
@@ -398,6 +419,8 @@ class WaybillUploadService:
             status=status,
             reviewed_by_user_id=actor.id,
         )
+        if status != "approved":
+            DownstreamService(self.db).stop_for_removed_record(upload.tracking_record)
         if status == "approved":
             waybill_service = WaybillService(self.db)
             record = waybill_service.ensure_tracking_for_upload(upload)
@@ -460,6 +483,7 @@ class WaybillUploadService:
                 "localOnly": True,
             },
         )
+        DownstreamService(self.db).stop_for_removed_record(upload.tracking_record)
         self.uploads.delete(upload)
         self.db.commit()
         self._delete_upload_storage(upload_id, file_paths)
@@ -556,6 +580,7 @@ class WaybillUploadService:
                     "previouslyReversed": any(reversals.values()),
                 },
             )
+            DownstreamService(self.db).stop_for_removed_record(upload.tracking_record)
             self.uploads.delete(upload)
             self.db.commit()
             self.db.refresh(record)

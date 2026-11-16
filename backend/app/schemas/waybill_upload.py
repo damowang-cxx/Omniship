@@ -87,6 +87,7 @@ class WaybillUploadItem(BaseModel):
 
 class WaybillUploadListResponse(BaseModel):
     items: list[WaybillUploadItem]
+    total: int = 0
 
     model_config = ConfigDict(populate_by_name=True)
 

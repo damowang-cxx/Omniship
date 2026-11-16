@@ -406,12 +406,15 @@ export interface WaybillUploadItem {
 
 export interface WaybillUploadListResponse {
   items: WaybillUploadItem[];
+  total: number;
 }
 
 export interface WaybillUploadFilters {
   userId?: string;
   status?: WaybillUploadStatus | "";
   q?: string;
+  page?: number;
+  pageSize?: 50 | 100;
 }
 
 export interface WaybillUploadDeleteResponse {
@@ -582,14 +585,51 @@ export interface WaybillItem {
   extraFees: WaybillExtraFee[];
 }
 
+export interface DownstreamBindingSummary {
+  publicCode: string;
+  awb: string;
+  providerCode: string;
+  statusLocked: boolean;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+}
+
+export interface DownstreamDetail {
+  publicCode: string;
+  providerCode: string | null;
+  statusLocked: boolean;
+  milestoneLocks: string[];
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  remoteStage: string | null;
+  remoteCompletion: string | null;
+  remoteUpdatedAt: string | null;
+  snapshot: Record<string, unknown> | null;
+  lastError: string | null;
+}
+
+export interface DownstreamIncident {
+  id: string;
+  providerCode: string;
+  awb: string;
+  kind: string;
+  detail: string;
+  openedAt: string;
+  resolvedAt: string | null;
+  read: boolean;
+}
+
 export interface WaybillListResponse {
   items: WaybillItem[];
+  total: number;
 }
 
 export interface WaybillFilters {
   userId?: string;
   status?: WaybillTrackingStatus | "";
   q?: string;
+  page?: number;
+  pageSize?: 50 | 100;
 }
 
 export interface WaybillUpdatePayload {

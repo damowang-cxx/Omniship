@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArchiveX, ClipboardList, Factory, FileText, LogOut, Package, UploadCloud, Users, WalletCards } from "lucide-react";
 import type { AppUser } from "@/lib/types";
+import type { DownstreamIncident } from "@/lib/types";
+import { listDownstreamIncidents, markDownstreamIncidentsRead } from "@/lib/api";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
 
@@ -26,6 +31,43 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const isAdmin = user.role === "admin";
+  const [incidents, setIncidents] = useState<DownstreamIncident[]>([]);
+  const refreshIncidents = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const result = await listDownstreamIncidents();
+      setIncidents(Array.isArray(result) ? result : []);
+    } catch {
+      // Local notices remain usable during a temporary API failure.
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void refreshIncidents();
+    const timer = window.setInterval(() => void refreshIncidents(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [isAdmin, refreshIncidents]);
+
+  const incidentMessages = useMemo<AppMessage[]>(() => incidents.map((incident) => ({
+    id: incident.id,
+    title: incident.resolvedAt ? `${incident.providerCode} 同步异常已恢复` : `${incident.providerCode} 同步异常`,
+    body: `提单号：${incident.awb}；时间：${new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Shanghai" }).format(new Date(incident.openedAt))}；具体错误：${incident.detail}${incident.resolvedAt ? `；恢复时间：${new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Shanghai" }).format(new Date(incident.resolvedAt))}` : ""}`,
+    createdAt: incident.openedAt,
+    tone: incident.resolvedAt ? "info" : "error",
+    read: incident.read
+  })), [incidents]);
+
+  const openInfo = useCallback(() => {
+    onInfoOpen();
+    const unreadIds = incidents.filter((item) => !item.read).map((item) => item.id);
+    if (unreadIds.length) {
+      setIncidents((current) => current.map((item) => ({ ...item, read: true })));
+      void (async () => {
+        try { await markDownstreamIncidentsRead(unreadIds); } catch { await refreshIncidents(); }
+      })();
+    }
+  }, [incidents, onInfoOpen, refreshIncidents]);
 
   return (
     <div className={styles.shell}>
@@ -35,10 +77,10 @@ export function AppShell({
           {isAdmin && (
             <InfoCenter
               isOpen={isInfoOpen}
-              messages={messages}
               onClose={onInfoClose}
-              onOpen={onInfoOpen}
-              unreadCount={unreadCount}
+              onOpen={openInfo}
+              unreadCount={unreadCount + incidents.filter((item) => !item.read).length}
+              messages={[...incidentMessages, ...messages]}
             />
           )}
           <button className={styles.logoutButton} onClick={onLogout} type="button">

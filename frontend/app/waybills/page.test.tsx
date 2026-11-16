@@ -20,6 +20,13 @@ const apiMock = vi.hoisted(() => ({
   ),
   listUsers: vi.fn(),
   listWaybills: vi.fn(),
+  listDownstreamBindings: vi.fn(),
+  listDownstreamProviders: vi.fn(),
+  getDownstreamDetail: vi.fn(),
+  assignDownstream: vi.fn(),
+  setDownstreamLocks: vi.fn(),
+  listDownstreamIncidents: vi.fn(),
+  markDownstreamIncidentsRead: vi.fn(),
   logout: vi.fn(),
   updateWaybill: vi.fn()
 }));
@@ -103,6 +110,21 @@ describe("WaybillsPage", () => {
     apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
     apiMock.listUsers.mockResolvedValue({ items: [adminUser, regularUser] });
     apiMock.listWaybills.mockResolvedValue({ items: [waybillItem] });
+    apiMock.listDownstreamBindings.mockResolvedValue([]);
+    apiMock.listDownstreamProviders.mockResolvedValue([{ code: "AJ", name: "AJ" }]);
+    apiMock.listDownstreamIncidents.mockResolvedValue([]);
+    apiMock.getDownstreamDetail.mockResolvedValue({
+      publicCode: waybillItem.publicCode, providerCode: null, statusLocked: false,
+      milestoneLocks: [], lastCheckedAt: null, lastSuccessAt: null,
+      remoteStage: null, remoteCompletion: null, remoteUpdatedAt: null,
+      snapshot: null, lastError: null
+    });
+    apiMock.assignDownstream.mockResolvedValue({
+      publicCode: waybillItem.publicCode, providerCode: "AJ", statusLocked: false,
+      milestoneLocks: [], lastCheckedAt: null, lastSuccessAt: null,
+      remoteStage: null, remoteCompletion: null, remoteUpdatedAt: null,
+      snapshot: null, lastError: null
+    });
     apiMock.updateWaybill.mockResolvedValue({
       ...waybillItem,
       status: "inbound",
@@ -117,7 +139,7 @@ describe("WaybillsPage", () => {
 
   it("renders a fresh cached list immediately without refetching waybills", async () => {
     writeAccountCache(adminUser);
-    writeWaybillCache(adminUser, {}, [waybillItem]);
+    writeWaybillCache(adminUser, { page: 1, pageSize: 50 }, [waybillItem], Date.now(), 1);
 
     render(<WaybillsPage />);
 
@@ -148,7 +170,7 @@ describe("WaybillsPage", () => {
     writeAccountCache(adminUser);
     writeWaybillCache(
       adminUser,
-      {},
+      { page: 1, pageSize: 50 },
       [waybillItem],
       Date.now() - WAYBILL_REFRESH_INTERVAL_MS - 1
     );
@@ -174,7 +196,7 @@ describe("WaybillsPage", () => {
     writeAccountCache(adminUser);
     writeWaybillCache(
       adminUser,
-      {},
+      { page: 1, pageSize: 50 },
       [waybillItem],
       Date.now() - WAYBILL_REFRESH_INTERVAL_MS - 1
     );
@@ -203,17 +225,31 @@ describe("WaybillsPage", () => {
     expect(screen.getByRole("columnheader", { name: "Pallet Count" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Cartons" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Customs" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "下游系统" })).toBeInTheDocument();
     const waybillRow = screen.getByRole("link", { name: "784-84063276" }).closest("tr");
     expect(waybillRow).not.toBeNull();
     const cells = within(waybillRow as HTMLTableRowElement).getAllByRole("cell");
-    expect(cells[7]).toHaveTextContent("5");
-    expect(cells[8]).toHaveTextContent("8");
+    expect(cells[8]).toHaveTextContent("5");
+    expect(cells[9]).toHaveTextContent("8");
     expect(screen.getByText("€15.00")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Clearance Status" })).toBeInTheDocument();
     expect(screen.getAllByText("Released").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0.00% (0)").length).toBeGreaterThan(0);
     expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
+  });
+
+  it("requests only the selected page and resets to page one when page size changes", async () => {
+    apiMock.listWaybills.mockResolvedValue({ items: [waybillItem], total: 120 });
+    render(<WaybillsPage />);
+
+    expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
+    expect(apiMock.listWaybills).toHaveBeenCalledWith({ page: 1, pageSize: 50 });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(apiMock.listWaybills).toHaveBeenLastCalledWith({ page: 2, pageSize: 50 }));
+    fireEvent.change(screen.getByLabelText("Waybills per page"), { target: { value: "100" } });
+    await waitFor(() => expect(apiMock.listWaybills).toHaveBeenLastCalledWith({ page: 1, pageSize: 100 }));
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
   });
 
   it("lets admins filter and edit waybill tracking fields", async () => {
@@ -235,7 +271,9 @@ describe("WaybillsPage", () => {
       expect(apiMock.listWaybills).toHaveBeenLastCalledWith({
         userId: "user-id",
         status: "noa_received",
-        q: "78484063276"
+        q: "78484063276",
+        page: 1,
+        pageSize: 50
       });
     });
 
@@ -289,11 +327,23 @@ describe("WaybillsPage", () => {
 
     expect((await screen.findAllByText("NOA Received")).length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Filter User")).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "下游系统" })).not.toBeInTheDocument();
+    expect(apiMock.listDownstreamBindings).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", { name: "Edit status 784-84063276" })
     ).not.toBeInTheDocument();
     expect(screen.getByText("Uploads")).toBeInTheDocument();
     expect(screen.getAllByText("Waybills").length).toBeGreaterThan(0);
+  });
+
+  it("lets an administrator assign AJ from the waybill list", async () => {
+    render(<WaybillsPage />);
+    const trigger = await screen.findByRole("button", { name: "未归属" });
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("dialog", { name: "784-84063276 下游归属" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("归属系统"), { target: { value: "AJ" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存归属" }));
+    await waitFor(() => expect(apiMock.assignDownstream).toHaveBeenCalledWith("A7K2P9QX", "AJ"));
   });
 
   it("redirects unauthenticated users to the public page", async () => {

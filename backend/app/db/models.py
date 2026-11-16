@@ -770,3 +770,70 @@ class AuditLog(Base):
     )
 
     actor: Mapped[User | None] = relationship()
+
+
+class DownstreamBinding(Base):
+    __tablename__ = "downstream_bindings"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tracking_record_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("waybill_tracking_records.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    provider_code: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    assigned_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    status_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    milestone_locks: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    remote_stage: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    remote_completion: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    first_missing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_network_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    tracking_record: Mapped[WaybillTrackingRecord] = relationship()
+
+
+class DownstreamSyncEvent(Base):
+    __tablename__ = "downstream_sync_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    binding_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    provider_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    awb: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class DownstreamIncident(Base):
+    __tablename__ = "downstream_incidents"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    binding_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    provider_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    awb: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(60), nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DownstreamIncidentRead(Base):
+    __tablename__ = "downstream_incident_reads"
+    __table_args__ = (UniqueConstraint("incident_id", "admin_user_id", name="uq_downstream_incident_read"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("downstream_incidents.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    admin_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

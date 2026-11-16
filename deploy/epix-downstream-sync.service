@@ -1,0 +1,13 @@
+[Unit]
+Description=EPIX downstream waybill sync
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=epix
+WorkingDirectory=/srv/epix
+ExecStart=/srv/epix/.venv/bin/python -m app.cli sync-downstream
+Environment=PYTHONPATH=/srv/epix/backend
+Environment=AJ_MIN_REQUEST_INTERVAL_SECONDS=0.5
+

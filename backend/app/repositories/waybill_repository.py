@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import (
@@ -76,6 +76,8 @@ class WaybillRepository:
         user_id: UUID | None = None,
         status: str | None = None,
         query: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> list[WaybillTrackingRecord]:
         statement = (
             select(WaybillTrackingRecord)
@@ -113,7 +115,31 @@ class WaybillRepository:
             WaybillTrackingRecord.created_at.desc(),
             WaybillTrackingRecord.id.desc(),
         )
+        if page is not None and page_size is not None:
+            statement = statement.offset((page - 1) * page_size).limit(page_size)
         return list(self.db.execute(statement).unique().scalars().all())
+
+    def count(
+        self,
+        *,
+        user_id: UUID | None = None,
+        status: str | None = None,
+        query: str | None = None,
+    ) -> int:
+        statement = select(func.count(WaybillTrackingRecord.id)).join(WaybillTrackingRecord.upload).where(
+            WaybillUpload.status == "approved"
+        )
+        if user_id is not None:
+            statement = statement.where(WaybillTrackingRecord.user_id == user_id)
+        if status:
+            statement = statement.where(WaybillTrackingRecord.status == status)
+        if query:
+            normalized_query = normalize_waybill_number(query)
+            statement = statement.where(
+                WaybillUpload.air_waybill_number.ilike(f"%{query.strip()}%")
+                | WaybillUpload.normalized_air_waybill_number.ilike(f"%{normalized_query}%")
+            )
+        return self.db.scalar(statement) or 0
 
     def list_extra_fee_types(self) -> list[WaybillExtraFeeType]:
         statement = select(WaybillExtraFeeType).order_by(WaybillExtraFeeType.name.asc())

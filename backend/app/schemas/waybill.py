@@ -189,6 +189,7 @@ class WaybillParcelBulkUpdateRequest(BaseModel):
 
 class WaybillListResponse(BaseModel):
     items: list[WaybillItem]
+    total: int = 0
 
     model_config = ConfigDict(populate_by_name=True)
 

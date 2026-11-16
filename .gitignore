@@ -1,5 +1,6 @@
 .env
 .env.*
+aj-credentials.env
 !.env.example
 
 __pycache__/

@@ -167,6 +167,21 @@ npm run start -- --host 0.0.0.0 --port 3000
 
 Set `AUTH_COOKIE_SECURE=true` when serving over HTTPS in production.
 
+## AJ downstream tracking sync
+
+Only administrators can assign an approved waybill to `AJ` from the Waybills list. The local tracking status remains the public status. AJ is queried by AWB; an unassigned waybill stays manual. Manual edits to an assigned waybill's status lock automatic status changes until an administrator unlocks it. The customs-clearance milestone has an independent lock.
+
+Fill the ignored file `aj-credentials.env` in the project root:
+
+```text
+AJ_API_USERNAME=your_username
+AJ_API_PASSWORD=your_password
+```
+
+Keep this file readable only by the backend service account. Test the account without changing a waybill using `cd backend` then `python -m app.cli test-aj --awb YOUR_KNOWN_AWB`. Run one sync with `python -m app.cli sync-downstream`. The worker makes at most one request per assigned waybill per five-minute interval, defaults to a minimum of 0.5 seconds between requests, and retains incidents for administrator review. `AJ_MIN_REQUEST_INTERVAL_SECONDS` adjusts the request pace after AJ confirms its limit.
+
+For Ubuntu systemd, copy `deploy/epix-downstream-sync.service` and `.timer` into `/etc/systemd/system/`. Replace `/srv/epix` and `User=epix` with the actual deployment directory and service account, ensure the backend virtual environment and root credential file are readable there, then run `systemctl daemon-reload` and `systemctl enable --now epix-downstream-sync.timer`. Check `systemctl status epix-downstream-sync.timer` and `journalctl -u epix-downstream-sync.service`. The PostgreSQL advisory lock prevents overlapping workers.
+
 ## Tests
 
 Backend:

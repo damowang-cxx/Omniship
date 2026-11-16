@@ -32,6 +32,8 @@ def list_waybill_uploads(
     user_id: UUID | None = Query(default=None, alias="userId"),
     upload_status: str | None = Query(default=None, alias="status"),
     query: str | None = Query(default=None, alias="q"),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, alias="pageSize"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> WaybillUploadListResponse:
@@ -41,6 +43,8 @@ def list_waybill_uploads(
             user_id=user_id,
             status=upload_status,
             query=query,
+            page=page,
+            page_size=page_size,
         )
     except WaybillUploadValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

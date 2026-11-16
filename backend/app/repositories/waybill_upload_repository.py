@@ -3,7 +3,7 @@ from typing import List
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import WaybillUpload, WaybillUploadFile
@@ -69,8 +69,10 @@ class WaybillUploadRepository:
         *,
         status: str | None = None,
         query: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> list[WaybillUpload]:
-        return self.list(user_id=user_id, status=status, query=query)
+        return self.list(user_id=user_id, status=status, query=query, page=page, page_size=page_size)
 
     def list_all(
         self,
@@ -78,8 +80,10 @@ class WaybillUploadRepository:
         user_id: UUID | None = None,
         status: str | None = None,
         query: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> list[WaybillUpload]:
-        return self.list(user_id=user_id, status=status, query=query)
+        return self.list(user_id=user_id, status=status, query=query, page=page, page_size=page_size)
 
     def list(
         self,
@@ -87,6 +91,8 @@ class WaybillUploadRepository:
         user_id: UUID | None = None,
         status: str | None = None,
         query: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> list[WaybillUpload]:
         statement = (
             select(WaybillUpload)
@@ -114,7 +120,29 @@ class WaybillUploadRepository:
             WaybillUpload.created_at.desc(),
             WaybillUpload.id.desc(),
         )
+        if page is not None and page_size is not None:
+            statement = statement.offset((page - 1) * page_size).limit(page_size)
         return list(self.db.execute(statement).unique().scalars().all())
+
+    def count(
+        self,
+        *,
+        user_id: UUID | None = None,
+        status: str | None = None,
+        query: str | None = None,
+    ) -> int:
+        statement = select(func.count(WaybillUpload.id))
+        if user_id is not None:
+            statement = statement.where(WaybillUpload.user_id == user_id)
+        if status:
+            statement = statement.where(WaybillUpload.status == status)
+        if query:
+            normalized_query = normalize_waybill_number(query)
+            statement = statement.where(
+                WaybillUpload.air_waybill_number.ilike(f"%{query.strip()}%")
+                | WaybillUpload.normalized_air_waybill_number.ilike(f"%{normalized_query}%")
+            )
+        return self.db.scalar(statement) or 0
 
     def create(
         self,

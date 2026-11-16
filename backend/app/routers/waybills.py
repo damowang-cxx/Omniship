@@ -50,6 +50,8 @@ def list_waybills(
     user_id: UUID | None = Query(default=None, alias="userId"),
     waybill_status: str | None = Query(default=None, alias="status"),
     query: str | None = Query(default=None, alias="q"),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, alias="pageSize"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> WaybillListResponse:
@@ -59,6 +61,8 @@ def list_waybills(
             user_id=user_id,
             status=waybill_status,
             query=query,
+            page=page,
+            page_size=page_size,
         )
     except WaybillValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

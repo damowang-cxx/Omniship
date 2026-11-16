@@ -13,11 +13,13 @@ type CacheEnvelope<T> = {
   ownerId: string;
   storedAt: number;
   data: T;
+  total?: number;
 };
 
 export type CacheSnapshot<T> = {
   data: T;
   storedAt: number;
+  total?: number;
 };
 
 function getStorage(): Storage | null {
@@ -51,13 +53,13 @@ function readEnvelope<T>(key: string): CacheEnvelope<T> | null {
   }
 }
 
-function writeEnvelope<T>(key: string, ownerId: string, data: T, storedAt = Date.now()) {
+function writeEnvelope<T>(key: string, ownerId: string, data: T, storedAt = Date.now(), total?: number) {
   const storage = getStorage();
   if (!storage) return;
   try {
     storage.setItem(
       key,
-      JSON.stringify({ version: CACHE_VERSION, ownerId, storedAt, data })
+      JSON.stringify({ version: CACHE_VERSION, ownerId, storedAt, data, total })
     );
   } catch {
     // Cache writes must never block normal API behavior.
@@ -68,7 +70,9 @@ function normalizeFilters(filters?: WaybillFilters) {
   return {
     userId: filters?.userId || "",
     status: filters?.status || "",
-    q: filters?.q?.trim().toLocaleLowerCase() || ""
+    q: filters?.q?.trim().toLocaleLowerCase() || "",
+    ...(filters?.page ? { page: filters.page } : {}),
+    ...(filters?.pageSize ? { pageSize: filters.pageSize } : {})
   };
 }
 
@@ -121,16 +125,17 @@ export function readWaybillCache(
 ): CacheSnapshot<WaybillItem[]> | null {
   const envelope = readEnvelope<WaybillItem[]>(waybillKey(user, filters));
   if (!envelope || envelope.ownerId !== user.id || !Array.isArray(envelope.data)) return null;
-  return { data: envelope.data, storedAt: envelope.storedAt };
+  return { data: envelope.data, storedAt: envelope.storedAt, total: envelope.total };
 }
 
 export function writeWaybillCache(
   user: AppUser,
   filters: WaybillFilters | undefined,
   waybills: WaybillItem[],
-  storedAt = Date.now()
+  storedAt = Date.now(),
+  total?: number
 ) {
-  writeEnvelope(waybillKey(user, filters), user.id, waybills, storedAt);
+  writeEnvelope(waybillKey(user, filters), user.id, waybills, storedAt, total);
 }
 
 export function isCacheFresh(snapshot: CacheSnapshot<unknown>, now = Date.now()) {

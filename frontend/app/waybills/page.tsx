@@ -5,10 +5,12 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { DownstreamControl } from "@/components/DownstreamControl";
 import { AppMessage } from "@/components/InfoCenter";
 import {
   getCurrentUser,
   isUnauthorizedError,
+  listDownstreamBindings,
   listUsers,
   listWaybills,
   logout,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/api";
 import type {
   AppUser,
+  DownstreamBindingSummary,
   WaybillFycoStatus,
   WaybillFilters,
   WaybillItem,
@@ -192,6 +195,9 @@ export default function WaybillsPage() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [waybills, setWaybills] = useState<WaybillItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<50 | 100>(50);
+  const [total, setTotal] = useState(0);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAccountLoading, setIsAccountLoading] = useState(true);
   const [isLoadingWaybills, setIsLoadingWaybills] = useState(false);
@@ -209,8 +215,24 @@ export default function WaybillsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const requestSequence = useRef(0);
   const activeRequestKey = useRef<string | null>(null);
+  const pagination = useRef<{ page: number; pageSize: 50 | 100 }>({ page: 1, pageSize: 50 });
 
   const isAdmin = currentUser?.role === "admin";
+  const [downstreamBindings, setDownstreamBindings] = useState<DownstreamBindingSummary[]>([]);
+  const refreshBindings = useCallback(async () => {
+    if (!isAdmin || waybills.length === 0) {
+      setDownstreamBindings([]);
+      return;
+    }
+    try {
+      setDownstreamBindings(await listDownstreamBindings(waybills.map((item) => item.publicCode)));
+    } catch {
+      // The tracking list remains usable while admin sync details are unavailable.
+    }
+  }, [isAdmin, waybills]);
+
+  useEffect(() => { void refreshBindings(); }, [refreshBindings]);
+  const bindingByCode = useMemo(() => new Map(downstreamBindings.map((item) => [item.publicCode, item])), [downstreamBindings]);
 
   const addMessage = useCallback((title: string, body: string) => {
     setMessages((current) => [
@@ -230,9 +252,13 @@ export default function WaybillsPage() {
     async (
       actor: AppUser,
       filterValues: typeof initialFilters,
-      options: { force?: boolean } = {}
+      options: { force?: boolean; page?: number; pageSize?: 50 | 100 } = {}
     ) => {
-      const requestFilters = toWaybillFilters(actor, filterValues);
+      const requestFilters: WaybillFilters = {
+        ...toWaybillFilters(actor, filterValues),
+        page: options.page ?? pagination.current.page,
+        pageSize: options.pageSize ?? pagination.current.pageSize
+      };
       const requestKey = `${actor.id}:${JSON.stringify(requestFilters)}`;
       if (activeRequestKey.current === requestKey) return;
       const sequence = ++requestSequence.current;
@@ -240,6 +266,7 @@ export default function WaybillsPage() {
 
       if (cached) {
         setWaybills(cached.data);
+        setTotal(cached.total ?? cached.data.length);
         setHasWaybillData(true);
         setLastUpdatedAt(cached.storedAt);
         setWaybillLoadError(null);
@@ -252,6 +279,7 @@ export default function WaybillsPage() {
         }
       } else {
         setWaybills([]);
+        setTotal(0);
         setHasWaybillData(false);
         setLastUpdatedAt(null);
         setWaybillLoadError(null);
@@ -260,11 +288,21 @@ export default function WaybillsPage() {
       activeRequestKey.current = requestKey;
       setIsLoadingWaybills(true);
       try {
-        const response = await listWaybills(requestFilters);
+        let response = await listWaybills(requestFilters);
         if (sequence !== requestSequence.current) return;
+        let effectiveFilters = requestFilters;
+        const lastPage = Math.max(1, Math.ceil((response.total ?? response.items.length) / (requestFilters.pageSize ?? 50)));
+        if ((requestFilters.page ?? 1) > lastPage) {
+          effectiveFilters = { ...requestFilters, page: lastPage };
+          response = await listWaybills(effectiveFilters);
+          if (sequence !== requestSequence.current) return;
+          pagination.current.page = lastPage;
+          setPage(lastPage);
+        }
         const storedAt = Date.now();
-        writeWaybillCache(actor, requestFilters, response.items, storedAt);
+        writeWaybillCache(actor, effectiveFilters, response.items, storedAt, response.total);
         setWaybills(response.items);
+        setTotal(response.total ?? response.items.length);
         setHasWaybillData(true);
         setLastUpdatedAt(storedAt);
         setWaybillLoadError(null);
@@ -332,9 +370,10 @@ export default function WaybillsPage() {
     if (cachedAccount) {
       setCurrentUser(cachedAccount.data);
       setIsAccountLoading(false);
-      const cachedWaybills = readWaybillCache(cachedAccount.data, {});
+      const cachedWaybills = readWaybillCache(cachedAccount.data, pagination.current);
       if (cachedWaybills) {
         setWaybills(cachedWaybills.data);
+        setTotal(cachedWaybills.total ?? cachedWaybills.data.length);
         setHasWaybillData(true);
         setLastUpdatedAt(cachedWaybills.storedAt);
       }
@@ -353,6 +392,7 @@ export default function WaybillsPage() {
         setIsAccountLoading(false);
         if (accountChanged) {
           setWaybills([]);
+          setTotal(0);
           setHasWaybillData(false);
           setLastUpdatedAt(null);
           setUsers([]);
@@ -390,7 +430,7 @@ export default function WaybillsPage() {
     if (!currentUser || isAccountLoading) return;
     const refreshIfStale = () => {
       if (document.visibilityState !== "visible") return;
-      const requestFilters = toWaybillFilters(currentUser, appliedFilters);
+      const requestFilters = { ...toWaybillFilters(currentUser, appliedFilters), ...pagination.current };
       const cached = readWaybillCache(currentUser, requestFilters);
       if (!cached || !isCacheFresh(cached)) {
         void loadWaybillsFor(currentUser, appliedFilters, { force: true });
@@ -412,15 +452,34 @@ export default function WaybillsPage() {
     if (!currentUser) return;
     const next = { ...filters };
     setAppliedFilters(next);
-    await loadWaybillsFor(currentUser, next);
+    pagination.current.page = 1;
+    setPage(1);
+    await loadWaybillsFor(currentUser, next, { page: 1 });
   }, [currentUser, filters, loadWaybillsFor]);
 
   const handleResetFilters = useCallback(async () => {
     if (!currentUser) return;
     setFilters(initialFilters);
     setAppliedFilters(initialFilters);
-    await loadWaybillsFor(currentUser, initialFilters);
+    pagination.current.page = 1;
+    setPage(1);
+    await loadWaybillsFor(currentUser, initialFilters, { page: 1 });
   }, [currentUser, loadWaybillsFor]);
+
+  const changePage = useCallback((nextPage: number) => {
+    if (!currentUser) return;
+    pagination.current.page = nextPage;
+    setPage(nextPage);
+    void loadWaybillsFor(currentUser, appliedFilters, { page: nextPage });
+  }, [appliedFilters, currentUser, loadWaybillsFor]);
+
+  const changePageSize = useCallback((nextPageSize: 50 | 100) => {
+    if (!currentUser) return;
+    pagination.current = { page: 1, pageSize: nextPageSize };
+    setPage(1);
+    setPageSize(nextPageSize);
+    void loadWaybillsFor(currentUser, appliedFilters, { page: 1, pageSize: nextPageSize });
+  }, [appliedFilters, currentUser, loadWaybillsFor]);
 
   const openEditDialog = useCallback((waybill: WaybillItem) => {
     setEditingWaybill(waybill);
@@ -660,6 +719,7 @@ export default function WaybillsPage() {
                   <tr>
                     <th>Number</th>
                     <th>Status</th>
+                    {isAdmin && <th>下游系统</th>}
                     <th>Airport of Departure</th>
                     <th>Airport of Arrival</th>
                     <th>Status Changed</th>
@@ -714,6 +774,12 @@ export default function WaybillsPage() {
                             </span>
                           )}
                         </td>
+                        {isAdmin && <td><DownstreamControl
+                          awb={waybill.number}
+                          binding={bindingByCode.get(waybill.publicCode)}
+                          onChanged={refreshBindings}
+                          publicCode={waybill.publicCode}
+                        /></td>}
                         <td>{waybill.airportOfDeparture || "-"}</td>
                         <td>{waybill.airportOfArrival || "-"}</td>
                         <td>{formatStatusAge(waybill.statusChangedAt)}</td>
@@ -758,6 +824,13 @@ export default function WaybillsPage() {
               No approved waybills yet
             </div>
           )}
+          <div className={styles.pagination}>
+            <span>{total ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}` : "0 waybills"}</span>
+            <label>Per page <select aria-label="Waybills per page" value={pageSize} onChange={(event) => changePageSize(Number(event.target.value) as 50 | 100)}><option value={50}>50</option><option value={100}>100</option></select></label>
+            <button disabled={isLoadingWaybills || page <= 1} onClick={() => changePage(page - 1)} type="button">Previous</button>
+            <span>Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</span>
+            <button disabled={isLoadingWaybills || page >= Math.ceil(total / pageSize)} onClick={() => changePage(page + 1)} type="button">Next</button>
+          </div>
         </section>
       </section>
 

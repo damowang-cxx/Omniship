@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArchiveX, Check, Download, Eye, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -71,6 +71,9 @@ export default function WaybillUploadManagementPage() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [uploads, setUploads] = useState<WaybillUploadItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<50 | 100>(50);
+  const [total, setTotal] = useState(0);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingUploads, setIsLoadingUploads] = useState(false);
@@ -79,6 +82,8 @@ export default function WaybillUploadManagementPage() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
+  const [appliedFilters, setAppliedFilters] = useState(initialFilters);
+  const requestSequence = useRef(0);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [messages, setMessages] = useState<AppMessage[]>([]);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
@@ -98,7 +103,7 @@ export default function WaybillUploadManagementPage() {
   }, []);
 
   const buildUploadFilters = useCallback(
-    (filterValues: typeof initialFilters = filters): WaybillUploadFilters => {
+    (filterValues: typeof initialFilters): WaybillUploadFilters => {
       const requestFilters: WaybillUploadFilters = {};
       if (filterValues.userId) {
         requestFilters.userId = filterValues.userId;
@@ -111,17 +116,34 @@ export default function WaybillUploadManagementPage() {
       }
       return requestFilters;
     },
-    [filters]
+    []
   );
 
   const refreshUploads = useCallback(async (
-    filterOverride?: typeof initialFilters
+    filterOverride: typeof initialFilters = appliedFilters,
+    requestedPage = page,
+    requestedPageSize: 50 | 100 = pageSize
   ) => {
+    const sequence = ++requestSequence.current;
     setIsLoadingUploads(true);
     try {
-      const response = await listWaybillUploads(buildUploadFilters(filterOverride));
+      const requestFilters = buildUploadFilters(filterOverride);
+      let response = await listWaybillUploads({
+        ...requestFilters, page: requestedPage, pageSize: requestedPageSize
+      });
+      if (sequence !== requestSequence.current) return;
+      const lastPage = Math.max(1, Math.ceil((response.total ?? response.items.length) / requestedPageSize));
+      if (requestedPage > lastPage) {
+        response = await listWaybillUploads({
+          ...requestFilters, page: lastPage, pageSize: requestedPageSize
+        });
+        if (sequence !== requestSequence.current) return;
+        setPage(lastPage);
+      }
       setUploads(response.items);
+      setTotal(response.total ?? response.items.length);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       if (isUnauthorizedError(error)) {
         router.replace("/");
         return;
@@ -130,9 +152,9 @@ export default function WaybillUploadManagementPage() {
       setNotice({ tone: "error", text: message });
       addMessage("Upload list failed", message);
     } finally {
-      setIsLoadingUploads(false);
+      if (sequence === requestSequence.current) setIsLoadingUploads(false);
     }
-  }, [addMessage, buildUploadFilters, router]);
+  }, [addMessage, appliedFilters, buildUploadFilters, page, pageSize, router]);
 
   useEffect(() => {
     async function bootstrap() {
@@ -145,10 +167,11 @@ export default function WaybillUploadManagementPage() {
         }
         const [usersResponse, uploadsResponse] = await Promise.all([
           listUsers(),
-          listWaybillUploads({})
+          listWaybillUploads({ page: 1, pageSize: 50 })
         ]);
         setUsers(usersResponse.items);
         setUploads(uploadsResponse.items);
+        setTotal(uploadsResponse.total ?? uploadsResponse.items.length);
       } catch (error) {
         setAuthError(
           error instanceof Error ? error.message : "Unable to load account information"
@@ -163,13 +186,36 @@ export default function WaybillUploadManagementPage() {
   }, [router]);
 
   const handleApplyFilters = useCallback(async () => {
-    await refreshUploads();
-  }, [refreshUploads]);
+    setAppliedFilters({ ...filters });
+    setPage(1);
+    setUploads([]);
+    setExpandedUploadId(null);
+    await refreshUploads(filters, 1);
+  }, [filters, refreshUploads]);
 
   const handleResetFilters = useCallback(async () => {
     setFilters(initialFilters);
-    await refreshUploads(initialFilters);
+    setAppliedFilters(initialFilters);
+    setPage(1);
+    setUploads([]);
+    setExpandedUploadId(null);
+    await refreshUploads(initialFilters, 1);
   }, [refreshUploads]);
+
+  const changePage = useCallback((nextPage: number) => {
+    setPage(nextPage);
+    setUploads([]);
+    setExpandedUploadId(null);
+    void refreshUploads(appliedFilters, nextPage);
+  }, [appliedFilters, refreshUploads]);
+
+  const changePageSize = useCallback((nextPageSize: 50 | 100) => {
+    setPage(1);
+    setPageSize(nextPageSize);
+    setUploads([]);
+    setExpandedUploadId(null);
+    void refreshUploads(appliedFilters, 1, nextPageSize);
+  }, [appliedFilters, refreshUploads]);
 
   const handleReview = useCallback(
     async (uploadId: string, status: WaybillUploadStatus) => {
@@ -525,6 +571,13 @@ export default function WaybillUploadManagementPage() {
               {isLoadingUploads ? "Loading uploads..." : "No submitted waybills yet"}
             </div>
           )}
+          <div className={styles.pagination}>
+            <span>{total ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}` : "0 waybills"}</span>
+            <label>Per page <select aria-label="Management waybills per page" value={pageSize} onChange={(event) => changePageSize(Number(event.target.value) as 50 | 100)}><option value={50}>50</option><option value={100}>100</option></select></label>
+            <button disabled={isLoadingUploads || page <= 1} onClick={() => changePage(page - 1)} type="button">Previous</button>
+            <span>Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</span>
+            <button disabled={isLoadingUploads || page >= Math.ceil(total / pageSize)} onClick={() => changePage(page + 1)} type="button">Next</button>
+          </div>
         </section>
       </section>
 

@@ -59,6 +59,14 @@ def test_approved_upload_creates_waybill_tracking_record(client, db_session):
 
     admin_list_response = client.get("/api/v1/waybills")
     assert admin_list_response.status_code == 200
+    first_page = client.get("/api/v1/waybills?page=1&pageSize=50")
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 1
+    assert len(first_page.json()["items"]) == 1
+    second_page = client.get("/api/v1/waybills?page=2&pageSize=50")
+    assert second_page.status_code == 200
+    assert second_page.json() == {"items": [], "total": 1}
+    assert client.get("/api/v1/waybills?page=1&pageSize=75").status_code == 400
     admin_items = admin_list_response.json()["items"]
     assert len(admin_items) == 1
     item = admin_items[0]
@@ -288,7 +296,7 @@ def test_invoice_snapshots_and_exports_waybill_extra_fee_totals(client, db_sessi
     assert login(client, email="owner@example.com").status_code == 200
     eligible = client.get("/api/v1/billing/me/invoices/eligible")
     assert eligible.status_code == 200
-    candidate = eligible.json()[0]
+    candidate = next(item for item in eligible.json() if item["feeType"] == "customs_tax")
     assert candidate["extraFeeTotal"] == "12.50"
     assert candidate["totalAmount"] == "15.50"
     created = client.post(

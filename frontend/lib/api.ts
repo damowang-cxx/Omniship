@@ -11,6 +11,9 @@ import type {
   LhrBillingSettingsItem,
   CancelledWaybillListResponse,
   CancelWaybillResponse,
+  DownstreamBindingSummary,
+  DownstreamDetail,
+  DownstreamIncident,
   RetroactiveBillingResponse,
   SupplierItem,
   SupplierListResponse,
@@ -543,6 +546,8 @@ export function listWaybillUploads(
   if (filters?.q?.trim()) {
     params.set("q", filters.q.trim());
   }
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.pageSize) params.set("pageSize", String(filters.pageSize));
 
   const query = params.toString();
   return requestJson<WaybillUploadListResponse>(
@@ -652,6 +657,8 @@ export function listWaybills(filters?: WaybillFilters): Promise<WaybillListRespo
   if (filters?.q?.trim()) {
     params.set("q", filters.q.trim());
   }
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.pageSize) params.set("pageSize", String(filters.pageSize));
 
   const query = params.toString();
   return requestJson<WaybillListResponse>(
@@ -779,6 +786,47 @@ export function getWaybillPodFileDownloadUrl(
 
 export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("401");
+}
+
+export function listDownstreamBindings(publicCodes?: string[]): Promise<DownstreamBindingSummary[]> {
+  const query = publicCodes?.length ? `?publicCodes=${encodeURIComponent(publicCodes.join(","))}` : "";
+  return requestJson<DownstreamBindingSummary[]>(`/api/v1/admin/downstream/bindings${query}`);
+}
+
+export function listDownstreamProviders(): Promise<{ code: string; name: string }[]> {
+  return requestJson<{ code: string; name: string }[]>("/api/v1/admin/downstream/providers");
+}
+
+export function getDownstreamDetail(publicCode: string): Promise<DownstreamDetail> {
+  return requestJson<DownstreamDetail>(`/api/v1/admin/downstream/waybills/${encodeURIComponent(publicCode)}`);
+}
+
+export function assignDownstream(publicCode: string, providerCode: string | null): Promise<DownstreamDetail> {
+  return requestJson<DownstreamDetail>(`/api/v1/admin/downstream/waybills/${encodeURIComponent(publicCode)}`, {
+    method: "PUT",
+    body: JSON.stringify({ providerCode })
+  });
+}
+
+export function setDownstreamLocks(
+  publicCode: string,
+  payload: { statusLocked?: boolean; milestoneLocks?: string[] }
+): Promise<DownstreamDetail> {
+  return requestJson<DownstreamDetail>(`/api/v1/admin/downstream/waybills/${encodeURIComponent(publicCode)}/locks`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function listDownstreamIncidents(): Promise<DownstreamIncident[]> {
+  return requestJson<DownstreamIncident[]>("/api/v1/admin/downstream/incidents");
+}
+
+export function markDownstreamIncidentsRead(incidentIds: string[]): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>("/api/v1/admin/downstream/incidents/read", {
+    method: "POST",
+    body: JSON.stringify({ incidentIds })
+  });
 }
 
 export async function backfillOperationFee(publicCode: string): Promise<WaybillItem> {

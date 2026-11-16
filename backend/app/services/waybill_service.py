@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import (
     BillingEntry,
+    DownstreamBinding,
     User,
     WaybillParcel,
     WaybillPodFile,
@@ -45,6 +46,7 @@ from app.schemas.waybill import (
 from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.waybill_upload import WaybillUploadUserItem
 from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
+from app.services.downstream_sync import aware
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 
@@ -140,19 +142,35 @@ class WaybillService:
         user_id: UUID | None = None,
         status: str | None = None,
         query: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> WaybillListResponse:
         if status and status not in WAYBILL_STATUSES:
             raise WaybillValidationError("Waybill status is invalid")
+        if page_size is not None and page_size not in (50, 100):
+            raise WaybillValidationError("Page size must be 50 or 100")
+        if page is not None and page < 1:
+            raise WaybillValidationError("Page must be at least 1")
 
         scoped_user_id = user_id if actor.role == "admin" else actor.id
+        paginated = page is not None or page_size is not None
+        if paginated:
+            page = page or 1
+            page_size = page_size or 50
+            total = self.waybills.count(user_id=scoped_user_id, status=status, query=query)
         records = self.waybills.list(
             user_id=scoped_user_id,
             status=status,
             query=query,
+            page=page,
+            page_size=page_size,
         )
         entry_ids = [entry.id for record in records for entry in record.upload.billing_entries]
         reversed_ids = self._reversed_fee_ids(entry_ids)
-        return WaybillListResponse(items=[self._build_item(record, actor=actor, reversed_ids=reversed_ids) for record in records])
+        return WaybillListResponse(
+            items=[self._build_item(record, actor=actor, reversed_ids=reversed_ids) for record in records],
+            total=total if paginated else len(records),
+        )
 
     def get_waybill(self, actor: User, *, public_code: str) -> WaybillItem:
         record = self._get_visible_record(actor, public_code=public_code)
@@ -382,6 +400,20 @@ class WaybillService:
         status_changed = payload.status is not None and payload.status != record.status
         if status_changed:
             record.status_changed_at = datetime.now(timezone.utc)
+
+        binding = self.db.scalar(select(DownstreamBinding).where(
+            DownstreamBinding.tracking_record_id == record.id
+        ))
+        if binding is not None:
+            if status_changed:
+                binding.status_locked = True
+            locks = set(binding.milestone_locks)
+            for payload_field, model_field in MILESTONE_PAYLOAD_TO_MODEL.items():
+                if (model_field == "customs_clearance_at"
+                        and payload_field in payload.model_fields_set
+                        and aware(getattr(payload, payload_field)) != aware(getattr(record, model_field))):
+                    locks.add(model_field)
+            binding.milestone_locks = sorted(locks)
 
         airport_fields_changed = []
         if "airportOfDeparture" in payload.model_fields_set:
