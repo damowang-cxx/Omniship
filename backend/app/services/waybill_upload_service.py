@@ -236,10 +236,10 @@ class WaybillUploadService:
         lhr_surcharge_gbp = lhr_charges.surcharge_gbp if lhr_charges else Decimal("0.00")
         lhr_total_gbp = lhr_weight_fee_gbp + lhr_surcharge_gbp
         ams_config = AmsBillingConfig.model_validate(settings.ams_billing) if settings.ams_billing is not None else None
-        ams_weight_rate_eur, ams_weight_fee_eur = calculate_ams_weight_fee(
+        ams_weight_rate_eur, ams_weight_fee_eur, ams_weight_fee_description = calculate_ams_weight_fee(
             ams_config,
             target_user.id, gross_weight,
-        ) if airport_of_arrival == "AMS" else (Decimal("0.00"), Decimal("0.00"))
+        ) if airport_of_arrival == "AMS" else (Decimal("0.00"), Decimal("0.00"), None)
         ams_tax_handling_fee_eur = calculate_ams_tax_handling_fee(ams_config) if airport_of_arrival == "AMS" else Decimal("0.00")
         deducted_total = deducted_tax + deducted_operation_fee + lhr_clearance_eur + ams_weight_fee_eur + ams_tax_handling_fee_eur
 
@@ -326,7 +326,8 @@ class WaybillUploadService:
                     supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
                     arrival_airport=airport_of_arrival, billable_unit_count=None,
                     unit_rate=ams_weight_rate_eur, quantity=gross_weight,
-                    fee_type=AMS_WEIGHT_FEE_TYPE, created_by_user_id=actor.id,
+                    fee_type=AMS_WEIGHT_FEE_TYPE, fee_description=ams_weight_fee_description,
+                    created_by_user_id=actor.id,
                 )
 
             if ams_tax_handling_fee_eur > 0:

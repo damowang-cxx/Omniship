@@ -143,6 +143,27 @@ describe("WaybillDetailPage", () => {
     expect(apiMock.listWaybillParcels).toHaveBeenCalledWith("A7K2P9QX");
   });
 
+  it("shows the recorded AMS fee description alongside the weight calculation", async () => {
+    apiMock.getWaybill.mockResolvedValueOnce({
+      ...waybillItem,
+      airportOfArrival: "AMS",
+      billingFees: [{
+        feeType: "ams_weight_handling",
+        feeName: "AMS 重量附加费",
+        feeDescription: "到港处理及分拣",
+        status: "paid",
+        amount: "9.38",
+        quantity: "12.5",
+        unitRate: "0.75",
+        currency: "EUR"
+      }]
+    });
+    render(<WaybillDetailPage />);
+
+    expect(await screen.findByText("到港处理及分拣")).toBeInTheDocument();
+    expect(screen.getByText("12.5 kg × €0.75")).toBeInTheDocument();
+  });
+
   it("shows that an LHR waybill with no fee entries was not charged", async () => {
     apiMock.getWaybill.mockResolvedValueOnce({ ...waybillItem, airportOfArrival: "LHR", billingFees: [] });
 

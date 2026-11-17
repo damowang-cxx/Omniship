@@ -124,19 +124,30 @@ describe("SuppliersPage", () => {
     expect(screen.getByText("LHR 专用收费")).toBeInTheDocument();
   });
 
-  it("adds a customer quote in the separate AMS container", async () => {
+  it("adds and edits a customer quote with a fee description in the AMS container", async () => {
     render(<SuppliersPage />);
     const ams = await screen.findByRole("region", { name: "AMS 扣费配置" });
     fireEvent.click(within(ams).getByRole("button", { name: "创建 AMS 扣费配置" }));
     fireEvent.change(within(ams).getByLabelText("AMS 税金手续费 (EUR / 票)"), { target: { value: "4.25" } });
     fireEvent.click(within(ams).getByRole("button", { name: "添加客户" }));
     fireEvent.change(within(ams).getByLabelText("AMS 客户"), { target: { value: "customer-id" } });
+    fireEvent.change(within(ams).getByLabelText("AMS 收费明细"), { target: { value: "到港处理及分拣" } });
     fireEvent.change(within(ams).getByLabelText("AMS 每公斤报价"), { target: { value: "0.75" } });
     fireEvent.click(within(ams).getByRole("button", { name: "添加" }));
     fireEvent.click(within(ams).getByRole("button", { name: "保存 AMS 扣费" }));
     await waitFor(() => expect(apiMock.updateAmsBillingSettings).toHaveBeenCalledWith({
       taxHandlingFeeEur: "4.25",
-      customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75" }]
+      customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75", feeDescription: "到港处理及分拣" }]
+    }));
+    fireEvent.click(await within(ams).findByRole("button", { name: "管理 AMS 扣费" }));
+    const details = within(ams).getByLabelText("LHR Customer AMS 收费明细") as HTMLInputElement;
+    expect(details).toHaveValue("到港处理及分拣");
+    expect(Array.from(details.list?.options ?? [], (option) => option.value)).toEqual(["到港处理及分拣"]);
+    fireEvent.change(details, { target: { value: "到港处理" } });
+    fireEvent.click(within(ams).getByRole("button", { name: "保存 AMS 扣费" }));
+    await waitFor(() => expect(apiMock.updateAmsBillingSettings).toHaveBeenLastCalledWith({
+      taxHandlingFeeEur: "4.25",
+      customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75", feeDescription: "到港处理" }]
     }));
     expect(apiMock.publishSupplierVersion).not.toHaveBeenCalled();
   });

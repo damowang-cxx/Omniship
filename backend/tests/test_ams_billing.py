@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.db.models import BillingEntry
+from app.db.models import BillingEntry, BillingSettings
 from app.services.supplier_defaults import QLS_SUPPLIER_ID
 from tests.auth_helpers import create_test_user, login
 from tests.test_supplier_billing_flow import upload_data, upload_files, workbook_bytes
@@ -12,12 +12,15 @@ def test_ams_customer_weight_fee_estimate_upload_and_cancellation(client, db_ses
     admin = create_test_user(db_session, email="admin@example.com", role="admin")
     customer = create_test_user(db_session, email="customer@example.com", balance="100.00")
     login(client, email=admin.email)
-    config = {"taxHandlingFeeEur": "4.25", "customerRates": [{"userId": str(customer.id), "rateEurPerKg": "0.75"}]}
+    description = "到港处理及分拣"
+    rate = {"userId": str(customer.id), "rateEurPerKg": "0.75", "feeDescription": description}
+    config = {"taxHandlingFeeEur": "4.25", "customerRates": [{**rate, "feeDescription": f" {description} "}]}
+    expected_config = {**config, "customerRates": [rate], "feeDescriptionOptions": [description]}
     saved = client.put("/api/v1/billing/ams-settings", json={"config": config})
     assert saved.status_code == 200, saved.text
-    assert saved.json()["config"] == config
+    assert saved.json()["config"] == expected_config
     assert saved.json()["version"] == 1
-    assert client.get("/api/v1/billing/ams-settings").json()["config"] == config
+    assert client.get("/api/v1/billing/ams-settings").json()["config"] == expected_config
 
     login(client, email=customer.email)
     assert client.get("/api/v1/billing/ams-settings").status_code == 403
@@ -45,15 +48,23 @@ def test_ams_customer_weight_fee_estimate_upload_and_cancellation(client, db_ses
     assert entries["ams_weight_handling"].quantity == Decimal("12.5")
     assert entries["ams_weight_handling"].unit_rate == Decimal("0.75")
     assert entries["ams_weight_handling"].currency == "EUR"
+    assert entries["ams_weight_handling"].fee_description == description
     assert entries["ams_tax_handling"].amount == Decimal("4.25")
-    assert any(item["feeType"] == "ams_weight_handling" for item in client.get("/api/v1/billing/me/invoices/eligible").json())
+    deductions = client.get("/api/v1/billing/me").json()["deductions"]
+    assert next(entry for entry in deductions if entry["feeType"] == "ams_weight_handling")["feeDescription"] == description
+    eligible = client.get("/api/v1/billing/me/invoices/eligible").json()
+    assert next(item for item in eligible if item["feeType"] == "ams_weight_handling")["feeName"] == description
 
     login(client, email=admin.email)
+    updated_config = {**expected_config, "customerRates": [{**rate, "feeDescription": "新收费明细"}]}
+    assert client.put("/api/v1/billing/ams-settings", json={"config": updated_config}).status_code == 200
     approved = client.patch(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}/status", json={"status": "approved"})
     assert approved.status_code == 200, approved.text
     tracking = client.get("/api/v1/waybills").json()["items"][0]
     detail = client.get(f"/api/v1/waybills/{tracking['publicCode']}").json()
-    assert next(fee for fee in detail["billingFees"] if fee["feeType"] == "ams_weight_handling")["amount"] == "9.38"
+    fee = next(fee for fee in detail["billingFees"] if fee["feeType"] == "ams_weight_handling")
+    assert fee["amount"] == "9.38"
+    assert fee["feeDescription"] == description
     assert client.patch(f"/api/v1/waybills/{tracking['publicCode']}", json={"airportOfArrival": "FRA"}).status_code == 409
     cancelled = client.post(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}/cancel", json={"reason": "test cancellation"})
     assert cancelled.status_code == 200, cancelled.text
@@ -62,6 +73,30 @@ def test_ams_customer_weight_fee_estimate_upload_and_cancellation(client, db_ses
     assert cancelled.json()["record"]["amsTaxHandlingAmountDeleted"] == "4.25"
     db_session.refresh(customer)
     assert customer.balance == Decimal("100.00")
+
+
+def test_ams_description_can_be_reused_after_removing_a_quote(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    customer = create_test_user(db_session, email="customer@example.com")
+    rate = {"userId": str(customer.id), "rateEurPerKg": "0.50"}
+    settings = db_session.get(BillingSettings, 1)
+    settings.ams_billing = {"customerRates": [rate]}
+    db_session.commit()
+
+    login(client, email=admin.email)
+    config = client.get("/api/v1/billing/ams-settings").json()["config"]
+    assert config["customerRates"] == [{**rate, "feeDescription": None}]
+    assert config["feeDescriptionOptions"] == []
+
+    description = "操作费"
+    config["customerRates"][0]["feeDescription"] = description
+    saved = client.put("/api/v1/billing/ams-settings", json={"config": config})
+    assert saved.status_code == 200, saved.text
+    config = saved.json()["config"]
+    config["customerRates"] = []
+    saved = client.put("/api/v1/billing/ams-settings", json={"config": config})
+    assert saved.status_code == 200, saved.text
+    assert client.get("/api/v1/billing/ams-settings").json()["config"]["feeDescriptionOptions"] == [description]
 
 
 def test_ams_fee_skips_unlisted_customers_and_other_airports(client, db_session):
@@ -94,6 +129,8 @@ def test_ams_settings_reject_duplicate_customers_and_invalid_price(client, db_se
     rate = {"userId": str(customer.id), "rateEurPerKg": "0.50"}
     assert client.put("/api/v1/billing/ams-settings", json={"config": {"customerRates": [rate, rate]}}).status_code == 422
     assert client.put("/api/v1/billing/ams-settings", json={"config": {"customerRates": [{**rate, "rateEurPerKg": "0"}]}}).status_code == 422
+    too_long = {**rate, "feeDescription": "明" * 121}
+    assert client.put("/api/v1/billing/ams-settings", json={"config": {"customerRates": [too_long]}}).status_code == 422
 
 
 def test_ams_fee_is_included_in_balance_check_before_upload(client, db_session):
@@ -121,7 +158,7 @@ def test_ams_tax_handling_fee_charges_every_customer_and_refunds_on_cancellation
     config = {"taxHandlingFeeEur": "4.25", "customerRates": []}
     saved = client.put("/api/v1/billing/ams-settings", json={"config": config})
     assert saved.status_code == 200, saved.text
-    assert saved.json()["config"] == config
+    assert saved.json()["config"] == {**config, "feeDescriptionOptions": []}
 
     content = workbook_bytes(["P1"])
     admin_estimate = client.post(

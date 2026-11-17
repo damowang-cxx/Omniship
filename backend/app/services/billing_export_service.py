@@ -150,7 +150,7 @@ def build_billing_workbook(account: BillingAccountResponse) -> bytes:
         row = [
             _excel_datetime(entry.created_at),
             _safe_text(entry.waybill_number),
-            _entry_label(entry),
+            _safe_text(_entry_label(entry)),
             _entry_status(entry),
             _safe_text(entry.supplier_name) or "-",
             entry.supplier_version_number,

@@ -418,7 +418,7 @@ class BillingService:
                     raise BillingValidationError("Air Waybill Gross Weight (KG) must be a number") from exc
                 if not weight.is_finite() or weight <= 0 or weight.as_tuple().exponent < -3 or weight >= Decimal("1000000000"):
                     raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
-                ams_weight_rate_eur, ams_weight_fee_eur = calculate_ams_weight_fee(ams_config, customer_id, weight)
+                ams_weight_rate_eur, ams_weight_fee_eur, _ = calculate_ams_weight_fee(ams_config, customer_id, weight)
         return BillingTaxEstimateResponse(
             operation_row_count=row_count,
             operation_unit_rate=OPERATION_UNIT_RATE,

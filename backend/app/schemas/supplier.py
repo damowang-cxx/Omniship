@@ -1,10 +1,10 @@
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 
 SemanticField = Literal[
@@ -197,24 +197,38 @@ class LhrBillingSettingsUpdateRequest(BaseModel):
     config: LhrBillingConfig | None = None
 
 
+AmsFeeDescription = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+
+
 class AmsCustomerRate(BaseModel):
     user_id: UUID = Field(alias="userId")
     rate_eur_per_kg: Decimal = Field(gt=0, max_digits=10, decimal_places=2, alias="rateEurPerKg")
+    fee_description: AmsFeeDescription | None = Field(default=None, alias="feeDescription")
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("fee_description", mode="before")
+    @classmethod
+    def normalize_fee_description(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 class AmsBillingConfig(BaseModel):
     tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2, alias="taxHandlingFeeEur")
     customer_rates: list[AmsCustomerRate] = Field(default_factory=list, max_length=1000, alias="customerRates")
+    fee_description_options: list[AmsFeeDescription] = Field(
+        default_factory=list, alias="feeDescriptionOptions"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
     @model_validator(mode="after")
-    def validate_unique_customers(self):
+    def normalize_customer_rates(self):
         user_ids = [rate.user_id for rate in self.customer_rates]
         if len(user_ids) != len(set(user_ids)):
             raise ValueError("Each customer may have only one AMS price")
+        descriptions = [rate.fee_description for rate in self.customer_rates if rate.fee_description]
+        self.fee_description_options = list(dict.fromkeys(self.fee_description_options + descriptions))
         return self
 
 

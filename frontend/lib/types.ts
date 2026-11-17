@@ -234,11 +234,13 @@ export interface LhrBillingSettingsItem {
 export interface AmsCustomerRate {
   userId: string;
   rateEurPerKg: string;
+  feeDescription?: string | null;
 }
 
 export interface AmsBillingConfig {
   taxHandlingFeeEur: string;
   customerRates: AmsCustomerRate[];
+  feeDescriptionOptions?: string[];
 }
 
 export interface AmsBillingSettingsItem {

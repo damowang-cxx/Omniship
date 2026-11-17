@@ -36,6 +36,7 @@ import type {
   AppUser,
   AmsBillingConfig,
   AmsBillingSettingsItem,
+  AmsCustomerRate,
   LhrBillingConfig,
   LhrBillingSettingsItem,
   LhrSurchargeRule,
@@ -46,6 +47,10 @@ import type {
   RetroactiveBillingResponse
 } from "@/lib/types";
 import styles from "./page.module.css";
+
+const AMS_FEE_DESCRIPTION_OPTIONS_ID = "ams-fee-description-options";
+const AMS_FEE_DESCRIPTION_MAX_LENGTH = 120;
+const EMPTY_AMS_RATE_DRAFT = { userId: "", feeDescription: "", rate: "" };
 
 function newRule(index: number): SupplierFieldRule {
   return {
@@ -178,7 +183,7 @@ export default function SuppliersPage() {
   const [amsEditing, setAmsEditing] = useState(false);
   const [amsSettings, setAmsSettings] = useState<AmsBillingSettingsItem | null>(null);
   const [amsDraft, setAmsDraft] = useState<AmsBillingConfig>({ taxHandlingFeeEur: "0.00", customerRates: [] });
-  const [amsRateDraft, setAmsRateDraft] = useState({ userId: "", rate: "" });
+  const [amsRateDraft, setAmsRateDraft] = useState(EMPTY_AMS_RATE_DRAFT);
   const [amsAdding, setAmsAdding] = useState(false);
   const [amsError, setAmsError] = useState<string | null>(null);
   const [isAmsSaving, setIsAmsSaving] = useState(false);
@@ -261,7 +266,7 @@ export default function SuppliersPage() {
     setLhrEditing(false);
     setAmsEditing(true);
     setAmsDraft(amsSettings?.config ? JSON.parse(JSON.stringify(amsSettings.config)) as AmsBillingConfig : { taxHandlingFeeEur: "0.00", customerRates: [] });
-    setAmsRateDraft({ userId: "", rate: "" });
+    setAmsRateDraft(EMPTY_AMS_RATE_DRAFT);
     setAmsAdding(false);
     setAmsError(null);
   };
@@ -281,16 +286,27 @@ export default function SuppliersPage() {
     }
     setAmsDraft((current) => ({
       ...current,
-      customerRates: [...current.customerRates, { userId: amsRateDraft.userId, rateEurPerKg: amsRateDraft.rate }]
+      customerRates: [...current.customerRates, {
+        userId: amsRateDraft.userId,
+        feeDescription: amsRateDraft.feeDescription.trim() || null,
+        rateEurPerKg: amsRateDraft.rate
+      }]
     }));
-    setAmsRateDraft({ userId: "", rate: "" });
+    setAmsRateDraft(EMPTY_AMS_RATE_DRAFT);
     setAmsAdding(false);
     setAmsError(null);
   };
 
+  const updateAmsRate = (userId: string, updates: Partial<Omit<AmsCustomerRate, "userId">>) => {
+    setAmsDraft((current) => ({
+      ...current,
+      customerRates: current.customerRates.map((rate) => rate.userId === userId ? { ...rate, ...updates } : rate)
+    }));
+  };
+
   const handleSaveAms = async (event: FormEvent) => {
     event.preventDefault();
-    if (amsAdding && (amsRateDraft.userId || amsRateDraft.rate)) {
+    if (amsAdding && (amsRateDraft.userId || amsRateDraft.feeDescription.trim() || amsRateDraft.rate)) {
       setAmsError("请先点击“添加”，将客户报价加入列表");
       return;
     }
@@ -463,6 +479,10 @@ export default function SuppliersPage() {
   };
 
   const activeCount = useMemo(() => suppliers.filter((supplier) => supplier.status === "active").length, [suppliers]);
+  const amsFeeDescriptions = new Set([
+    ...(amsDraft.feeDescriptionOptions ?? []),
+    ...amsDraft.customerRates.map((rate) => rate.feeDescription?.trim() ?? "").filter(Boolean)
+  ]);
 
   if (isLoading || !user) {
     return <main className={styles.loadingPage}>Loading supplier configuration...</main>;
@@ -525,11 +545,50 @@ export default function SuppliersPage() {
             <section className={styles.editorSection} aria-label="AMS billing configuration">
               <div className={styles.sectionTitle}><span>NL</span><div><strong>按客户设置每公斤报价</strong><small>只对目的港 AMS、已加入名单的客户，按照提单总重量从 EUR 余额扣费</small></div></div>
               <div className={styles.amsRateHeader}><strong>客户报价</strong><button className={styles.addRule} onClick={() => { setAmsAdding(true); setAmsError(null); }} type="button"><Plus size={15} />添加客户</button></div>
+              <datalist id={AMS_FEE_DESCRIPTION_OPTIONS_ID}>
+                {Array.from(amsFeeDescriptions, (description) => <option key={description} value={description} />)}
+              </datalist>
               {amsDraft.customerRates.length ? <div className={styles.customerRateList}>{amsDraft.customerRates.map((rate) => {
                 const customer = customers.find((item) => item.id === rate.userId);
-                return <div className={styles.customerRateRow} key={rate.userId}><div><strong>{customer?.username || "已删除客户"}</strong><small>{customer?.email || rate.userId}</small></div><label className={styles.amsRateField}>EUR / kg<input aria-label={`${customer?.username || rate.userId} AMS 每公斤报价`} min="0.01" onChange={(event) => setAmsDraft((current) => ({ ...current, customerRates: current.customerRates.map((item) => item.userId === rate.userId ? { ...item, rateEurPerKg: event.target.value } : item) }))} required step="0.01" type="number" value={rate.rateEurPerKg} /></label><button aria-label={`删除 ${customer?.username || rate.userId} AMS 报价`} onClick={() => setAmsDraft((current) => ({ ...current, customerRates: current.customerRates.filter((item) => item.userId !== rate.userId) }))} type="button"><X size={15} /></button></div>;
+                const customerLabel = customer?.username || rate.userId;
+                return <div className={styles.customerRateRow} key={rate.userId}>
+                  <div><strong>{customer?.username || "已删除客户"}</strong><small>{customer?.email || rate.userId}</small></div>
+                  <label className={styles.amsRateField}>
+                    收费明细
+                    <input aria-label={`${customerLabel} AMS 收费明细`} list={AMS_FEE_DESCRIPTION_OPTIONS_ID} maxLength={AMS_FEE_DESCRIPTION_MAX_LENGTH}
+                      onChange={(event) => updateAmsRate(rate.userId, { feeDescription: event.target.value })}
+                      placeholder="选择或输入明细" value={rate.feeDescription ?? ""} />
+                  </label>
+                  <label className={styles.amsRateField}>
+                    EUR / kg
+                    <input aria-label={`${customerLabel} AMS 每公斤报价`} min="0.01"
+                      onChange={(event) => updateAmsRate(rate.userId, { rateEurPerKg: event.target.value })}
+                      required step="0.01" type="number" value={rate.rateEurPerKg} />
+                  </label>
+                  <button aria-label={`删除 ${customerLabel} AMS 报价`} onClick={() => setAmsDraft((current) => ({ ...current, customerRates: current.customerRates.filter((item) => item.userId !== rate.userId) }))} type="button"><X size={15} /></button>
+                </div>;
               })}</div> : <p className={styles.lhrHint}>尚无收费客户；AMS 提单仍可上传，且不会产生 AMS 重量附加费。</p>}
-              {amsAdding && <div className={styles.amsAddForm}><label>客户<select aria-label="AMS 客户" onChange={(event) => setAmsRateDraft((current) => ({ ...current, userId: event.target.value }))} value={amsRateDraft.userId}><option value="">选择客户</option>{customers.filter((item) => item.status === "active" && item.role === "user" && !amsDraft.customerRates.some((rate) => rate.userId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.username} · {item.email}</option>)}</select></label><label>每公斤报价 (EUR)<input aria-label="AMS 每公斤报价" min="0.01" onChange={(event) => setAmsRateDraft((current) => ({ ...current, rate: event.target.value }))} placeholder="0.50" step="0.01" type="number" value={amsRateDraft.rate} /></label><button onClick={addAmsRate} type="button">添加</button><button onClick={() => { setAmsAdding(false); setAmsError(null); }} type="button">取消</button></div>}
+              {amsAdding && <div className={styles.amsAddForm}>
+                <label>
+                  客户
+                  <select aria-label="AMS 客户" onChange={(event) => setAmsRateDraft((current) => ({ ...current, userId: event.target.value }))} value={amsRateDraft.userId}>
+                    <option value="">选择客户</option>
+                    {customers.filter((item) => item.status === "active" && item.role === "user" && !amsDraft.customerRates.some((rate) => rate.userId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.username} · {item.email}</option>)}
+                  </select>
+                </label>
+                <label className={styles.amsRateField}>
+                  收费明细
+                  <input aria-label="AMS 收费明细" list={AMS_FEE_DESCRIPTION_OPTIONS_ID} maxLength={AMS_FEE_DESCRIPTION_MAX_LENGTH}
+                    onChange={(event) => setAmsRateDraft((current) => ({ ...current, feeDescription: event.target.value }))}
+                    placeholder="选择或输入明细" value={amsRateDraft.feeDescription} />
+                </label>
+                <label className={styles.amsRateField}>
+                  每公斤报价 (EUR)
+                  <input aria-label="AMS 每公斤报价" min="0.01" onChange={(event) => setAmsRateDraft((current) => ({ ...current, rate: event.target.value }))} placeholder="0.50" step="0.01" type="number" value={amsRateDraft.rate} />
+                </label>
+                <button onClick={addAmsRate} type="button">添加</button>
+                <button onClick={() => { setAmsAdding(false); setAmsError(null); }} type="button">取消</button>
+              </div>}
             </section>
             <footer className={styles.editorFooter}><span>保存后上传的 AMS 提单将按此配置预扣；未加入名单的客户仍需支付税金手续费。</span><div><button onClick={() => setAmsEditing(false)} type="button">取消</button><button disabled={isAmsSaving} type="submit"><Save size={16} />{isAmsSaving ? "正在保存..." : "保存 AMS 扣费"}</button></div></footer>
           </form>}
