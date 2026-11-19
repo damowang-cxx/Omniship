@@ -169,7 +169,11 @@ Set `AUTH_COOKIE_SECURE=true` when serving over HTTPS in production.
 
 ## AJ downstream tracking sync
 
-Only administrators can assign an approved waybill to `AJ` from the Waybills list. The local tracking status remains the public status. AJ is queried by AWB; an unassigned waybill stays manual. Manual edits to an assigned waybill's status lock automatic status changes until an administrator unlocks it. The customs-clearance milestone has an independent lock.
+Only administrators can assign an approved waybill to `AJ` from the Waybills list. AJ is queried by AWB. Status, airline record creation, airline arrival, AJ warehouse arrival, customs clearance, channel handover totals, final handover time, and POD files synchronize automatically. Each counter and milestone has an independent manual lock. Manual parcel edits lock parcel synchronization. Deleting an imported POD locks POD synchronization until an administrator unlocks it from the downstream dialog. Existing manual counters are protected by the migration.
+
+Run `python -m alembic upgrade head` from `backend` before starting the updated backend and sync worker. Pause `epix-downstream-sync.timer` while deploying the migration, then enable it again. The downstream dialog shows the last result for every field. NOA, collection, scanning time, scanned/inbound/released quantities, and individual parcel states await additional AJ API data. See [the AJ field requirements](backend/AJ_SYNC_FIELD_REQUIREMENTS.md) for the agreed meanings and upstream data request.
+
+The worker imports current vendor PODs and unassigned PODs using authenticated file downloads. File identity and version prevent duplicate downloads. Vendor updates replace superseded imported files after the database commit. Manual PODs retain their separate two-file limit. Imported files show their AJ source, vendor, version, and incomplete-document note.
 
 Fill the ignored file `aj-credentials.env` in the project root:
 
@@ -178,7 +182,7 @@ AJ_API_USERNAME=your_username
 AJ_API_PASSWORD=your_password
 ```
 
-Keep this file readable only by the backend service account. Test the account without changing a waybill using `cd backend` then `python -m app.cli test-aj --awb YOUR_KNOWN_AWB`. Run one sync with `python -m app.cli sync-downstream`. The worker makes at most one request per assigned waybill per five-minute interval, defaults to a minimum of 0.5 seconds between requests, and retains incidents for administrator review. `AJ_MIN_REQUEST_INTERVAL_SECONDS` adjusts the request pace after AJ confirms its limit.
+Keep this file readable only by the backend service account. Test the account without changing a waybill using `cd backend` then `python -m app.cli test-aj --awb YOUR_KNOWN_AWB`. Run one sync with `python -m app.cli sync-downstream`. The worker queries each assigned waybill at most once per five-minute interval, defaults to a minimum of 0.5 seconds between shipment queries, and retains incidents for administrator review. New or changed PODs require additional authenticated download requests. `AJ_MIN_REQUEST_INTERVAL_SECONDS` adjusts the shipment query pace after AJ confirms its limit.
 
 For Ubuntu systemd, copy `deploy/epix-downstream-sync.service` and `.timer` into `/etc/systemd/system/`. Replace `/srv/epix` and `User=epix` with the actual deployment directory and service account, ensure the backend virtual environment and root credential file are readable there, then run `systemctl daemon-reload` and `systemctl enable --now epix-downstream-sync.timer`. Check `systemctl status epix-downstream-sync.timer` and `journalctl -u epix-downstream-sync.service`. The PostgreSQL advisory lock prevents overlapping workers.
 

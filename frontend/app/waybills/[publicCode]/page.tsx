@@ -39,6 +39,9 @@ type MilestoneKey =
   | "noaAt"
   | "collectionAt"
   | "scannedAt"
+  | "airlineRecordCreatedAt"
+  | "airlineArrivedAt"
+  | "ajWarehouseArrivedAt"
   | "customsClearanceAt"
   | "outboundAt";
 
@@ -48,6 +51,9 @@ const milestoneFields: {
   helper: string;
   inputLabel: string;
 }[] = [
+  { key: "airlineRecordCreatedAt", label: "Airline Record Created", helper: "航司建档时间", inputLabel: "Airline Record Created Time" },
+  { key: "airlineArrivedAt", label: "Airline Arrival", helper: "航司到达时间", inputLabel: "Airline Arrival Time" },
+  { key: "ajWarehouseArrivedAt", label: "AJ Warehouse Arrival", helper: "AJ 到仓时间", inputLabel: "AJ Warehouse Arrival Time" },
   { key: "noaAt", label: "NOA", helper: "NOA时间", inputLabel: "NOA Time" },
   {
     key: "collectionAt",
@@ -66,6 +72,9 @@ const milestoneFields: {
 ];
 
 const emptyMilestoneForm: Record<MilestoneKey, string> = {
+  airlineRecordCreatedAt: "",
+  airlineArrivedAt: "",
+  ajWarehouseArrivedAt: "",
   noaAt: "",
   collectionAt: "",
   scannedAt: "",
@@ -180,6 +189,9 @@ function bulkFlagToBoolean(value: BulkFlagValue) {
 
 function buildMilestoneForm(waybill: WaybillItem): Record<MilestoneKey, string> {
   return {
+    airlineRecordCreatedAt: toDateTimeLocalValue(waybill.airlineRecordCreatedAt),
+    airlineArrivedAt: toDateTimeLocalValue(waybill.airlineArrivedAt),
+    ajWarehouseArrivedAt: toDateTimeLocalValue(waybill.ajWarehouseArrivedAt),
     noaAt: toDateTimeLocalValue(waybill.noaAt),
     collectionAt: toDateTimeLocalValue(waybill.collectionAt),
     scannedAt: toDateTimeLocalValue(waybill.scannedAt),
@@ -253,7 +265,8 @@ export default function WaybillDetailPage() {
 
   const isAdmin = currentUser?.role === "admin";
   const podFiles = waybill?.podFiles ?? [];
-  const canUploadPod = isAdmin && podFiles.length < 2;
+  const manualPodCount = podFiles.filter((file) => !file.providerCode).length;
+  const canUploadPod = isAdmin && manualPodCount < 2;
   const allParcelsSelected = parcels.length > 0 && selectedParcelIds.size === parcels.length;
   const extraFeeTotal = useMemo(
     () => Object.values(extraFeeDrafts).reduce((total, value) => total + (Number(value) || 0), 0),
@@ -353,13 +366,12 @@ export default function WaybillDetailPage() {
       setIsSavingMilestones(true);
       setNotice(null);
       try {
-        const updated = await updateWaybill(waybill.publicCode, {
-          noaAt: fromDateTimeLocalValue(milestoneForm.noaAt),
-          collectionAt: fromDateTimeLocalValue(milestoneForm.collectionAt),
-          scannedAt: fromDateTimeLocalValue(milestoneForm.scannedAt),
-          customsClearanceAt: fromDateTimeLocalValue(milestoneForm.customsClearanceAt),
-          outboundAt: fromDateTimeLocalValue(milestoneForm.outboundAt)
-        });
+        const original = buildMilestoneForm(waybill);
+        const updates: Partial<Record<MilestoneKey, string | null>> = {};
+        for (const { key } of milestoneFields) {
+          if (milestoneForm[key] !== original[key]) updates[key] = fromDateTimeLocalValue(milestoneForm[key]);
+        }
+        const updated = await updateWaybill(waybill.publicCode, updates);
         setWaybill(updated);
         setMilestoneForm(buildMilestoneForm(updated));
         setNotice({ tone: "success", text: "Waybill milestone times updated" });
@@ -438,7 +450,9 @@ export default function WaybillDetailPage() {
               }
             : current
         );
-        setNotice({ tone: "success", text: "POD file deleted" });
+        setNotice({ tone: "success", text: file.providerCode
+          ? "POD 已删除，自动同步已锁定，可在下游归属设置中解锁"
+          : "POD file deleted" });
         addMessage(
           "POD deleted",
           `${file.originalFilename} was removed from ${waybill.number}.`,
@@ -989,7 +1003,7 @@ export default function WaybillDetailPage() {
                 <p className={styles.eyebrow}>POD</p>
                 <h3>签收证明</h3>
               </div>
-              <span className={styles.podLimit}>{podFiles.length}/2 files</span>
+              <span className={styles.podLimit}>{podFiles.length} files · {manualPodCount}/2 manual</span>
             </div>
 
             {podFiles.length > 0 ? (
@@ -999,8 +1013,10 @@ export default function WaybillDetailPage() {
                     <div>
                       <strong>{file.originalFilename}</strong>
                       <span className={styles.podMeta}>
-                        {formatFileSize(file.sizeBytes)} - Uploaded{" "}
-                        {formatMilestoneTime(file.createdAt)}
+                        {formatFileSize(file.sizeBytes)} - {file.providerCode ? "AJ uploaded" : "Uploaded"}{" "}
+                        {formatMilestoneTime(file.providerUploadedAt || file.createdAt)}
+                        {file.providerCode && ` · ${file.providerCode} · ${file.providerVendorCode || "未分配渠道"} · v${file.providerDocumentVersion ?? 1}`}
+                        {file.providerNote && ` · 待补全：${file.providerNote}`}
                       </span>
                     </div>
                     <div className={styles.podActions}>

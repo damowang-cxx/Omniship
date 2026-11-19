@@ -5,6 +5,19 @@ import { assignDownstream, getDownstreamDetail, listDownstreamProviders, setDown
 import type { DownstreamBindingSummary, DownstreamDetail } from "@/lib/types";
 import styles from "./DownstreamControl.module.css";
 
+const MILESTONE_LABELS: Record<string, string> = {
+  airline_record_created_at: "航司建档时间", airline_arrived_at: "航司到达时间", aj_warehouse_arrived_at: "AJ 到仓时间",
+  noa_at: "NOA 时间", collection_at: "提货时间", scanned_at: "扫描入仓时间",
+  customs_clearance_at: "清关时间", outbound_at: "出库完成时间"
+};
+const DATA_LABELS: Record<string, string> = {
+  received_count: "扫描数量", received_total: "应收数量", in_warehouse_count: "入库数量",
+  released_count: "放行数量", outbound_count: "出库数量", parcels: "包裹状态", pod_files: "POD 附件"
+};
+const SYNC_STATE_LABELS: Record<string, string> = {
+  synced: "已同步", locked: "人工锁定", unavailable: "暂无来源数据", error: "同步异常"
+};
+
 function displayTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
@@ -55,7 +68,7 @@ export function DownstreamControl({ publicCode, awb, binding, onChanged }: {
     }
   }, [onChanged, publicCode, selected]);
 
-  const saveLocks = useCallback(async (payload: { statusLocked?: boolean; milestoneLocks?: string[] }) => {
+  const saveLocks = useCallback(async (payload: { statusLocked?: boolean; milestoneLocks?: string[]; dataLocks?: string[] }) => {
     setBusy(true);
     setError(null);
     try {
@@ -98,13 +111,40 @@ export function DownstreamControl({ publicCode, awb, binding, onChanged }: {
               <div><span>下游阶段</span><strong>{detail.remoteStage ?? "等待首次同步"}</strong></div>
               <div><span>完成度</span><strong>{detail.remoteCompletion ?? "—"}</strong></div>
               <div><span>最近查询</span><strong>{displayTime(detail.lastCheckedAt)}</strong></div>
-              <div><span>成功同步</span><strong>{displayTime(detail.lastSuccessAt)}</strong></div>
+              <div><span>最近接口成功</span><strong>{displayTime(detail.lastSuccessAt)}</strong></div>
             </div>
             {detail.lastError && <p className={styles.error}>最近错误：{detail.lastError}</p>}
             <div className={styles.locks}>
               <label><input checked={detail.statusLocked} disabled={busy} onChange={(event) => void saveLocks({ statusLocked: event.target.checked })} type="checkbox" />人工锁定提单状态</label>
-              <label><input checked={detail.milestoneLocks.includes("customs_clearance_at")} disabled={busy} onChange={(event) => void saveLocks({ milestoneLocks: event.target.checked ? ["customs_clearance_at"] : [] })} type="checkbox" />人工锁定清关时间</label>
             </div>
+            <details className={styles.fieldSettings}>
+              <summary>各字段人工锁定设置</summary>
+              <div className={styles.lockGrid}>
+                {Object.entries(MILESTONE_LABELS).map(([field, label]) => <label key={field}>
+                  <input type="checkbox" checked={detail.milestoneLocks.includes(field)} disabled={busy} onChange={(event) => {
+                    const locks = new Set(detail.milestoneLocks);
+                    if (event.target.checked) locks.add(field); else locks.delete(field);
+                    void saveLocks({ milestoneLocks: Array.from(locks) });
+                  }} />人工锁定{label}
+                </label>)}
+                {Object.entries(DATA_LABELS).map(([field, label]) => <label key={field}>
+                  <input type="checkbox" checked={detail.dataLocks?.includes(field) ?? false} disabled={busy} onChange={(event) => {
+                    const locks = new Set(detail.dataLocks ?? []);
+                    if (event.target.checked) locks.add(field); else locks.delete(field);
+                    void saveLocks({ dataLocks: Array.from(locks) });
+                  }} />人工锁定{label}
+                </label>)}
+              </div>
+            </details>
+            {detail.syncReport && Object.keys(detail.syncReport).length > 0 && <div className={styles.report}>
+              <h3>最近一轮字段同步结果</h3>
+              {Object.entries(detail.syncReport).map(([field, result]) => <div className={styles.reportRow} key={field}>
+                <strong>{MILESTONE_LABELS[field] || DATA_LABELS[field] || (field === "status" ? "提单状态" : "接口查询")}</strong>
+                <span data-state={result.state}>{SYNC_STATE_LABELS[result.state] || result.state}</span>
+                {(result.value != null || result.detail) && <p>{result.value != null ? (field in MILESTONE_LABELS ? displayTime(String(result.value)) : String(result.value)) : result.detail}</p>}
+                {result.value != null && result.detail && <p>{result.detail}</p>}
+              </div>)}
+            </div>}
             <p className={styles.hint}>AJ 清关时间：{displayTime(typeof ajMilestones?.customs_clearance_at === "string" ? ajMilestones.customs_clearance_at : null)}</p>
             {detail.snapshot && <details className={styles.raw}><summary>查看 AJ 原始记录</summary><pre>{JSON.stringify(detail.snapshot, null, 2)}</pre></details>}
           </>}

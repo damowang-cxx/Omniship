@@ -823,7 +823,7 @@ export function assignDownstream(publicCode: string, providerCode: string | null
 
 export function setDownstreamLocks(
   publicCode: string,
-  payload: { statusLocked?: boolean; milestoneLocks?: string[] }
+  payload: { statusLocked?: boolean; milestoneLocks?: string[]; dataLocks?: string[] }
 ): Promise<DownstreamDetail> {
   return requestJson<DownstreamDetail>(`/api/v1/admin/downstream/waybills/${encodeURIComponent(publicCode)}/locks`, {
     method: "PATCH",

@@ -43,6 +43,12 @@ class WaybillPodFileItem(BaseModel):
     content_type: str | None = Field(default=None, alias="contentType")
     size_bytes: int = Field(alias="sizeBytes")
     created_at: datetime = Field(alias="createdAt")
+    provider_code: str | None = Field(default=None, alias="providerCode")
+    provider_document_id: str | None = Field(default=None, alias="providerDocumentId")
+    provider_document_version: int | None = Field(default=None, alias="providerDocumentVersion")
+    provider_vendor_code: str | None = Field(default=None, alias="providerVendorCode")
+    provider_uploaded_at: datetime | None = Field(default=None, alias="providerUploadedAt")
+    provider_note: str | None = Field(default=None, alias="providerNote")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -133,6 +139,9 @@ class WaybillItem(BaseModel):
     noa_at: datetime | None = Field(default=None, alias="noaAt")
     collection_at: datetime | None = Field(default=None, alias="collectionAt")
     scanned_at: datetime | None = Field(default=None, alias="scannedAt")
+    airline_record_created_at: datetime | None = Field(default=None, alias="airlineRecordCreatedAt")
+    airline_arrived_at: datetime | None = Field(default=None, alias="airlineArrivedAt")
+    aj_warehouse_arrived_at: datetime | None = Field(default=None, alias="ajWarehouseArrivedAt")
     customs_clearance_at: datetime | None = Field(
         default=None, alias="customsClearanceAt"
     )
@@ -208,5 +217,8 @@ class WaybillUpdateRequest(BaseModel):
     noaAt: datetime | None = None
     collectionAt: datetime | None = None
     scannedAt: datetime | None = None
+    airlineRecordCreatedAt: datetime | None = None
+    airlineArrivedAt: datetime | None = None
+    ajWarehouseArrivedAt: datetime | None = None
     customsClearanceAt: datetime | None = None
     outboundAt: datetime | None = None

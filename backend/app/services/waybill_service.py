@@ -1,9 +1,7 @@
-import hashlib
 import logging
 import re
 import secrets
 import string
-import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -14,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import PROJECT_ROOT, Settings, get_settings
+from app.core.config import Settings, get_settings
 from app.db.models import (
     BillingEntry,
     DownstreamBinding,
@@ -46,7 +44,8 @@ from app.schemas.waybill import (
 from app.schemas.supplier import SupplierVersionConfig
 from app.schemas.waybill_upload import WaybillUploadUserItem
 from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
-from app.services.downstream_sync import aware
+from app.services.downstream_sync import DATA_FIELDS, aware
+from app.services.pod_files import POD_MAX_FILES, delete_pod_content, save_pod_content, validate_pod_content
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 
@@ -78,19 +77,13 @@ PARCEL_STATUSES = {
     "outbound",
 }
 PUBLIC_CODE_ALPHABET = string.ascii_uppercase + string.digits
-POD_MAX_FILES = 2
-POD_MAX_BYTES = 10 * 1024 * 1024
-POD_FILE_TYPES = {
-    ".pdf": ("PDF", "application/pdf", (b"%PDF",)),
-    ".jpg": ("JPEG", "image/jpeg", (b"\xff\xd8\xff",)),
-    ".jpeg": ("JPEG", "image/jpeg", (b"\xff\xd8\xff",)),
-    ".png": ("PNG", "image/png", (b"\x89PNG\r\n\x1a\n",)),
-}
-POD_ALLOWED_FORMATS = "PDF, JPEG, or PNG"
 MILESTONE_PAYLOAD_TO_MODEL = {
     "noaAt": "noa_at",
     "collectionAt": "collection_at",
     "scannedAt": "scanned_at",
+    "airlineRecordCreatedAt": "airline_record_created_at",
+    "airlineArrivedAt": "airline_arrived_at",
+    "ajWarehouseArrivedAt": "aj_warehouse_arrived_at",
     "customsClearanceAt": "customs_clearance_at",
     "outboundAt": "outbound_at",
 }
@@ -409,11 +402,17 @@ class WaybillService:
                 binding.status_locked = True
             locks = set(binding.milestone_locks)
             for payload_field, model_field in MILESTONE_PAYLOAD_TO_MODEL.items():
-                if (model_field == "customs_clearance_at"
-                        and payload_field in payload.model_fields_set
+                if (payload_field in payload.model_fields_set
                         and aware(getattr(payload, payload_field)) != aware(getattr(record, model_field))):
                     locks.add(model_field)
             binding.milestone_locks = sorted(locks)
+            data_locks = set(binding.data_locks)
+            for field in DATA_FIELDS - {"parcels", "pod_files"}:
+                payload_field = "".join(part.title() if index else part for index, part in enumerate(field.split("_")))
+                value = getattr(payload, payload_field, None)
+                if value is not None and value != getattr(record, field):
+                    data_locks.add(field)
+            binding.data_locks = sorted(data_locks)
 
         airport_fields_changed = []
         if "airportOfDeparture" in payload.model_fields_set:
@@ -496,7 +495,7 @@ class WaybillService:
         if actor.role != "admin":
             raise WaybillPermissionError("Admin permission required")
         record = self._get_visible_record(actor, public_code=public_code)
-        if len(record.pod_files) >= POD_MAX_FILES:
+        if sum(file.provider_code is None for file in record.pod_files) >= POD_MAX_FILES:
             raise WaybillValidationError("POD supports up to 2 files")
 
         file_payload = await self._collect_pod_file(file)
@@ -551,6 +550,10 @@ class WaybillService:
         if pod_file is None:
             raise WaybillValidationError("POD file not found")
 
+        if pod_file.provider_code:
+            binding = self.db.scalar(select(DownstreamBinding).where(DownstreamBinding.tracking_record_id == record.id))
+            if binding:
+                binding.data_locks = sorted(set(binding.data_locks) | {"pod_files"})
         storage_path = pod_file.storage_path
         self.audit_logs.create(
             "delete_waybill_pod_file",
@@ -712,6 +715,10 @@ class WaybillService:
             outbound=payload.outbound,
             special_instruction=payload.specialInstruction,
         )
+        if payload.status is not None or payload.inbound is not None or payload.outbound is not None:
+            binding = self.db.scalar(select(DownstreamBinding).where(DownstreamBinding.tracking_record_id == record.id))
+            if binding:
+                binding.data_locks = sorted(set(binding.data_locks) | {"parcels"})
         self.audit_logs.create(
             "update_waybill_parcels",
             actor_user_id=actor.id,
@@ -777,62 +784,17 @@ class WaybillService:
         if not file or not file.filename:
             raise WaybillValidationError("POD file is required")
 
-        filename = Path(file.filename).name
-        extension = Path(filename).suffix.lower()
-        file_type = POD_FILE_TYPES.get(extension)
-        if file_type is None:
-            raise WaybillValidationError(
-                f"{filename} must be a {POD_ALLOWED_FORMATS} file"
-            )
-
         content = await file.read()
-        if not content:
-            raise WaybillValidationError(f"{filename} is empty")
-        if len(content) > POD_MAX_BYTES:
-            raise WaybillValidationError(f"{filename} exceeds the size limit")
-        format_label, media_type, signatures = file_type
-        if not content.startswith(signatures):
-            raise WaybillValidationError(f"{filename} must be a valid {format_label} file")
-
-        return {
-            "original_filename": filename,
-            "content_type": media_type,
-            "content": content,
-            "size_bytes": len(content),
-            "sha256": hashlib.sha256(content).hexdigest(),
-            "extension": extension,
-        }
+        try:
+            return validate_pod_content(file.filename, content)
+        except ValueError as exc:
+            raise WaybillValidationError(str(exc)) from exc
 
     def _save_pod_file(self, record: WaybillTrackingRecord, file_payload: dict) -> dict:
-        storage_root = self._storage_root()
-        upload_dir = storage_root / str(record.upload_id) / "pod"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        storage_path = upload_dir / f"{uuid.uuid4().hex}{file_payload['extension']}"
-        storage_path.write_bytes(file_payload["content"])
-        return {
-            **file_payload,
-            "storage_path": str(storage_path),
-        }
-
-    def _storage_root(self) -> Path:
-        storage_root = self.settings.upload_storage_dir
-        if not storage_root.is_absolute():
-            storage_root = PROJECT_ROOT / storage_root
-        storage_root.mkdir(parents=True, exist_ok=True)
-        return storage_root
+        return save_pod_content(record.upload_id, file_payload, self.settings)
 
     def _delete_pod_storage_file(self, storage_path: str) -> None:
-        storage_root = self._storage_root().resolve()
-        try:
-            path = Path(storage_path).resolve()
-            if path.is_relative_to(storage_root):
-                path.unlink(missing_ok=True)
-        except Exception:
-            logger.warning(
-                "Failed to delete local POD storage file %s",
-                storage_path,
-                exc_info=True,
-            )
+        delete_pod_content(storage_path, self.settings)
 
     def _get_pre_alert_file(self, upload: WaybillUpload):
         return next(
@@ -901,6 +863,9 @@ class WaybillService:
             noaAt=record.noa_at,
             collectionAt=record.collection_at,
             scannedAt=record.scanned_at,
+            airlineRecordCreatedAt=record.airline_record_created_at,
+            airlineArrivedAt=record.airline_arrived_at,
+            ajWarehouseArrivedAt=record.aj_warehouse_arrived_at,
             customsClearanceAt=record.customs_clearance_at,
             outboundAt=record.outbound_at,
             createdAt=record.created_at,

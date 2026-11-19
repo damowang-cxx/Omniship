@@ -527,6 +527,12 @@ export interface WaybillPodFileItem {
   contentType?: string | null;
   sizeBytes: number;
   createdAt: string;
+  providerCode?: string | null;
+  providerDocumentId?: string | null;
+  providerDocumentVersion?: number | null;
+  providerVendorCode?: string | null;
+  providerUploadedAt?: string | null;
+  providerNote?: string | null;
 }
 
 export interface WaybillPodDeleteResponse {
@@ -625,6 +631,9 @@ export interface WaybillItem {
   noaAt?: string | null;
   collectionAt?: string | null;
   scannedAt?: string | null;
+  airlineRecordCreatedAt?: string | null;
+  airlineArrivedAt?: string | null;
+  ajWarehouseArrivedAt?: string | null;
   customsClearanceAt?: string | null;
   outboundAt?: string | null;
   createdAt: string;
@@ -648,6 +657,8 @@ export interface DownstreamDetail {
   providerCode: string | null;
   statusLocked: boolean;
   milestoneLocks: string[];
+  dataLocks?: string[];
+  syncReport?: Record<string, { state: string; source?: string; value?: number | string | null; detail?: string }>;
   lastCheckedAt: string | null;
   lastSuccessAt: string | null;
   remoteStage: string | null;
@@ -695,6 +706,9 @@ export interface WaybillUpdatePayload {
   noaAt?: string | null;
   collectionAt?: string | null;
   scannedAt?: string | null;
+  airlineRecordCreatedAt?: string | null;
+  airlineArrivedAt?: string | null;
+  ajWarehouseArrivedAt?: string | null;
   customsClearanceAt?: string | null;
   outboundAt?: string | null;
 }

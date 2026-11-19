@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from copy import deepcopy
+from pathlib import Path
 
 import pytest
 import httpx
@@ -7,11 +9,12 @@ from sqlalchemy import select
 
 from app.db.models import (
     DownstreamBinding, DownstreamIncident, DownstreamSyncEvent,
-    SupplierVersion, WaybillTrackingRecord, WaybillUpload,
+    SupplierVersion, WaybillPodFile, WaybillTrackingRecord, WaybillUpload,
 )
 from app.repositories.waybill_repository import WaybillRepository
 from app.schemas.waybill import WaybillUpdateRequest
-from app.services.downstream_sync import AJClient, AJ_STATUS_MAP, DownstreamService, ProviderError
+from app.services.downstream_sync import AJ_BASE_URL, AJClient, AJ_STATUS_MAP, DownstreamService, ProviderError
+from app.core.config import get_settings
 from app.services.waybill_service import WaybillService
 from tests.auth_helpers import create_test_user, login
 
@@ -236,3 +239,260 @@ def test_review_change_stops_sync_and_resolves_incident(client, db_session):
     assert response.status_code == 200
     assert binding_for(db_session, record) is None
     assert db_session.scalar(select(DownstreamIncident)).resolved_at is not None
+
+
+def completed_shipment():
+    result = shipment("HANDED_OVER")
+    result["packages"] = 12
+    result["milestones"].update({
+        "record_created_airline_at": "2026-11-15T09:00:00+00:00",
+        "status_1_at": "2026-11-15T12:00:00+00:00",
+        "pick_up_at": "2026-11-16T08:00:00+00:00",
+    })
+    result["vendors"] = [{
+        "code": "DPD", "packages": 12, "handed_over_at": "2026-11-16T11:00:00+00:00",
+        "pod_documents": [{"id": 41, "file_name": "proof.pdf", "version": 1, "is_current": True,
+                           "uploaded_at": "2026-11-16T11:30:00+00:00", "note": None,
+                           "download_url": f"{AJ_BASE_URL}/files/pod/41"}],
+    }]
+    result["orphan_pod_documents"] = []
+    return result
+
+
+class PodClient:
+    def __init__(self, result):
+        self.result = result
+        self.downloads = []
+        self.failure = None
+
+    def fetch(self, awb):
+        assert awb == AWB
+        return deepcopy(self.result)
+
+    def download_pod(self, document_id, download_url=None):
+        self.downloads.append(document_id)
+        if self.failure:
+            raise self.failure
+        return b"%PDF-1.4\nproof " + document_id.encode()
+
+
+def test_documented_times_handover_and_pods_sync_without_inventing_missing_fields(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    provider = PodClient(completed_shipment())
+    assert service.run_due(provider, NOW) == 1
+    db_session.refresh(record)
+    binding = binding_for(db_session, record)
+    assert record.status == "outbound"
+    assert record.outbound_count == 12
+    assert record.outbound_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
+    assert record.airline_record_created_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1, hours=3)
+    assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1)
+    assert record.aj_warehouse_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=4)
+    assert record.noa_at is record.collection_at is record.scanned_at is None
+    assert record.received_count == record.in_warehouse_count == 0
+    assert binding.sync_report["received_count"]["state"] == "unavailable"
+    assert binding.sync_report["parcels"]["state"] == "unavailable"
+    pod = db_session.scalars(select(WaybillPodFile)).one()
+    assert pod.provider_document_id == "41" and pod.provider_vendor_code == "DPD"
+    assert Path(pod.storage_path).read_bytes().startswith(b"%PDF")
+    assert service.run_due(provider, NOW + timedelta(minutes=5)) == 1
+    assert provider.downloads == ["41"]
+    assert len(db_session.scalars(select(WaybillPodFile)).all()) == 1
+
+
+def test_partial_handover_counts_channels_and_waits_for_all_times(db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = completed_shipment()
+    result["vendors"][0]["packages"] = 4
+    result["vendors"].append({"code": "EVRI", "packages": 8, "handed_over_at": None, "pod_documents": []})
+    service.process(binding_for(db_session, record), NOW, result)
+    assert record.outbound_count == 4
+    assert record.outbound_at is None
+    result["vendors"][1]["handed_over_at"] = "2026-11-16T11:45:00+00:00"
+    service.process(binding_for(db_session, record), NOW + timedelta(minutes=5), result)
+    assert record.outbound_count == 12
+    assert record.outbound_at.replace(tzinfo=timezone.utc) == NOW - timedelta(minutes=15)
+
+
+def test_pod_completion_does_not_infer_handover_count_and_mismatch_is_reported(db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = completed_shipment()
+    result["completion"]["code"] = "PARTIAL"
+    result["vendors"][0]["handed_over_at"] = None
+    service.process(binding_for(db_session, record), NOW, result)
+    assert record.outbound_count == 0 and record.outbound_at is None
+    result["vendors"][0]["packages"] = 13
+    service.process(binding_for(db_session, record), NOW + timedelta(minutes=5), result)
+    assert record.outbound_count == 0 and record.outbound_at is None
+    assert binding_for(db_session, record).sync_report["outbound_count"]["state"] == "error"
+
+
+def test_manual_counts_and_all_documented_times_lock_until_explicitly_unlocked(client, db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    service.process(binding_for(db_session, record), NOW, completed_shipment())
+    login(client, email=admin.email)
+    response = client.patch(f"/api/v1/waybills/{record.public_code}", json={
+        "outboundCount": 5, "airlineArrivedAt": "2026-11-15T10:00:00Z",
+    })
+    assert response.status_code == 200, response.text
+    binding = binding_for(db_session, record)
+    assert "outbound_count" in binding.data_locks
+    assert "airline_arrived_at" in binding.milestone_locks
+    service.process(binding, NOW + timedelta(minutes=5), completed_shipment())
+    assert record.outbound_count == 5
+    assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1, hours=2)
+    response = client.patch(f"/api/v1/admin/downstream/waybills/{record.public_code}/locks", json={"dataLocks": [], "milestoneLocks": []})
+    assert response.status_code == 200, response.text
+    service.process(binding, NOW + timedelta(minutes=10), completed_shipment())
+    assert record.outbound_count == 12
+    assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1)
+
+
+def test_pod_new_version_replaces_synced_file_preserves_manual_file_and_retries_errors(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    manual_path = tmp_path / "manual.pdf"
+    manual_path.write_bytes(b"%PDF manual")
+    db_session.add(WaybillPodFile(tracking_record_id=record.id, original_filename="manual.pdf",
+                                storage_path=str(manual_path), size_bytes=11, sha256="manual"))
+    db_session.commit()
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    provider = PodClient(completed_shipment())
+    provider.failure = ProviderError("pod_download", "POD temporary error")
+    service.run_due(provider, NOW)
+    assert binding_for(db_session, record).sync_report["pod_files"]["state"] == "error"
+    provider.failure = None
+    service.run_due(provider, NOW + timedelta(minutes=5))
+    old_file = db_session.scalar(select(WaybillPodFile).where(WaybillPodFile.provider_document_id == "41"))
+    old_path = Path(old_file.storage_path)
+    document = provider.result["vendors"][0]["pod_documents"][0]
+    document.update({"id": 42, "version": 2, "file_name": "new-proof.pdf",
+                     "download_url": f"{AJ_BASE_URL}/files/pod/42", "note": "Signature incomplete"})
+    service.run_due(provider, NOW + timedelta(minutes=10))
+    files = db_session.scalars(select(WaybillPodFile)).all()
+    assert len(files) == 2 and manual_path.is_file()
+    assert not old_path.exists()
+    assert next(file for file in files if file.provider_document_id == "42").provider_note == "Signature incomplete"
+    service.run_due(provider, NOW + timedelta(minutes=15))
+    assert provider.downloads == ["41", "41", "42"]
+
+
+def test_manually_deleted_synced_pod_stays_locked_until_unlocked(client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    provider = PodClient(completed_shipment())
+    service.run_due(provider, NOW)
+    file = db_session.scalars(select(WaybillPodFile)).one()
+    login(client, email=admin.email)
+    result = client.delete(f"/api/v1/waybills/{record.public_code}/pod/{file.id}")
+    assert result.status_code == 200, result.text
+    service.run_due(provider, NOW + timedelta(minutes=5))
+    assert db_session.scalars(select(WaybillPodFile)).all() == []
+    assert provider.downloads == ["41"]
+    service.set_locks(admin, record.public_code, None, None, [])
+    service.run_due(provider, NOW + timedelta(minutes=10))
+    assert len(db_session.scalars(select(WaybillPodFile)).all()) == 1
+
+
+def test_pod_files_are_cleaned_up_when_commit_fails(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+
+    def fail_commit():
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with pytest.raises(RuntimeError, match="commit failed"):
+        service.run_due(PodClient(completed_shipment()), NOW)
+    assert list(tmp_path.rglob("*.pdf")) == []
+    assert db_session.scalars(select(WaybillPodFile)).all() == []
+
+
+def test_pod_unlock_after_preparation_preserves_old_file_until_downloaded(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    provider = PodClient(completed_shipment())
+    service.run_due(provider, NOW)
+    old_file = db_session.scalars(select(WaybillPodFile)).one()
+    old_path = Path(old_file.storage_path)
+    document = provider.result["vendors"][0]["pod_documents"][0]
+    document.update({"id": 42, "version": 2, "download_url": f"{AJ_BASE_URL}/files/pod/42"})
+    service.set_locks(admin, record.public_code, None, None, ["pod_files"])
+    binding = binding_for(db_session, record)
+    prepared = service._prepare_pods(binding, provider.result, provider)
+    service.set_locks(admin, record.public_code, None, None, [])
+    service.process(binding, NOW + timedelta(minutes=5), provider.result, prepared_pods=prepared)
+    assert db_session.scalars(select(WaybillPodFile)).one().id == old_file.id
+    assert old_path.is_file()
+    assert binding.sync_report["pod_files"]["state"] == "error"
+    service.run_due(provider, NOW + timedelta(minutes=10))
+    assert db_session.scalars(select(WaybillPodFile)).one().provider_document_id == "42"
+    assert not old_path.exists()
+
+
+def test_aj_pod_download_authentication_and_origin_restriction(tmp_path):
+    credentials = tmp_path / "aj.env"
+    credentials.write_text("AJ_API_USERNAME=test\nAJ_API_PASSWORD=secret\n", encoding="utf-8")
+    calls = []
+
+    def handle(request):
+        calls.append(request.url.path)
+        assert request.headers["Authorization"].startswith("Basic ")
+        assert request.url.path.endswith("/files/pod/41")
+        return httpx.Response(200, content=b"%PDF proof")
+
+    client = AJClient(credentials_path=credentials, transport=httpx.MockTransport(handle))
+    assert client.download_pod("41", f"{AJ_BASE_URL}/files/pod/41") == b"%PDF proof"
+    with pytest.raises(ProviderError):
+        client.download_pod("41", "https://example.com/file")
+    assert len(calls) == 1
+
+
+def test_unassignment_during_pod_download_discards_late_file(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+
+    class UnassigningClient(PodClient):
+        def download_pod(self, document_id, download_url=None):
+            service.assign(admin, record.public_code, None)
+            return super().download_pod(document_id, download_url)
+
+    service.run_due(UnassigningClient(completed_shipment()), NOW)
+    assert binding_for(db_session, record) is None
+    assert db_session.scalars(select(WaybillPodFile)).all() == []
+    assert list(tmp_path.rglob("*.pdf")) == []
+
+
+def test_orphan_pods_import_and_superseded_vendor_versions_are_skipped(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = completed_shipment()
+    old = {**result["vendors"][0]["pod_documents"][0], "id": 40, "is_current": False}
+    result["vendors"][0]["pod_documents"].append(old)
+    result["orphan_pod_documents"] = [{**old, "id": 52, "file_name": "orphan.pdf", "download_url": f"{AJ_BASE_URL}/files/pod/52"}]
+    provider = PodClient(result)
+    service.run_due(provider, NOW)
+    assert set(provider.downloads) == {"41", "52"}
+    files = db_session.scalars(select(WaybillPodFile)).all()
+    assert len(files) == 2
+    assert next(file for file in files if file.provider_document_id == "52").provider_vendor_code is None

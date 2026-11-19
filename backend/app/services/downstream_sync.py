@@ -5,20 +5,21 @@ import os
 from pathlib import Path
 import time
 from uuid import UUID
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from dotenv import dotenv_values
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.config import PROJECT_ROOT
+from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.db.models import (
     DownstreamBinding, DownstreamIncident, DownstreamIncidentRead,
-    DownstreamSyncEvent, User, WaybillTrackingRecord, WaybillUpload,
+    DownstreamSyncEvent, User, WaybillPodFile, WaybillTrackingRecord, WaybillUpload,
 )
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.waybill_repository import WaybillRepository
+from app.services.pod_files import POD_MAX_BYTES, delete_pod_content, save_pod_content, validate_pod_content
 
 
 AJ_BASE_URL = "https://www.ajwwworkspace.com/ShipFlow-UK/api/v1"
@@ -33,7 +34,9 @@ AJ_STATUS_MAP = {
     "HANDED_OVER": "outbound",
 }
 PROVIDER_STATUS_MAPS = {"AJ": AJ_STATUS_MAP}
-MILESTONE_FIELDS = {"customs_clearance_at"}
+MILESTONE_FIELDS = {"noa_at", "collection_at", "scanned_at", "customs_clearance_at", "outbound_at",
+                    "airline_record_created_at", "airline_arrived_at", "aj_warehouse_arrived_at"}
+DATA_FIELDS = {"received_count", "received_total", "in_warehouse_count", "released_count", "outbound_count", "parcels", "pod_files"}
 
 
 def aware(value: datetime | None) -> datetime | None:
@@ -43,8 +46,10 @@ def aware(value: datetime | None) -> datetime | None:
 
 
 def parse_time(value: str | None) -> datetime | None:
-    if not value:
+    if value is None or value == "":
         return None
+    if not isinstance(value, str):
+        raise ValueError("Timestamp must be an ISO-8601 string")
     return aware(datetime.fromisoformat(value.replace("Z", "+00:00")))
 
 
@@ -107,6 +112,120 @@ class AJClient:
         except ValueError as exc:
             raise ProviderError("invalid_response", "AJ Ping 返回数据格式无效") from exc
 
+    def download_pod(self, document_id: str, download_url: str | None = None) -> bytes:
+        url = download_url or f"{AJ_BASE_URL}/files/pod/{quote(document_id, safe='')}"
+        base = urlsplit(AJ_BASE_URL)
+        try:
+            target = urlsplit(url)
+            port = target.port
+        except ValueError:
+            raise ProviderError("pod_download", "AJ POD 下载地址无效") from None
+        if (target.scheme != "https" or target.hostname != base.hostname or port not in (None, 443)
+                or target.username or target.password or target.fragment
+                or target.path != f"{base.path}/files/pod/{document_id}"):
+            raise ProviderError("pod_download", "AJ POD 下载地址不符合当前接口范围")
+        # Credentials are restricted to AJ's documented file endpoint, with redirects disabled.
+        try:
+            with httpx.Client(base_url=AJ_BASE_URL, auth=self.auth, timeout=20.0, transport=self.transport) as client:
+                with client.stream("GET", url) as response:
+                    if response.status_code != 200:
+                        raise ProviderError("pod_download", f"AJ POD {document_id} 下载失败（HTTP {response.status_code}）")
+                    content = bytearray()
+                    for chunk in response.iter_bytes():
+                        content.extend(chunk)
+                        if len(content) > POD_MAX_BYTES:
+                            raise ProviderError("pod_download", f"AJ POD {document_id} 超过 10 MB")
+                    return bytes(content)
+        except httpx.HTTPError as exc:
+            raise ProviderError("pod_download", f"AJ POD {document_id} 请求失败：{type(exc).__name__}") from exc
+
+
+def aj_pod_documents(shipment: dict) -> list[dict] | None:
+    vendors = shipment.get("vendors")
+    orphans = shipment.get("orphan_pod_documents")
+    if vendors is None and orphans is None:
+        return None
+    if not isinstance(vendors, list) or not isinstance(orphans, list):
+        raise ProviderError("invalid_response", "AJ POD 渠道或附件列表格式无效")
+    groups = [(None, orphans)]
+    for vendor in vendors:
+        if not isinstance(vendor, dict) or not isinstance(vendor.get("pod_documents"), list):
+            raise ProviderError("invalid_response", "AJ 渠道 POD 列表格式无效")
+        groups.append((vendor.get("code"), vendor["pod_documents"]))
+    selected = {}
+    for vendor, documents in groups:
+        for document in documents:
+            if not isinstance(document, dict):
+                raise ProviderError("invalid_response", "AJ POD 附件格式无效")
+            if not isinstance(document.get("is_current", True), bool):
+                raise ProviderError("invalid_response", "AJ POD 当前版本标记无效")
+            if vendor is not None and document.get("is_current") is False:
+                continue
+            document_id = str(document.get("id", ""))
+            version = document.get("version", 1)
+            filename = document.get("file_name")
+            note = document.get("note")
+            download_url = document.get("download_url")
+            if not document_id.isdecimal() or int(document_id) <= 0 or len(document_id) > 120:
+                raise ProviderError("invalid_response", "AJ POD 文件编号无效")
+            if isinstance(version, bool) or not isinstance(version, int) or not 1 <= version <= 2147483647:
+                raise ProviderError("invalid_response", "AJ POD 版本号无效")
+            if not isinstance(filename, str) or not filename or len(filename) > 255:
+                raise ProviderError("invalid_response", "AJ POD 文件名无效")
+            filename = Path(filename).name
+            if vendor is not None and (not isinstance(vendor, str) or len(vendor) > 120):
+                raise ProviderError("invalid_response", "AJ POD 渠道编号无效")
+            if (note is not None and not isinstance(note, str)) or (download_url is not None and not isinstance(download_url, str)):
+                raise ProviderError("invalid_response", "AJ POD 备注或下载地址无效")
+            try:
+                uploaded_at = parse_time(document.get("uploaded_at"))
+            except (AttributeError, TypeError, ValueError):
+                raise ProviderError("invalid_response", "AJ POD 上传时间无效") from None
+            spec = {"id": document_id, "version": version, "filename": filename,
+                    "vendor": vendor, "uploaded_at": uploaded_at, "note": note, "download_url": download_url}
+            previous = selected.get(document_id)
+            if previous is None or version >= previous["version"]:
+                selected[document_id] = spec
+    return list(selected.values())
+
+
+def aj_handover(shipment: dict, pieces: int) -> tuple[int, datetime | None] | None:
+    vendors = shipment.get("vendors")
+    if vendors is None:
+        return None
+    if not isinstance(vendors, list):
+        raise ValueError("AJ 渠道列表格式无效")
+    if not vendors:
+        return None
+    total = shipment.get("packages")
+    if isinstance(total, bool) or not isinstance(total, int) or total != pieces:
+        raise ValueError("AJ 总件数与本地提单件数不一致，出库数量及时间需要核查")
+    allocated = 0
+    outbound = 0
+    times = []
+    codes = set()
+    for vendor in vendors:
+        if not isinstance(vendor, dict):
+            raise ValueError("AJ 渠道数据格式无效")
+        code = vendor.get("code")
+        count = vendor.get("packages")
+        if not isinstance(code, str) or not code or code in codes:
+            raise ValueError("AJ 渠道编号为空或重复")
+        codes.add(code)
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= pieces:
+            raise ValueError("AJ 渠道件数无效")
+        allocated += count
+        try:
+            handed_over = parse_time(vendor.get("handed_over_at"))
+        except ValueError:
+            raise ValueError(f"AJ {code} 渠道交接时间格式无效") from None
+        if handed_over is not None and count > 0:
+            outbound += count
+            times.append(handed_over)
+    if allocated != total:
+        raise ValueError("AJ 渠道件数合计与提单总件数不一致")
+    return outbound, max(times) if total > 0 and outbound == total else None
+
 
 def normalize_aj(shipment: dict) -> dict:
     stage = shipment.get("stage") or {}
@@ -139,8 +258,102 @@ PROVIDER_NORMALIZERS = {"AJ": normalize_aj}
 
 
 class DownstreamService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, settings: Settings | None = None):
         self.db = db
+        self.settings = settings or get_settings()
+
+    def _prepare_pods(self, binding: DownstreamBinding, shipment: dict, client: AJClient) -> dict:
+        try:
+            documents = aj_pod_documents(shipment)
+        except ProviderError as exc:
+            return {"documents": None, "downloads": {}, "errors": [exc.detail]}
+        prepared = {"documents": documents, "downloads": {}, "errors": []}
+        if documents is None or "pod_files" in binding.data_locks:
+            return prepared
+        existing = {item.provider_document_id: item for item in self.db.scalars(select(WaybillPodFile).where(
+            WaybillPodFile.tracking_record_id == binding.tracking_record_id,
+            WaybillPodFile.provider_code == binding.provider_code,
+        )).all()}
+        for document in documents:
+            item = existing.get(document["id"])
+            if (item is not None and item.provider_document_version == document["version"]
+                    and item.original_filename == document["filename"]
+                    and aware(item.provider_uploaded_at) == document["uploaded_at"]
+                    and Path(item.storage_path).is_file()):
+                continue
+            try:
+                content = client.download_pod(document["id"], document["download_url"])
+                prepared["downloads"][document["id"]] = validate_pod_content(document["filename"], content)
+            except ProviderError as exc:
+                prepared["errors"].append(exc.detail)
+            except ValueError as exc:
+                prepared["errors"].append(f"AJ POD {document['id']} 文件无效：{exc}")
+            except Exception as exc:
+                prepared["errors"].append(f"AJ POD {document['id']} 下载异常：{type(exc).__name__}")
+        return prepared
+
+    def _sync_pods(self, binding: DownstreamBinding, prepared: dict | None,
+                   report: dict, new_paths: list[str], obsolete_paths: list[str]) -> None:
+        if "pod_files" in binding.data_locks:
+            report["pod_files"] = {"state": "locked"}
+            return
+        if prepared is None:
+            report["pod_files"] = {"state": "unavailable", "detail": "AJ 未提供附件数据或本次未执行附件下载"}
+            return
+        errors = list(prepared["errors"])
+        documents = prepared["documents"]
+        if documents is None:
+            report["pod_files"] = {"state": "error" if errors else "unavailable", "detail": "；".join(errors) or "AJ 未提供附件列表"}
+            return
+        existing = {item.provider_document_id: item for item in self.db.scalars(select(WaybillPodFile).where(
+            WaybillPodFile.tracking_record_id == binding.tracking_record_id,
+            WaybillPodFile.provider_code == binding.provider_code,
+        )).all()}
+        available = 0
+        for document in documents:
+            item = existing.get(document["id"])
+            payload = prepared["downloads"].get(document["id"])
+            if payload is not None:
+                try:
+                    saved = save_pod_content(binding.tracking_record.upload_id, payload, self.settings)
+                except OSError as exc:
+                    errors.append(f"AJ POD {document['id']} 保存失败：{type(exc).__name__}")
+                    continue
+                new_paths.append(saved["storage_path"])
+                if item is None:
+                    item = WaybillPodFile(tracking_record_id=binding.tracking_record_id,
+                                          provider_code=binding.provider_code, provider_document_id=document["id"])
+                    self.db.add(item)
+                else:
+                    obsolete_paths.append(item.storage_path)
+                for field in ("original_filename", "content_type", "size_bytes", "sha256", "storage_path"):
+                    setattr(item, field, saved[field])
+                item.provider_document_version = document["version"]
+                item.provider_uploaded_at = document["uploaded_at"]
+                self._event(binding, binding.tracking_record.upload.air_waybill_number, "pod_synced",
+                            {"documentId": document["id"], "version": document["version"], "vendor": document["vendor"]})
+            if item is not None:
+                if (item.original_filename == document["filename"]
+                        and item.provider_document_version == document["version"]
+                        and aware(item.provider_uploaded_at) == document["uploaded_at"]
+                        and Path(item.storage_path).is_file()):
+                    item.provider_vendor_code = document["vendor"]
+                    item.provider_note = document["note"]
+                    available += 1
+                elif not errors:
+                    errors.append(f"AJ POD {document['id']} 附件在查询期间发生变化，将重试")
+            elif not errors:
+                errors.append(f"AJ POD {document['id']} 本轮未完成下载，将重试")
+        if not errors:
+            wanted = {document["id"] for document in documents}
+            for document_id, item in existing.items():
+                if document_id not in wanted:
+                    obsolete_paths.append(item.storage_path)
+                    self.db.delete(item)
+        report["pod_files"] = {
+            "state": "error" if errors else "synced", "source": "vendors[].pod_documents / orphan_pod_documents",
+            "value": available, "detail": "；".join(errors),
+        }
 
     def _record(self, public_code: str) -> WaybillTrackingRecord:
         record = WaybillRepository(self.db).get_by_public_code(public_code)
@@ -190,10 +403,16 @@ class DownstreamService:
             self.db.delete(binding)
             self.db.flush()
         if provider_code:
+            data_locks = {field for field in DATA_FIELDS - {"parcels", "pod_files", "received_total"} if getattr(record, field)}
+            if record.received_total != record.upload.pieces:
+                data_locks.add("received_total")
+            if any(parcel.status != "created" or parcel.inbound or parcel.outbound for parcel in record.parcels):
+                data_locks.add("parcels")
             binding = DownstreamBinding(
                 tracking_record_id=record.id, provider_code=provider_code,
                 assigned_by_user_id=actor.id, assigned_at=now,
-                milestone_locks=["customs_clearance_at"] if record.customs_clearance_at else [],
+                milestone_locks=sorted(field for field in MILESTONE_FIELDS if getattr(record, field)),
+                data_locks=sorted(data_locks),
             )
             self.db.add(binding)
             self.db.flush()
@@ -225,7 +444,7 @@ class DownstreamService:
             return {"publicCode": record.public_code, "providerCode": None, "statusLocked": False,
                     "milestoneLocks": [], "lastCheckedAt": None, "lastSuccessAt": None,
                     "remoteStage": None, "remoteCompletion": None, "remoteUpdatedAt": None,
-                    "snapshot": None, "lastError": None}
+                    "snapshot": None, "lastError": None, "dataLocks": [], "syncReport": {}}
         return {
             "publicCode": record.public_code, "providerCode": binding.provider_code,
             "statusLocked": binding.status_locked, "milestoneLocks": binding.milestone_locks,
@@ -233,6 +452,7 @@ class DownstreamService:
             "remoteStage": binding.remote_stage, "remoteCompletion": binding.remote_completion,
             "remoteUpdatedAt": binding.remote_updated_at, "snapshot": binding.snapshot,
             "lastError": binding.last_error,
+            "dataLocks": binding.data_locks, "syncReport": binding.sync_report,
         }
 
     def list_bindings(self, public_codes: list[str] | None = None) -> list[dict]:
@@ -250,21 +470,26 @@ class DownstreamService:
                  "lastSuccessAt": item.last_success_at, "lastError": item.last_error} for item in bindings]
 
     def set_locks(self, actor: User, public_code: str, status_locked: bool | None,
-                  milestone_locks: list[str] | None) -> dict:
+                  milestone_locks: list[str] | None, data_locks: list[str] | None = None) -> dict:
         record = self._record(public_code)
         binding = self._binding(record.id)
         if binding is None:
             raise DownstreamError("提单尚未归属下游系统")
         if milestone_locks is not None and set(milestone_locks) - MILESTONE_FIELDS:
             raise DownstreamError("未知的里程碑字段")
+        if data_locks is not None and set(data_locks) - DATA_FIELDS:
+            raise DownstreamError("未知的同步字段")
         if status_locked is not None:
             binding.status_locked = status_locked
         if milestone_locks is not None:
-            binding.milestone_locks = milestone_locks
+            binding.milestone_locks = sorted(set(milestone_locks))
+        if data_locks is not None:
+            binding.data_locks = sorted(set(data_locks))
         AuditLogRepository(self.db).create(
             "update_downstream_locks", actor_user_id=actor.id,
             target_type="waybill_tracking_record", target_id=str(record.id),
-            metadata={"statusLocked": binding.status_locked, "milestoneLocks": binding.milestone_locks},
+            metadata={"statusLocked": binding.status_locked, "milestoneLocks": binding.milestone_locks,
+                      "dataLocks": binding.data_locks},
         )
         self.db.commit()
         return self.detail(public_code)
@@ -289,11 +514,12 @@ class DownstreamService:
         self.db.commit()
 
     def process(self, binding: DownstreamBinding, now: datetime, shipment: dict | None = None,
-                error: ProviderError | None = None) -> None:
+                error: ProviderError | None = None, prepared_pods: dict | None = None) -> None:
         awb = binding.tracking_record.upload.air_waybill_number
         binding.last_checked_at = now
         if error:
             binding.last_error = error.detail
+            binding.sync_report = {"request": {"state": "error", "detail": error.detail}}
             if error.kind == "not_found":
                 binding.first_network_error_at = None
                 if binding.first_missing_at is None:
@@ -340,6 +566,9 @@ class DownstreamService:
             self._event(binding, awb, "snapshot_changed", {"stage": code, "completion": binding.remote_completion})
 
         special = normalized["special"]
+        report = {}
+        new_paths: list[str] = []
+        obsolete_paths: list[str] = []
         if special:
             binding.last_error = "AJ 提单已拆分或被扣留／销毁，请管理员核查"
             self._incident(binding, awb, "special_shipment", binding.last_error, now)
@@ -347,9 +576,9 @@ class DownstreamService:
             binding.last_error = f"AJ 返回未知阶段：{code}"
             self._incident(binding, awb, "unknown_stage", binding.last_error, now)
         else:
-            self._resolve(binding.id, now)
             record = binding.tracking_record
             mapped = PROVIDER_STATUS_MAPS[binding.provider_code][code]
+            report["status"] = {"state": "locked" if binding.status_locked else "synced", "source": "stage.code", "value": mapped}
             if not binding.status_locked and record.status != mapped:
                 old = record.status
                 record.status = mapped
@@ -358,18 +587,80 @@ class DownstreamService:
                 except (TypeError, ValueError):
                     record.status_changed_at = now
                 self._event(binding, awb, "status_changed", {"from": old, "to": mapped, "stage": code})
-            milestone = normalized["customs_clearance_at"]
-            if "customs_clearance_at" not in binding.milestone_locks:
+            milestones = shipment.get("milestones") or {}
+            milestone_sources = {"airline_record_created_at": "record_created_airline_at", "airline_arrived_at": "status_1_at",
+                                 "aj_warehouse_arrived_at": "pick_up_at", "customs_clearance_at": "customs_clearance_at"}
+            total = shipment.get("packages")
+            if total is not None and "received_total" not in binding.data_locks:
+                if isinstance(total, bool) or not isinstance(total, int) or total != record.upload.pieces:
+                    report["received_total"] = {"state": "error", "detail": "AJ 总件数与本地提单件数不一致"}
+                else:
+                    if record.received_total != total:
+                        record.received_total = total
+                        self._event(binding, awb, "count_changed", {"field": "received_total", "to": total})
+                    report["received_total"] = {"state": "synced", "source": "packages", "value": total}
+            try:
+                handover = aj_handover(shipment, record.upload.pieces)
+            except (TypeError, ValueError) as exc:
+                handover = None
+                report["outbound_count"] = {"state": "error", "detail": str(exc)}
+                report["outbound_at"] = {"state": "error", "detail": str(exc)}
+            if handover is not None:
+                outbound_count, outbound_at = handover
+                if "outbound_count" not in binding.data_locks:
+                    if record.outbound_count != outbound_count:
+                        record.outbound_count = outbound_count
+                        self._event(binding, awb, "count_changed", {"field": "outbound_count", "to": outbound_count})
+                    report["outbound_count"] = {"state": "synced", "source": "vendors[].handed_over_at / packages", "value": outbound_count}
+                if outbound_at is not None:
+                    milestones = {**milestones, "handover_complete_at": outbound_at.isoformat()}
+                    milestone_sources["outbound_at"] = "handover_complete_at"
+            for field in sorted(MILESTONE_FIELDS):
+                source = milestone_sources.get(field)
+                if field in binding.milestone_locks:
+                    report[field] = {"state": "locked"}
+                    continue
+                if field in report:
+                    continue
+                milestone = milestones.get(source) if source else None
+                if milestone is None or milestone == "":
+                    report[field] = {"state": "unavailable", "detail": "待 AJ 补充对应时间字段" if field in {"noa_at", "collection_at", "scanned_at"} else "AJ 尚未提供对应时间"}
+                    continue
                 try:
                     parsed = parse_time(milestone)
                 except (TypeError, ValueError):
-                    binding.last_error = "AJ 清关时间格式无效"
-                    self._incident(binding, awb, "invalid_response", binding.last_error, now)
+                    report[field] = {"state": "error", "detail": f"AJ {source} 时间格式无效"}
                 else:
-                    if aware(record.customs_clearance_at) != parsed:
-                        record.customs_clearance_at = parsed
-                        self._event(binding, awb, "milestone_changed", {"field": "customs_clearance_at", "to": milestone})
-        self.db.commit()
+                    report[field] = {"state": "synced", "source": "max(vendors[].handed_over_at)" if field == "outbound_at" else f"milestones.{source}", "value": milestone}
+                    if aware(getattr(record, field)) != parsed:
+                        setattr(record, field, parsed)
+                        self._event(binding, awb, "milestone_changed", {"field": field, "to": milestone})
+            for field in DATA_FIELDS - {"pod_files"}:
+                if field in binding.data_locks:
+                    report[field] = {"state": "locked"}
+                    continue
+                if field in report:
+                    continue
+                report[field] = {"state": "unavailable",
+                                 "detail": "等待 AJ 数量或包裹明细数据"}
+        try:
+            if not special and code in PROVIDER_STATUS_MAPS[binding.provider_code]:
+                self._sync_pods(binding, prepared_pods, report, new_paths, obsolete_paths)
+                errors = [item["detail"] for item in report.values() if item["state"] == "error"]
+                if errors:
+                    binding.last_error = "；".join(dict.fromkeys(errors))
+                    self._incident(binding, awb, "sync_fields", binding.last_error, now)
+                else:
+                    self._resolve(binding.id, now)
+            binding.sync_report = report or {"request": {"state": "error", "detail": binding.last_error}}
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            for path in new_paths:
+                delete_pod_content(path, self.settings)
+            raise
+        for path in obsolete_paths:
+            delete_pod_content(path, self.settings)
 
     def run_due(self, client: AJClient | None = None, now: datetime | None = None) -> int:
         provided_now = now
@@ -396,11 +687,19 @@ class DownstreamService:
                 provider_client = client
             result: dict | None = None
             fetch_error: ProviderError | None = None
+            prepared_pods = None
             try:
                 if previous_request_at is not None:
                     time.sleep(max(0.0, minimum_interval - (time.monotonic() - previous_request_at)))
                 previous_request_at = time.monotonic()
                 result = provider_client.fetch(binding.tracking_record.upload.air_waybill_number)
+                try:
+                    normalized = PROVIDER_NORMALIZERS[binding.provider_code](result)
+                except (KeyError, TypeError, AttributeError, ValueError):
+                    normalized = None
+                if (normalized and normalized["awb"] == binding.tracking_record.upload.air_waybill_number
+                        and not normalized["special"] and normalized["stage_code"] in PROVIDER_STATUS_MAPS[binding.provider_code]):
+                    prepared_pods = self._prepare_pods(binding, result, provider_client)
             except ProviderError as exc:
                 fetch_error = exc
             except Exception as exc:
@@ -420,5 +719,5 @@ class DownstreamService:
                 self.db.rollback()
                 continue
             self.process(current, provided_now or datetime.now(timezone.utc),
-                         shipment=result, error=fetch_error)
+                         shipment=result, error=fetch_error, prepared_pods=prepared_pods)
         return len(due)

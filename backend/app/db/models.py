@@ -255,6 +255,9 @@ class WaybillTrackingRecord(Base):
     scanned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    airline_record_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    airline_arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    aj_warehouse_arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     customs_clearance_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -314,6 +317,9 @@ class WaybillUploadFile(Base):
 
 class WaybillPodFile(Base):
     __tablename__ = "waybill_pod_files"
+    __table_args__ = (
+        Index("uq_waybill_pod_provider_document", "tracking_record_id", "provider_code", "provider_document_id", unique=True),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -335,6 +341,12 @@ class WaybillPodFile(Base):
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    provider_document_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_document_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider_vendor_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -797,6 +809,8 @@ class DownstreamBinding(Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     status_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     milestone_locks: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    data_locks: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    sync_report: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

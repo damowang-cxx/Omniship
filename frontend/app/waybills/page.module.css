@@ -909,7 +909,10 @@
   font-size: 12px;
   font-weight: 800;
   margin-top: 4px;
+  overflow-wrap: anywhere;
 }
+
+.podItem > div:first-child { min-width: 0; }
 
 .podActions {
   align-items: center;

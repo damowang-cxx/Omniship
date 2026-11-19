@@ -138,7 +138,6 @@ describe("SuppliersPage", () => {
       fireEvent.click(within(ams).getByRole("button", { name: "添加明细选项" }));
     }
     fireEvent.change(within(ams).getByLabelText("AMS 添加客户"), { target: { value: "customer-id" } });
-    fireEvent.click(within(ams).getByRole("button", { name: "添加客户" }));
     for (const [value, price] of [["DE-DHL", "0.75"], ["Colissimo", "1.20"]]) {
       fireEvent.click(within(ams).getByRole("checkbox", { name: `LHR Customer 收取 ${value}` }));
       fireEvent.change(within(ams).getByLabelText(`LHR Customer ${value} 每公斤报价`), { target: { value: price } });
@@ -154,6 +153,53 @@ describe("SuppliersPage", () => {
       }
     })));
     expect(apiMock.updateAmsBillingSettings).not.toHaveBeenCalled();
+  });
+
+  it("selects customer details immediately and preserves different prices for the same detail after publishing", async () => {
+    const customerA = { ...admin, id: "customer-a", username: "Customer A", email: "a@example.com", role: "user" };
+    const customerB = { ...admin, id: "customer-b", username: "Customer B", email: "b@example.com", role: "user" };
+    apiMock.listUsers.mockResolvedValue({ items: [admin, customerA, customerB] });
+    apiMock.publishSupplierVersion.mockImplementationOnce(async (_id, config) => {
+      const updated = { ...qls, currentVersion: { ...qls.currentVersion, config } };
+      apiMock.listSuppliers.mockResolvedValue({ items: [updated] });
+      return updated;
+    });
+    render(<SuppliersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    const ams = screen.getByRole("region", { name: "模板 AMS 扣费配置" });
+    fireEvent.click(within(ams).getByRole("checkbox", { name: "启用本模板 AMS 扣费" }));
+    expect(within(ams).getByLabelText("AMS 添加客户")).toBeDisabled();
+    fireEvent.change(within(ams).getByLabelText("AMS 指定匹配列"), { target: { value: "E" } });
+    fireEvent.change(within(ams).getByLabelText("AMS 重量列"), { target: { value: "V" } });
+    for (const value of ["DE-DHL", "Colissimo"]) {
+      fireEvent.change(within(ams).getByLabelText("新增 AMS 明细值"), { target: { value } });
+      fireEvent.click(within(ams).getByRole("button", { name: "添加明细选项" }));
+    }
+    for (const [customer, price] of [[customerA, "0.75"], [customerB, "1.50"]] as const) {
+      fireEvent.change(within(ams).getByLabelText("AMS 添加客户"), { target: { value: customer.id } });
+      expect(within(ams).getByRole("group", { name: customer.username })).toBeInTheDocument();
+      expect(within(ams).getByLabelText(`${customer.username} DE-DHL 每公斤报价`)).toBeDisabled();
+      fireEvent.click(within(ams).getByRole("checkbox", { name: `${customer.username} 收取 DE-DHL` }));
+      fireEvent.change(within(ams).getByLabelText(`${customer.username} DE-DHL 每公斤报价`), { target: { value: price } });
+    }
+    fireEvent.click(within(ams).getByRole("checkbox", { name: "Customer A 收取 Colissimo" }));
+    fireEvent.change(within(ams).getByLabelText("Customer A Colissimo 每公斤报价"), { target: { value: "1.20" } });
+    expect(within(ams).getByRole("checkbox", { name: "Customer B 收取 Colissimo" })).not.toBeChecked();
+    expect(within(ams).getByLabelText("Customer B Colissimo 每公斤报价")).toBeDisabled();
+    expect(within(ams).getByLabelText("Customer A DE-DHL 每公斤报价")).toHaveValue(0.75);
+    expect(within(ams).getByLabelText("Customer B DE-DHL 每公斤报价")).toHaveValue(1.5);
+    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+    await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
+      amsBilling: expect.objectContaining({ customerRates: expect.arrayContaining([
+        { userId: "customer-a", fees: [{ matchValue: "DE-DHL", rateEurPerKg: "0.75" }, { matchValue: "Colissimo", rateEurPerKg: "1.20" }] },
+        { userId: "customer-b", fees: [{ matchValue: "DE-DHL", rateEurPerKg: "1.50" }] }
+      ]) })
+    })));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    expect(screen.getByLabelText("Customer A DE-DHL 每公斤报价")).toHaveValue(0.75);
+    expect(screen.getByLabelText("Customer B DE-DHL 每公斤报价")).toHaveValue(1.5);
+    expect(screen.getByRole("checkbox", { name: "Customer A 收取 Colissimo" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Customer B 收取 Colissimo" })).not.toBeChecked();
   });
 
   it("creates a supplier with the visual rule builder", async () => {

@@ -11,7 +11,6 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
   fields: SupplierFieldRule[];
   onChange: (config: AmsTemplateBillingConfig | null) => void;
 }) {
-  const [customerId, setCustomerId] = useState("");
   const [newOption, setNewOption] = useState("");
   const [error, setError] = useState<string | null>(null);
   const matchingField = fields.find((field) =>
@@ -23,6 +22,8 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
     ...(matchingField?.constraints.allowedValues ?? []),
     ...(config?.customerRates.flatMap((rate) => rate.fees.map((fee) => fee.matchValue)) ?? [])
   ]));
+  const availableCustomers = customers.filter((customer) => customer.role === "user" && customer.status === "active"
+    && !config?.customerRates.some((rate) => rate.userId === customer.id));
 
   const enable = () => {
     const weightField = fields.find((field) => field.semanticField === "weight_kg" && field.locatorMode === "column");
@@ -48,13 +49,9 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
     setError(null);
   };
 
-  const addCustomer = () => {
-    if (!config || !customerId) {
-      setError("请选择客户");
-      return;
-    }
-    onChange({ ...config, customerRates: [...config.customerRates, { userId: customerId, fees: [] }] });
-    setCustomerId("");
+  const addCustomer = (userId: string) => {
+    if (!config || !options.length || !availableCustomers.some((customer) => customer.id === userId)) return;
+    onChange({ ...config, matchValues: options, customerRates: [{ userId, fees: [] }, ...config.customerRates] });
     setError(null);
   };
 
@@ -78,7 +75,7 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
           onChange={(event) => onChange({ ...config, weightColumn: event.target.value.toUpperCase() || null })} /></label>
       </div>
       <div className={styles.options}>
-        <strong>收费明细选项</strong>
+        <strong>1. 定义收费明细</strong>
         <div className={styles.optionEntry}>
           <label>Excel 明细值<input aria-label="新增 AMS 明细值" maxLength={120} placeholder="例如 DE-DHL" value={newOption}
             onChange={(event) => setNewOption(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOption(); } }} /></label>
@@ -87,16 +84,17 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
         {options.length > 0 && <ul className={styles.optionList} aria-label="AMS 明细选项">
           {options.map((value) => <li key={value}>{value}</li>)}
         </ul>}
-        <p className={styles.hint}>与 Excel 单元格去除首尾空格后的内容精确匹配；下方可为每个客户勾选多个明细并分别报价。</p>
+        <p className={styles.hint}>明细值与 Excel 单元格去除首尾空格后的内容精确匹配。这些选项在本模板内共用，单价在下方按客户分别设置。</p>
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <div className={styles.customerEntry}>
-        <label>客户<select aria-label="AMS 添加客户" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
-          <option value="">选择客户</option>
-          {customers.filter((customer) => customer.role === "user" && customer.status === "active" && !config.customerRates.some((rate) => rate.userId === customer.id))
-            .map((customer) => <option key={customer.id} value={customer.id}>{customer.username} · {customer.email}</option>)}
+        <strong>2. 按客户选择明细并报价</strong>
+        <p className={styles.hint}>选择客户后即展开报价设置。每位客户可勾选多个明细；同一明细可为不同客户设置不同的 EUR/kg 单价。</p>
+        <label>添加收费客户<select aria-label="AMS 添加客户" disabled={!options.length || !availableCustomers.length} value="" onChange={(event) => addCustomer(event.target.value)}>
+          <option value="">{!options.length ? "请先添加上方收费明细" : !availableCustomers.length ? "暂无可添加客户" : "选择客户，设置明细与单价"}</option>
+          {availableCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customer.username} · {customer.email}</option>)}
         </select></label>
-        <button type="button" onClick={addCustomer}><Plus size={14} />添加客户</button>
+        {!config.customerRates.length && <p className={styles.empty}>尚未设置收费客户。先定义明细，再选择客户填写报价。</p>}
       </div>
       {config.customerRates.map((rate) => {
         const customer = customers.find((item) => item.id === rate.userId);
@@ -106,21 +104,21 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
           <div className={styles.customerHeading}><span>{customer?.email || "已删除客户"}</span>
             <button type="button" aria-label={`删除 ${customerName} AMS 收费设置`} onClick={() => onChange({ ...config, customerRates: config.customerRates.filter((item) => item.userId !== rate.userId) })}><X size={14} />删除客户</button>
           </div>
-          {!rate.fees.length && <p className={styles.hint}>请选择至少一个收费明细。</p>}
+          <p className={styles.hint}>已选 {rate.fees.length} 项收费明细{!rate.fees.length ? "，请勾选下方明细并填写该客户的单价。" : "，以下报价仅适用于该客户。"}</p>
           {options.map((value) => {
             const fee = rate.fees.find((item) => item.matchValue === value);
-            return <div className={styles.fee} key={value}>
+            return <div className={styles.fee} data-selected={Boolean(fee)} key={value}>
               <label className={styles.toggle}><input type="checkbox" aria-label={`${customerName} 收取 ${value}`} checked={Boolean(fee)} onChange={(event) => onChange({
                 ...config, matchValues: options,
                 customerRates: config.customerRates.map((item) => item.userId === rate.userId ? {
                   ...item, fees: event.target.checked ? [...item.fees, { matchValue: value, rateEurPerKg: "" }] : item.fees.filter((candidate) => candidate.matchValue !== value)
                 } : item)
               })} />{value}</label>
-              {fee && <label>EUR / kg<input aria-label={`${customerName} ${value} 每公斤报价`} min="0.01" required step="0.01" type="number" value={fee.rateEurPerKg} onChange={(event) => onChange({
+              <label>该客户单价 · EUR / kg<input aria-label={`${customerName} ${value} 每公斤报价`} disabled={!fee} min="0.01" placeholder={fee ? "填写单价" : "先勾选明细"} required={Boolean(fee)} step="0.01" type="number" value={fee?.rateEurPerKg ?? ""} onChange={(event) => onChange({
                 ...config, customerRates: config.customerRates.map((item) => item.userId === rate.userId ? {
                   ...item, fees: item.fees.map((candidate) => candidate.matchValue === value ? { ...candidate, rateEurPerKg: event.target.value } : candidate)
                 } : item)
-              })} /></label>}
+              })} /></label>
             </div>;
           })}
         </fieldset>;

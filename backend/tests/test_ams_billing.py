@@ -108,6 +108,46 @@ def test_template_ams_matches_multiple_channels_and_keeps_charge_snapshots(clien
     assert customer.balance == Decimal("100.00")
 
 
+def test_same_template_and_details_use_each_customers_prices_for_estimate_and_deduction(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    first = create_test_user(db_session, email="first@example.com", balance="100.00")
+    second = create_test_user(db_session, email="second@example.com", balance="100.00")
+    config = ams_config(first.id)
+    second_rate = ams_config(second.id)["customerRates"][0]
+    second_rate["fees"][0]["rateEurPerKg"] = "1.50"
+    second_rate["fees"][1]["rateEurPerKg"] = "0.80"
+    config["customerRates"].append(second_rate)
+    login(client, email=admin.email)
+    assert publish(client, config)["currentVersion"]["config"]["amsBilling"] == config
+    content = workbook([("DE-DHL", 1.25), ("DE-DHL", 2.75), ("Colissimo", 3.5)])
+    expected = [
+        [
+            {"feeDescription": "DE-DHL", "quantity": "4.000", "unitRate": "0.75", "amount": "3.00"},
+            {"feeDescription": "Colissimo", "quantity": "3.500", "unitRate": "1.20", "amount": "4.20"},
+        ],
+        [
+            {"feeDescription": "DE-DHL", "quantity": "4.000", "unitRate": "1.50", "amount": "6.00"},
+            {"feeDescription": "Colissimo", "quantity": "3.500", "unitRate": "0.80", "amount": "2.80"},
+        ],
+    ]
+    for index, customer in enumerate((first, second)):
+        login(client, email=customer.email)
+        estimate = client.post("/api/v1/billing/estimate", data={
+            "supplierId": str(QLS_SUPPLIER_ID), "airportOfArrival": "AMS",
+        }, files={"preAlertFile": ("data.xlsx", content)})
+        assert estimate.status_code == 200, estimate.text
+        assert estimate.json()["amsCharges"] == expected[index]
+        uploaded = client.post("/api/v1/waybill-uploads/file", data=upload_data(number=f"784-8406327{index}"), files=upload_files(content))
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.json()["amsCharges"] == expected[index]
+        entries = db_session.scalars(select(BillingEntry).where(
+            BillingEntry.user_id == customer.id, BillingEntry.fee_type == "ams_weight_handling",
+        )).all()
+        assert {entry.fee_description: (entry.unit_rate, entry.amount) for entry in entries} == {
+            fee["feeDescription"]: (Decimal(fee["unitRate"]), Decimal(fee["amount"])) for fee in expected[index]
+        }
+
+
 def test_templates_use_their_own_columns_and_prices(client, db_session):
     admin = create_test_user(db_session, email="admin@example.com", role="admin")
     customer = create_test_user(db_session, email="customer@example.com", balance="100.00")

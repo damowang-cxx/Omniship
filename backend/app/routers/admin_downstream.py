@@ -20,6 +20,7 @@ class Assignment(BaseModel):
 class Locks(BaseModel):
     statusLocked: bool | None = None
     milestoneLocks: list[str] | None = None
+    dataLocks: list[str] | None = None
 
 
 class ReadIncidents(BaseModel):
@@ -72,6 +73,6 @@ def locks(public_code: str, payload: Locks, db: Session = Depends(get_db),
           actor: User = Depends(require_admin)) -> dict:
     try:
         return DownstreamService(db).set_locks(actor, public_code,
-                                                payload.statusLocked, payload.milestoneLocks)
+                                                payload.statusLocked, payload.milestoneLocks, payload.dataLocks)
     except DownstreamError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

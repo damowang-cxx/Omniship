@@ -230,11 +230,7 @@ describe("WaybillDetailPage", () => {
       expect(apiMock.updateWaybill).toHaveBeenCalledWith(
         "A7K2P9QX",
         expect.objectContaining({
-          noaAt: expect.any(String),
-          collectionAt: null,
-          scannedAt: null,
-          customsClearanceAt: null,
-          outboundAt: null
+          noaAt: expect.any(String)
         })
       );
     });
@@ -383,6 +379,27 @@ describe("WaybillDetailPage", () => {
     });
     expect(screen.queryByText("proof-one.jpg")).not.toBeInTheDocument();
     confirmSpy.mockRestore();
+  });
+
+  it("shows AJ POD provenance and keeps manual upload available with multiple synced files", async () => {
+    apiMock.getWaybill.mockResolvedValueOnce({
+      ...waybillItem,
+      airlineRecordCreatedAt: "2026-11-15T19:07:00+00:00",
+      airlineArrivedAt: "2026-11-16T09:24:00+00:00",
+      ajWarehouseArrivedAt: "2026-11-17T07:40:00+00:00",
+      podFiles: [1, 2, 3].map((id) => ({
+        id: `aj-${id}`, originalFilename: `proof-${id}.pdf`, sizeBytes: 1024,
+        contentType: "application/pdf", createdAt: "2026-11-18T00:00:00Z",
+        providerCode: "AJ", providerVendorCode: `VENDOR-${id}`, providerDocumentVersion: 2,
+        providerUploadedAt: "2026-11-17T15:45:00Z", providerNote: id === 1 ? "Missing signature" : null
+      }))
+    });
+    render(<WaybillDetailPage />);
+    expect(await screen.findByText("3 files · 0/2 manual")).toBeInTheDocument();
+    expect(screen.getByLabelText("POD file")).toBeEnabled();
+    expect(screen.getByLabelText("Airline Arrival Time")).not.toHaveValue("");
+    expect(screen.getByLabelText("AJ Warehouse Arrival Time")).not.toHaveValue("");
+    expect(screen.getByText(/待补全：Missing signature/)).toBeInTheDocument();
   });
 
   it("redirects unauthenticated users to the public page", async () => {
