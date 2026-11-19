@@ -263,7 +263,7 @@ class AmsTemplateCustomerRate(BaseModel):
 
 
 class AmsTemplateBillingConfig(BaseModel):
-    tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2, alias="taxHandlingFeeEur")
+    # Historical taxHandlingFeeEur JSON is ignored; the fee is now global.
     match_column: str | None = Field(default=None, alias="matchColumn")
     match_header: str | None = Field(default=None, max_length=255, alias="matchHeader")
     weight_column: str | None = Field(default=None, alias="weightColumn")
@@ -462,6 +462,7 @@ class SupplierListResponse(BaseModel):
 
 class BillingSettingsItem(BaseModel):
     unit_tax_eur: Decimal = Field(alias="unitTaxEur")
+    ams_tax_handling_fee_eur: Decimal = Field(alias="amsTaxHandlingFeeEur")
     taxable_airports: list[str] = Field(alias="taxableAirports")
     tax_effective_date: date = Field(alias="taxEffectiveDate")
     updated_at: datetime = Field(alias="updatedAt")
@@ -471,6 +472,7 @@ class BillingSettingsItem(BaseModel):
 
 class BillingSettingsUpdateRequest(BaseModel):
     unitTaxEur: Decimal
+    amsTaxHandlingFeeEur: Decimal | None = Field(default=None, ge=0, le=Decimal("999999.99"), decimal_places=2)
     taxableAirports: list[str]
     taxEffectiveDate: date | None = None
 

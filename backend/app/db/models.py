@@ -87,6 +87,9 @@ class BillingSettings(Base):
     unit_tax_eur: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("3.00")
     )
+    ams_tax_handling_fee_eur: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("8.00"), server_default="8.00"
+    )
     taxable_airports: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=lambda: ["AMS"]
     )

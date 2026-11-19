@@ -167,6 +167,7 @@ export default function SuppliersPage() {
   const [customerDialog, setCustomerDialog] = useState<{ userId: string; rate: string; editing: boolean } | null>(null);
   const [customerDialogError, setCustomerDialogError] = useState<string | null>(null);
   const [unitRate, setUnitRate] = useState("3.00");
+  const [amsTaxHandlingFee, setAmsTaxHandlingFee] = useState("8.00");
   const [airportText, setAirportText] = useState("AMS");
   const [taxEffectiveDate, setTaxEffectiveDate] = useState("2026-07-01");
   const [isLoading, setIsLoading] = useState(true);
@@ -203,6 +204,7 @@ export default function SuppliersPage() {
       setCustomers(userResponse.items);
       setLhrSettings(lhrResponse);
       setUnitRate(settings.unitTaxEur);
+      setAmsTaxHandlingFee(settings.amsTaxHandlingFeeEur);
       setAirportText(settings.taxableAirports.join(", "));
       setTaxEffectiveDate(settings.taxEffectiveDate);
     } catch (error) {
@@ -298,8 +300,9 @@ export default function SuppliersPage() {
     setNotice(null);
     try {
       const airports = airportText.split(/[,\s]+/).map((value) => value.trim()).filter(Boolean);
-      const settings = await updateBillingSettings(unitRate, airports, taxEffectiveDate);
+      const settings = await updateBillingSettings(unitRate, airports, taxEffectiveDate, amsTaxHandlingFee);
       setUnitRate(settings.unitTaxEur);
+      setAmsTaxHandlingFee(settings.amsTaxHandlingFeeEur);
       setAirportText(settings.taxableAirports.join(", "));
       setTaxEffectiveDate(settings.taxEffectiveDate);
       setNotice({ tone: "success", text: "Billing settings saved" });
@@ -417,8 +420,9 @@ export default function SuppliersPage() {
         {notice && <div className={styles.notice} data-tone={notice.tone} role={notice.tone === "error" ? "alert" : "status"}>{notice.text}</div>}
 
         <form className={styles.settingsCard} onSubmit={handleSaveSettings}>
-          <div className={styles.settingsLead}><Settings2 aria-hidden="true" size={22} /><div><span>Global billing policy</span><strong>Tax amount and eligible arrival airports</strong></div></div>
+          <div className={styles.settingsLead}><Settings2 aria-hidden="true" size={22} /><div><span>Global billing policy</span><strong>Tax amounts and AMS handling fee</strong></div></div>
           <label>Unit tax (EUR)<input inputMode="decimal" min="0" onChange={(event) => setUnitRate(event.target.value)} required step="0.01" type="number" value={unitRate} /></label>
+          <label>AMS 税金手续费 (EUR / 票)<input aria-label="AMS 税金手续费 (EUR / 票)" aria-describedby="ams-tax-handling-help" inputMode="decimal" min="0" max="999999.99" onChange={(event) => setAmsTaxHandlingFee(event.target.value)} required step="0.01" type="number" value={amsTaxHandlingFee} /><small id="ams-tax-handling-help">所有 AMS 客户，每票收取一次；0 表示不收取</small></label>
           <label>Taxable IATA airports<input onChange={(event) => setAirportText(event.target.value.toUpperCase())} placeholder="AMS, FRA" value={airportText} /></label>
           <label>Tax effective date<input onChange={(event) => setTaxEffectiveDate(event.target.value)} required type="date" value={taxEffectiveDate} /></label>
           <button type="submit"><Save aria-hidden="true" size={16} />Save policy</button>
@@ -433,7 +437,7 @@ export default function SuppliersPage() {
                 <article className={styles.supplierCard} data-status={supplier.status} key={supplier.id}>
                   <div className={styles.cardTop}><span className={styles.supplierIcon}><Factory aria-hidden="true" size={20} /></span><span className={styles.status}>{supplier.status}</span></div>
                   <div><h4>{supplier.name}</h4><p>Version {supplier.currentVersionNumber} · {config.fields.length} rules</p></div>
-                  <p className={styles.amsSummary}>{config.amsBilling ? `AMS · 每票 €${config.amsBilling.taxHandlingFeeEur} · ${config.amsBilling.customerRates.length} 位收费客户` : "AMS 扣费未配置"}</p>
+                  <p className={styles.amsSummary}>{config.amsBilling ? `AMS 重量附加费 · ${config.amsBilling.customerRates.length} 位收费客户` : "AMS 重量附加费未配置"}</p>
                   <dl><div><dt>Worksheet</dt><dd>{config.workbook.sheetMode === "first" ? "First sheet" : config.workbook.sheetName}</dd></div><div><dt>Waybill column</dt><dd>{billingColumnLabel(config, "group")}</dd></div><div><dt>Carton column</dt><dd>{billingColumnLabel(config, "distinct")}</dd></div><div><dt>Data starts</dt><dd>Row {config.workbook.dataStartRow}</dd></div></dl>
                   <footer><button onClick={() => openEdit(supplier)} type="button">Edit & publish</button><button onClick={() => void toggleSupplier(supplier)} type="button">{supplier.status === "active" ? "Deactivate" : "Activate"}</button></footer>
                 </article>

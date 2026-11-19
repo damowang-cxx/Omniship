@@ -322,11 +322,12 @@ export function updateLhrBillingSettings(config: LhrBillingConfig | null): Promi
 export function updateBillingSettings(
   unitTaxEur: string,
   taxableAirports: string[],
-  taxEffectiveDate: string
+  taxEffectiveDate: string,
+  amsTaxHandlingFeeEur: string
 ): Promise<BillingSettingsItem> {
   return requestJson<BillingSettingsItem>("/api/v1/billing/settings", {
     method: "PATCH",
-    body: JSON.stringify({ unitTaxEur, taxableAirports, taxEffectiveDate })
+    body: JSON.stringify({ unitTaxEur, taxableAirports, taxEffectiveDate, amsTaxHandlingFeeEur })
   });
 }
 

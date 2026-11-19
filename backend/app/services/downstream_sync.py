@@ -1,6 +1,7 @@
 """Read-only downstream polling and administrator-only tracking metadata."""
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import time
@@ -19,7 +20,7 @@ from app.db.models import (
 )
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.waybill_repository import WaybillRepository
-from app.services.pod_files import POD_MAX_BYTES, delete_pod_content, save_pod_content, validate_pod_content
+from app.services.pod_files import POD_MAX_BYTES, delete_pod_content, save_pod_content, validate_imported_pod_content
 
 
 AJ_BASE_URL = "https://www.ajwwworkspace.com/ShipFlow-UK/api/v1"
@@ -172,7 +173,7 @@ def aj_pod_documents(shipment: dict) -> list[dict] | None:
                 raise ProviderError("invalid_response", "AJ POD 版本号无效")
             if not isinstance(filename, str) or not filename or len(filename) > 255:
                 raise ProviderError("invalid_response", "AJ POD 文件名无效")
-            filename = Path(filename).name
+            filename = Path(filename.replace("\\", "/")).name
             if vendor is not None and (not isinstance(vendor, str) or len(vendor) > 120):
                 raise ProviderError("invalid_response", "AJ POD 渠道编号无效")
             if (note is not None and not isinstance(note, str)) or (download_url is not None and not isinstance(download_url, str)):
@@ -189,22 +190,23 @@ def aj_pod_documents(shipment: dict) -> list[dict] | None:
     return list(selected.values())
 
 
-def aj_handover(shipment: dict, pieces: int) -> tuple[int, datetime | None] | None:
-    vendors = shipment.get("vendors")
-    if vendors is None:
-        return None
-    if not isinstance(vendors, list):
-        raise ValueError("AJ 渠道列表格式无效")
-    if not vendors:
-        return None
+@dataclass(frozen=True)
+class AJQuantitySummary:
+    total: int | None
+    vendors: list[dict] | None
+    source: str
+    warning: str | None = None
+
+
+def aj_quantity_summary(shipment: dict, pieces: int) -> AJQuantitySummary:
     total = shipment.get("packages")
-    if isinstance(total, bool) or not isinstance(total, int) or total != pieces:
-        raise ValueError("AJ 总件数与本地提单件数不一致，出库数量及时间需要核查")
+    valid_total = not isinstance(total, bool) and isinstance(total, int) and total >= 0
+    vendors = shipment.get("vendors")
+    if vendors is not None and not isinstance(vendors, list):
+        raise ValueError("AJ 渠道列表格式无效")
     allocated = 0
-    outbound = 0
-    times = []
     codes = set()
-    for vendor in vendors:
+    for vendor in vendors or []:
         if not isinstance(vendor, dict):
             raise ValueError("AJ 渠道数据格式无效")
         code = vendor.get("code")
@@ -212,9 +214,44 @@ def aj_handover(shipment: dict, pieces: int) -> tuple[int, datetime | None] | No
         if not isinstance(code, str) or not code or code in codes:
             raise ValueError("AJ 渠道编号为空或重复")
         codes.add(code)
-        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= pieces:
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             raise ValueError("AJ 渠道件数无效")
         allocated += count
+    total_label = str(total) if valid_total else "未提供" if total is None else "格式无效"
+    if vendors:
+        channels = "、".join(f"{vendor['code']}: {vendor['packages']}" for vendor in vendors)
+        if allocated != pieces:
+            raise ValueError(
+                f"AJ 总件数为 {total_label}，本地提单件数为 {pieces}，渠道件数合计为 {allocated}（{channels}）；"
+                "渠道合计与本地件数不一致，已暂停应收数量、出库数量和出库完成时间同步，请核对数量口径"
+            )
+        warning = None
+        if not valid_total or total != allocated:
+            warning = (
+                f"AJ 顶层 packages 为 {total_label}，渠道件数合计为 {allocated}（{channels}），本地提单件数为 {pieces}；"
+                "渠道合计与本地一致，本轮按渠道数量同步，本地原始件数保持不变"
+            )
+        return AJQuantitySummary(allocated, vendors, "vendors[].packages", warning)
+    if total is None:
+        return AJQuantitySummary(None, None, "packages")
+    if not valid_total:
+        raise ValueError("AJ 总件数格式无效，应为非负整数")
+    if total != pieces:
+        raise ValueError(
+            f"AJ 总件数为 {total}，本地提单件数为 {pieces}；"
+            "已暂停应收数量、出库数量和出库完成时间同步，请核对数量口径"
+        )
+    return AJQuantitySummary(total, None, "packages")
+
+
+def aj_handover(quantities: AJQuantitySummary) -> tuple[int, datetime | None] | None:
+    if quantities.vendors is None:
+        return None
+    outbound = 0
+    times = []
+    for vendor in quantities.vendors:
+        code = vendor["code"]
+        count = vendor["packages"]
         try:
             handed_over = parse_time(vendor.get("handed_over_at"))
         except ValueError:
@@ -222,9 +259,7 @@ def aj_handover(shipment: dict, pieces: int) -> tuple[int, datetime | None] | No
         if handed_over is not None and count > 0:
             outbound += count
             times.append(handed_over)
-    if allocated != total:
-        raise ValueError("AJ 渠道件数合计与提单总件数不一致")
-    return outbound, max(times) if total > 0 and outbound == total else None
+    return outbound, max(times) if quantities.total > 0 and outbound == quantities.total else None
 
 
 def normalize_aj(shipment: dict) -> dict:
@@ -283,7 +318,7 @@ class DownstreamService:
                 continue
             try:
                 content = client.download_pod(document["id"], document["download_url"])
-                prepared["downloads"][document["id"]] = validate_pod_content(document["filename"], content)
+                prepared["downloads"][document["id"]] = validate_imported_pod_content(document["filename"], content)
             except ProviderError as exc:
                 prepared["errors"].append(exc.detail)
             except ValueError as exc:
@@ -590,17 +625,22 @@ class DownstreamService:
             milestones = shipment.get("milestones") or {}
             milestone_sources = {"airline_record_created_at": "record_created_airline_at", "airline_arrived_at": "status_1_at",
                                  "aj_warehouse_arrived_at": "pick_up_at", "customs_clearance_at": "customs_clearance_at"}
-            total = shipment.get("packages")
-            if total is not None and "received_total" not in binding.data_locks:
-                if isinstance(total, bool) or not isinstance(total, int) or total != record.upload.pieces:
-                    report["received_total"] = {"state": "error", "detail": "AJ 总件数与本地提单件数不一致"}
-                else:
-                    if record.received_total != total:
-                        record.received_total = total
-                        self._event(binding, awb, "count_changed", {"field": "received_total", "to": total})
-                    report["received_total"] = {"state": "synced", "source": "packages", "value": total}
             try:
-                handover = aj_handover(shipment, record.upload.pieces)
+                quantities = aj_quantity_summary(shipment, record.upload.pieces)
+            except ValueError as exc:
+                quantities = None
+                for field in ("received_total", "outbound_count", "outbound_at"):
+                    report[field] = {"state": "error", "detail": str(exc)}
+            if quantities is not None:
+                if quantities.warning:
+                    report["quantity_check"] = {"state": "warning", "detail": quantities.warning}
+                if quantities.total is not None and "received_total" not in binding.data_locks:
+                    if record.received_total != quantities.total:
+                        record.received_total = quantities.total
+                        self._event(binding, awb, "count_changed", {"field": "received_total", "to": quantities.total})
+                    report["received_total"] = {"state": "synced", "source": quantities.source, "value": quantities.total}
+            try:
+                handover = aj_handover(quantities) if quantities is not None else None
             except (TypeError, ValueError) as exc:
                 handover = None
                 report["outbound_count"] = {"state": "error", "detail": str(exc)}

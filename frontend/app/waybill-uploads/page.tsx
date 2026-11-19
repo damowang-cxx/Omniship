@@ -707,7 +707,7 @@ export default function WaybillUploadsPage() {
                         <span>{charge.feeDescription}</span><strong>{formatEuro(charge.amount)}</strong>
                         <small>{charge.quantity} kg × {formatEuro(charge.unitRate)} / kg</small>
                       </div>)}
-                      <div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>按所选模板设置的每票金额收取</small></div>
+                      <div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>按全局设置，所有 AMS 客户每票收取一次</small></div>
                     </>}
                     <div className={styles.feeEstimateTotal}><span>合计预扣 / Total estimated deduction</span>
                     <strong>{formatEuro(taxEstimate.estimatedTotal)}</strong></div>

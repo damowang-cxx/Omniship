@@ -81,12 +81,14 @@ describe("SuppliersPage", () => {
     apiMock.updateLhrBillingSettings.mockImplementation(async (config) => ({ config, version: 1 }));
     apiMock.getBillingSettings.mockResolvedValue({
       unitTaxEur: "3.00",
+      amsTaxHandlingFeeEur: "8.00",
       taxableAirports: ["AMS"],
       taxEffectiveDate: "2026-07-01",
       updatedAt: "2026-07-16T10:00:00Z"
     });
     apiMock.updateBillingSettings.mockResolvedValue({
       unitTaxEur: "4.00",
+      amsTaxHandlingFeeEur: "9.50",
       taxableAirports: ["AMS", "FRA"],
       taxEffectiveDate: "2026-07-01",
       updatedAt: "2026-07-16T10:00:00Z"
@@ -119,17 +121,32 @@ describe("SuppliersPage", () => {
     expect(screen.getByDisplayValue("3.00")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Supplier" })).toHaveAttribute("href", "/suppliers");
     expect(screen.getByRole("heading", { name: "LHR 扣费配置" })).toBeInTheDocument();
-    expect(screen.getByText("AMS 扣费未配置")).toBeInTheDocument();
+    expect(screen.getByText("AMS 重量附加费未配置")).toBeInTheDocument();
+    expect(screen.getByLabelText("AMS 税金手续费 (EUR / 票)")).toHaveValue(8);
     expect(screen.getByRole("button", { name: "创建 LHR 扣费配置" })).toBeInTheDocument();
     expect(screen.getByText("LHR 专用收费")).toBeInTheDocument();
+  });
+
+  it("saves the global AMS per-waybill fee beside unit tax without publishing a template", async () => {
+    render(<SuppliersPage />);
+    const fee = await screen.findByLabelText("AMS 税金手续费 (EUR / 票)");
+    const form = fee.closest("form")!;
+    expect(within(form).getByLabelText("Unit tax (EUR)")).toBeInTheDocument();
+    expect(fee).toHaveAccessibleDescription("所有 AMS 客户，每票收取一次；0 表示不收取");
+    fireEvent.change(fee, { target: { value: "9.50" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Save policy" }));
+    await waitFor(() => expect(apiMock.updateBillingSettings).toHaveBeenCalledWith("3.00", ["AMS"], "2026-07-01", "9.50"));
+    expect(await screen.findByText("Billing settings saved")).toBeInTheDocument();
+    expect(fee).toHaveValue(9.5);
+    expect(apiMock.publishSupplierVersion).not.toHaveBeenCalled();
   });
 
   it("publishes template-specific AMS columns and multiple customer prices", async () => {
     render(<SuppliersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
     const ams = screen.getByRole("region", { name: "模板 AMS 扣费配置" });
-    fireEvent.click(within(ams).getByRole("checkbox", { name: "启用本模板 AMS 扣费" }));
-    fireEvent.change(within(ams).getByLabelText("模板 AMS 每票税金手续费"), { target: { value: "4.25" } });
+    fireEvent.click(within(ams).getByRole("checkbox", { name: "启用本模板 AMS 重量附加费" }));
+    expect(within(ams).queryByLabelText("模板 AMS 每票税金手续费")).not.toBeInTheDocument();
     fireEvent.change(within(ams).getByLabelText("AMS 指定匹配列"), { target: { value: "e" } });
     fireEvent.change(within(ams).getByLabelText("AMS 匹配列标题"), { target: { value: "NETWORK" } });
     fireEvent.change(within(ams).getByLabelText("AMS 重量列"), { target: { value: "v" } });
@@ -145,7 +162,7 @@ describe("SuppliersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
     await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
       amsBilling: {
-        taxHandlingFeeEur: "4.25", matchColumn: "E", matchHeader: "NETWORK", weightColumn: "V",
+        matchColumn: "E", matchHeader: "NETWORK", weightColumn: "V",
         matchValues: ["DE-DHL", "Colissimo"],
         customerRates: [{ userId: "customer-id", fees: [
           { matchValue: "DE-DHL", rateEurPerKg: "0.75" }, { matchValue: "Colissimo", rateEurPerKg: "1.20" }
@@ -167,7 +184,7 @@ describe("SuppliersPage", () => {
     render(<SuppliersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
     const ams = screen.getByRole("region", { name: "模板 AMS 扣费配置" });
-    fireEvent.click(within(ams).getByRole("checkbox", { name: "启用本模板 AMS 扣费" }));
+    fireEvent.click(within(ams).getByRole("checkbox", { name: "启用本模板 AMS 重量附加费" }));
     expect(within(ams).getByLabelText("AMS 添加客户")).toBeDisabled();
     fireEvent.change(within(ams).getByLabelText("AMS 指定匹配列"), { target: { value: "E" } });
     fireEvent.change(within(ams).getByLabelText("AMS 重量列"), { target: { value: "V" } });

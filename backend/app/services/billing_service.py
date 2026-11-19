@@ -401,8 +401,7 @@ class BillingService:
             raise BillingValidationError(str(exc)) from exc
         operation_fee = row_count * OPERATION_UNIT_RATE
         template_config = SupplierVersionConfig.model_validate(version.config)
-        ams_config = template_config.ams_billing if airport == "AMS" else None
-        ams_tax_handling_fee_eur = ams_config.tax_handling_fee_eur if ams_config else Decimal("0.00")
+        ams_tax_handling_fee_eur = Decimal(settings.ams_tax_handling_fee_eur) if airport == "AMS" else Decimal("0.00")
         ams_charges = []
         if airport == "AMS" and (target_user_id is not None or actor.role == "user"):
             customer_id = target_user_id or actor.id

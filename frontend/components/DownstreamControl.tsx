@@ -15,7 +15,7 @@ const DATA_LABELS: Record<string, string> = {
   released_count: "放行数量", outbound_count: "出库数量", parcels: "包裹状态", pod_files: "POD 附件"
 };
 const SYNC_STATE_LABELS: Record<string, string> = {
-  synced: "已同步", locked: "人工锁定", unavailable: "暂无来源数据", error: "同步异常"
+  synced: "已同步", locked: "人工锁定", unavailable: "暂无来源数据", error: "同步异常", warning: "数量差异提示"
 };
 
 function displayTime(value: string | null | undefined) {
@@ -139,7 +139,7 @@ export function DownstreamControl({ publicCode, awb, binding, onChanged }: {
             {detail.syncReport && Object.keys(detail.syncReport).length > 0 && <div className={styles.report}>
               <h3>最近一轮字段同步结果</h3>
               {Object.entries(detail.syncReport).map(([field, result]) => <div className={styles.reportRow} key={field}>
-                <strong>{MILESTONE_LABELS[field] || DATA_LABELS[field] || (field === "status" ? "提单状态" : "接口查询")}</strong>
+                <strong>{MILESTONE_LABELS[field] || DATA_LABELS[field] || (field === "status" ? "提单状态" : field === "quantity_check" ? "数量口径核对" : "接口查询")}</strong>
                 <span data-state={result.state}>{SYNC_STATE_LABELS[result.state] || result.state}</span>
                 {(result.value != null || result.detail) && <p>{result.value != null ? (field in MILESTONE_LABELS ? displayTime(String(result.value)) : String(result.value)) : result.detail}</p>}
                 {result.value != null && result.detail && <p>{result.detail}</p>}

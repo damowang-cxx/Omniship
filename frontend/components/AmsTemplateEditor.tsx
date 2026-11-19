@@ -28,7 +28,7 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
   const enable = () => {
     const weightField = fields.find((field) => field.semanticField === "weight_kg" && field.locatorMode === "column");
     onChange({
-      taxHandlingFeeEur: "0.00", matchColumn: null, matchHeader: null,
+      matchColumn: null, matchHeader: null,
       weightColumn: weightField?.locatorValue.toUpperCase() ?? null,
       matchValues: [], customerRates: []
     });
@@ -56,17 +56,15 @@ export function AmsTemplateEditor({ config, customers, fields, onChange }: {
   };
 
   return <section className={styles.container} aria-label="模板 AMS 扣费配置">
-    <div className={styles.heading}><strong>AMS 扣费配置</strong><p>目的港为 AMS 时，按本模板的匹配列汇总各明细重量，再按客户单价收取 EUR 费用。</p></div>
+    <div className={styles.heading}><strong>AMS 重量附加费配置</strong><p>目的港为 AMS 时，按本模板的匹配列汇总各明细重量，再按客户单价收取 EUR 费用。每票税金手续费在全局收费设置中统一配置。</p></div>
     <label className={styles.toggle}>
       <input type="checkbox" checked={Boolean(config)} onChange={(event) => {
         setError(null);
         if (event.target.checked) enable(); else onChange(null);
-      }} />启用本模板 AMS 扣费
+      }} />启用本模板 AMS 重量附加费
     </label>
     {config && <>
       <div className={styles.columns}>
-        <label>每票税金手续费 (EUR)<input aria-label="模板 AMS 每票税金手续费" min="0" required step="0.01" type="number" value={config.taxHandlingFeeEur}
-          onChange={(event) => onChange({ ...config, taxHandlingFeeEur: event.target.value })} /></label>
         <label>指定匹配列<input aria-label="AMS 指定匹配列" autoCapitalize="characters" maxLength={3} pattern="[A-Za-z]{1,3}" placeholder="E" required={config.customerRates.length > 0} value={config.matchColumn ?? ""}
           onChange={(event) => onChange({ ...config, matchColumn: event.target.value.toUpperCase() || null })} /></label>
         <label>匹配列标题（选填）<input aria-label="AMS 匹配列标题" maxLength={255} placeholder="NETWORK" value={config.matchHeader ?? ""}

@@ -146,6 +146,7 @@ def download_waybill_pod_file(
         path=file.storage_path,
         media_type=_pod_media_type(file.original_filename, file.content_type),
         filename=file.original_filename,
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 

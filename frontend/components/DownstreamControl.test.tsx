@@ -17,6 +17,7 @@ describe("DownstreamControl", () => {
       lastCheckedAt: null, lastSuccessAt: null, remoteStage: "AWAITING_HANDOVER", remoteCompletion: "IN_TRANSIT",
       snapshot: {}, lastError: null,
       syncReport: {
+        quantity_check: { state: "warning", detail: "AJ 顶层 packages 为 1，渠道件数合计为 98，本地提单件数为 98；本轮按渠道数量同步" },
         airline_arrived_at: { state: "synced", value: "2026-11-17T09:24:00+00:00" },
         received_count: { state: "unavailable", detail: "等待 AJ 数量或包裹明细数据" },
         pod_files: { state: "error", detail: "POD download failed" }
@@ -33,6 +34,9 @@ describe("DownstreamControl", () => {
     expect(await screen.findByText("航司到达时间")).toBeInTheDocument();
     expect(screen.getByText("暂无来源数据")).toBeInTheDocument();
     expect(screen.getByText("POD download failed")).toBeInTheDocument();
+    expect(screen.getByText("数量口径核对")).toBeInTheDocument();
+    expect(screen.getByText("数量差异提示")).toHaveAttribute("data-state", "warning");
+    expect(screen.getByText(/AJ 顶层 packages 为 1/)).toBeInTheDocument();
     fireEvent.click(screen.getByText("各字段人工锁定设置"));
     fireEvent.click(screen.getByLabelText("人工锁定入库数量"));
     await waitFor(() => expect(api.setDownstreamLocks).toHaveBeenCalledWith("TEST0001", {

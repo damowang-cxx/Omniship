@@ -1,11 +1,35 @@
 from copy import deepcopy
 from uuid import UUID
 
+import pytest
 from sqlalchemy import select
 
 from app.db.models import SupplierVersion
 from app.services.supplier_defaults import QLS_CONFIG
 from tests.auth_helpers import create_test_user, login
+
+
+@pytest.mark.parametrize("amount", ["-0.01", "1.001", "1000000.00", "NaN", "Infinity"])
+def test_global_ams_tax_rejects_invalid_amounts(client, db_session, amount):
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    login(client, email=admin.email)
+    response = client.patch("/api/v1/billing/settings", json={
+        "unitTaxEur": "3.00", "taxableAirports": ["AMS"], "amsTaxHandlingFeeEur": amount,
+    })
+    assert response.status_code == 422
+    assert client.get("/api/v1/billing/settings").json()["amsTaxHandlingFeeEur"] == "8.00"
+
+
+def test_global_ams_tax_settings_preserve_amount_for_older_clients_and_require_admin(client, db_session):
+    admin = create_test_user(db_session, email="admin@example.com", role="admin")
+    customer = create_test_user(db_session, email="customer@example.com")
+    login(client, email=admin.email)
+    payload = {"unitTaxEur": "3.00", "taxableAirports": ["AMS"], "amsTaxHandlingFeeEur": "9.50"}
+    assert client.patch("/api/v1/billing/settings", json=payload).json()["amsTaxHandlingFeeEur"] == "9.50"
+    del payload["amsTaxHandlingFeeEur"]
+    assert client.patch("/api/v1/billing/settings", json=payload).json()["amsTaxHandlingFeeEur"] == "9.50"
+    login(client, email=customer.email)
+    assert client.patch("/api/v1/billing/settings", json={**payload, "amsTaxHandlingFeeEur": "0.00"}).status_code == 403
 
 
 def test_admin_manages_supplier_versions_and_settings(client, db_session):

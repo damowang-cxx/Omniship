@@ -590,7 +590,8 @@ def test_admin_cancels_billed_waybill_refunds_and_archives_it(client, db_session
     body = cancel_response.json()
     assert body["status"] == "cancelled"
     assert body["uploadId"] == upload_id
-    assert body["refundedAmount"] == "5.00"
+    assert body["refundedAmount"] == "13.00"
+    assert body["record"]["amsTaxHandlingAmountDeleted"] == "8.00"
     assert body["record"]["operationFeeAmountDeleted"] == "2.00"
     assert body["balanceAfterRefund"] == "50.00"
     assert body["record"]["airWaybillNumber"] == "784-84063276"
@@ -608,7 +609,7 @@ def test_admin_cancels_billed_waybill_refunds_and_archives_it(client, db_session
     assert archived.original_status == "approved"
     assert archived.user_email == user.email
     assert archived.cancelled_by_email == admin.email
-    assert archived.refunded_amount == Decimal("5.00")
+    assert archived.refunded_amount == Decimal("13.00")
 
     list_response = client.get("/api/v1/cancelled-waybills")
     assert list_response.status_code == 200
@@ -662,14 +663,14 @@ def test_waybill_cancellation_does_not_refund_tax_twice(client, db_session):
     )
     assert reversal_response.status_code == 200
     db_session.refresh(user)
-    assert user.balance == Decimal("48.00")
+    assert user.balance == Decimal("40.00")
 
     cancel_response = client.post(
         f"/api/v1/waybill-uploads/{upload_id}/cancel",
         json={"reason": "Duplicate upload"},
     )
     assert cancel_response.status_code == 200
-    assert cancel_response.json()["refundedAmount"] == "2.00"
+    assert cancel_response.json()["refundedAmount"] == "10.00"
     assert cancel_response.json()["balanceAfterRefund"] == "50.00"
 
     db_session.expire_all()
@@ -678,7 +679,7 @@ def test_waybill_cancellation_does_not_refund_tax_twice(client, db_session):
     assert db_session.execute(select(BillingEntry)).scalars().all() == []
     archived = db_session.execute(select(CancelledWaybill)).scalar_one()
     assert archived.tax_amount_deleted == Decimal("3.00")
-    assert archived.refunded_amount == Decimal("2.00")
+    assert archived.refunded_amount == Decimal("10.00")
 
 
 def test_admin_filters_uploads_and_users_cannot_filter_into_other_users(

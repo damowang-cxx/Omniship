@@ -245,7 +245,6 @@ export interface AmsTemplateFee {
 }
 
 export interface AmsTemplateBillingConfig {
-  taxHandlingFeeEur: string;
   matchColumn: string | null;
   matchHeader: string | null;
   weightColumn: string | null;
@@ -295,6 +294,7 @@ export interface SupplierListResponse {
 
 export interface BillingSettingsItem {
   unitTaxEur: string;
+  amsTaxHandlingFeeEur: string;
   taxableAirports: string[];
   taxEffectiveDate: string;
   updatedAt: string;

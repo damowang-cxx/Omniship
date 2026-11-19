@@ -10,16 +10,17 @@
 .notice { border-radius: 8px; font-weight: 800; padding: 11px 13px; }
 .notice[data-tone="success"] { background: #ecfdf5; border: 1px solid #bbf7d0; color: #047857; }
 .notice[data-tone="error"] { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
-.settingsCard { align-items: end; background: #0b3b38; border: 1px solid #0f5f59; border-radius: 12px; box-shadow: 0 16px 44px rgba(11,59,56,.13); color: #fff; display: grid; gap: 14px; grid-template-columns: 1.25fr .45fr .75fr .6fr auto; overflow: hidden; padding: 20px; position: relative; }
+.settingsCard { align-items: start; background: #0b3b38; border: 1px solid #0f5f59; border-radius: 12px; box-shadow: 0 16px 44px rgba(11,59,56,.13); color: #fff; display: grid; gap: 14px; grid-template-columns: minmax(0,.65fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) auto; overflow: hidden; padding: 20px; position: relative; }
 .settingsCard::after { border: 28px solid rgba(255,255,255,.06); border-radius: 999px; content: ""; height: 130px; position: absolute; right: -70px; top: -80px; width: 130px; }
-.settingsLead { align-items: center; display: flex; gap: 11px; }
+.settingsLead { align-items: center; display: flex; gap: 11px; grid-column: 1 / -1; }
 .settingsLead > svg { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 9px; box-sizing: content-box; padding: 10px; }
 .settingsLead span, .settingsLead strong { display: block; }
 .settingsLead span { color: #9fd3cc; font-size: 11px; font-weight: 900; text-transform: uppercase; }
 .settingsLead strong { font-size: 15px; margin-top: 3px; }
 .settingsCard label { color: #b9dbd7; display: grid; font-size: 11px; font-weight: 900; gap: 6px; text-transform: uppercase; }
-.settingsCard input { background: rgba(255,255,255,.96); border: 0; border-radius: 8px; color: #173a38; font-weight: 900; min-height: 42px; padding: 0 11px; }
-.settingsCard > button { background: #fff; border-color: #fff; color: #0b5d56; position: relative; z-index: 1; }
+.settingsCard label small { color: #b9dbd7; font-size: 11px; font-weight: 500; line-height: 1.5; text-transform: none; }
+.settingsCard input { background: rgba(255,255,255,.96); border: 0; border-radius: 8px; box-sizing: border-box; color: #173a38; font-weight: 900; min-height: 42px; min-width: 0; padding: 0 11px; width: 100%; }
+.settingsCard > button { background: #fff; border-color: #fff; color: #0b5d56; position: relative; z-index: 1; margin-top: 19px; }
 .registry { background: #fff; border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 16px; padding: 18px; }
 .registryHeader h3 { font-size: 21px; }
 .registryHeader > span { background: #f2f4f7; border-radius: 999px; color: #667085; font-size: 12px; font-weight: 900; padding: 6px 10px; }

@@ -228,10 +228,11 @@ def test_warning_upload_deducts_distinct_units_atomically(client, db_session):
     body = response.json()
     assert body["billableUnitCount"] == 5
     assert body["deductedTax"] == "15.00"
-    assert body["balanceAfter"] == "13.00"
+    assert body["balanceAfter"] == "5.00"
     assert body["operationRowCount"] == 6
     assert body["deductedOperationFee"] == "12.00"
-    assert body["deductedTotal"] == "27.00"
+    assert body["amsTaxHandlingFeeEur"] == "8.00"
+    assert body["deductedTotal"] == "35.00"
     assert body["validationIssueCount"] == 1
     assert "less than or equal to 20" in body["validationIssues"][0]["message"]
 
@@ -260,9 +261,9 @@ def test_insufficient_balance_saves_nothing(client, db_session):
     assert response.status_code == 402
     assert response.json()["detail"] == {
         "code": "insufficient_balance",
-        "required": "25.00",
+        "required": "33.00",
         "balance": "10.00",
-        "shortfall": "15.00",
+        "shortfall": "23.00",
     }
     assert db_session.execute(select(WaybillUpload)).scalars().all() == []
     assert db_session.execute(select(BillingEntry)).scalars().all() == []
@@ -318,7 +319,7 @@ def test_header_based_supplier_with_named_sheet_needs_no_code_change(client, db_
         db_session,
         email="user@example.com",
         username="User",
-        balance="20.00",
+        balance="30.00",
     )
     assert login(client, email=admin.email).status_code == 200
     config = rpl_config()

@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from copy import deepcopy
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 import httpx
@@ -301,6 +303,170 @@ def test_documented_times_handover_and_pods_sync_without_inventing_missing_field
     assert service.run_due(provider, NOW + timedelta(minutes=5)) == 1
     assert provider.downloads == ["41"]
     assert len(db_session.scalars(select(WaybillPodFile)).all()) == 1
+
+
+@pytest.mark.parametrize("extension,media_type", [
+    (".doc", "application/msword"),
+    (".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    (".ajpod", "application/octet-stream"),
+])
+def test_aj_source_pods_import_download_and_deduplicate_without_relaxing_manual_uploads(
+    client, db_session, tmp_path, monkeypatch, extension, media_type,
+):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, customer, record = create_waybill(db_session)
+    result = completed_shipment()
+    filename = f"{AWB}_EMPTYBOX_v1{extension}"
+    result["vendors"][0]["pod_documents"][0]["file_name"] = filename
+    content = b"{\\rtf1\\ansi Empty box POD}"
+    if extension == ".docx":
+        output = BytesIO()
+        with ZipFile(output, "w") as archive:
+            archive.writestr("[Content_Types].xml", '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+            archive.writestr("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>')
+        content = output.getvalue()
+
+    class SourceFormatClient(PodClient):
+        def download_pod(self, document_id, download_url=None):
+            self.downloads.append(document_id)
+            return content
+
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    provider = SourceFormatClient(result)
+    service.run_due(provider, NOW)
+    file = db_session.scalars(select(WaybillPodFile)).one()
+    assert file.original_filename == filename and file.content_type == media_type
+    assert Path(file.storage_path).read_bytes() == content
+    binding = binding_for(db_session, record)
+    assert binding.last_error is None and binding.sync_report["pod_files"]["state"] == "synced"
+    service.run_due(provider, NOW + timedelta(minutes=5))
+    assert provider.downloads == ["41"]
+    assert len(db_session.scalars(select(WaybillPodFile)).all()) == 1
+    login(client, email=customer.email)
+    downloaded = client.get(f"/api/v1/waybills/{record.public_code}/pod/{file.id}/download")
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.content == content
+    assert downloaded.headers["content-type"] == media_type
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
+    assert filename in downloaded.headers["content-disposition"]
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+    login(client, email=admin.email)
+    uploaded = client.post(f"/api/v1/waybills/{record.public_code}/pod", files={"podFile": (filename, content, media_type)})
+    assert uploaded.status_code == 400, uploaded.text
+    assert "PDF, JPEG, or PNG" in uploaded.json()["detail"]
+
+
+@pytest.mark.parametrize("bad_file", ["empty.doc", "oversize.doc", "invalid.pdf"])
+def test_invalid_aj_files_keep_previous_pod_and_do_not_block_other_fields(db_session, tmp_path, monkeypatch, bad_file):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    service.run_due(PodClient(completed_shipment()), NOW)
+    old_file = db_session.scalars(select(WaybillPodFile)).one()
+    old_path = Path(old_file.storage_path)
+    result = completed_shipment()
+    result["milestones"]["customs_clearance_at"] = NOW.isoformat()
+    result["vendors"][0]["pod_documents"][0].update({"id": 42, "file_name": bad_file, "version": 2,
+                                                      "download_url": f"{AJ_BASE_URL}/files/pod/42"})
+
+    class InvalidFileClient(PodClient):
+        def download_pod(self, document_id, download_url=None):
+            if bad_file == "oversize.doc":
+                return b"x" * (10 * 1024 * 1024 + 1)
+            return b"not a PDF" if bad_file == "invalid.pdf" else b""
+
+    service.run_due(InvalidFileClient(result), NOW + timedelta(minutes=5))
+    assert db_session.scalars(select(WaybillPodFile)).one().id == old_file.id
+    assert old_path.is_file()
+    assert binding_for(db_session, record).sync_report["pod_files"]["state"] == "error"
+    assert record.customs_clearance_at.replace(tzinfo=timezone.utc) == NOW
+    assert record.outbound_count == 12
+
+
+def test_quantity_mismatch_reports_both_values_once_preserves_counts_and_recovers(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_storage_dir", tmp_path)
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = completed_shipment()
+    provider = PodClient(result)
+    service.run_due(provider, NOW)
+    old_outbound_at = record.outbound_at
+    result["packages"] = result["vendors"][0]["packages"] = 14
+    result["stage"]["code"] = "AWAITING_COLLECTION"
+    result["milestones"]["customs_clearance_at"] = NOW.isoformat()
+    service.run_due(provider, NOW + timedelta(minutes=5))
+    binding = binding_for(db_session, record)
+    assert "AJ 总件数为 14，本地提单件数为 12" in binding.last_error
+    assert binding.last_error.count("AJ 总件数") == 1
+    assert record.received_total == record.outbound_count == 12
+    assert record.outbound_at == old_outbound_at
+    assert record.status == "cleared" and record.customs_clearance_at.replace(tzinfo=timezone.utc) == NOW
+    assert binding.sync_report["pod_files"]["state"] == "synced"
+    for field in ("received_total", "outbound_count", "outbound_at"):
+        assert binding.sync_report[field]["state"] == "error"
+    incident = db_session.scalars(select(DownstreamIncident)).one()
+    service.run_due(provider, NOW + timedelta(minutes=10))
+    assert db_session.scalars(select(DownstreamIncident)).one().id == incident.id
+    result["packages"] = result["vendors"][0]["packages"] = 12
+    service.run_due(provider, NOW + timedelta(minutes=15))
+    assert binding.last_error is None
+    assert incident.resolved_at is not None
+    assert binding.sync_report["outbound_count"]["state"] == "synced"
+
+
+def test_vendor_quantities_matching_local_pieces_override_top_level_with_nonblocking_warning(db_session):
+    admin, _, record = create_waybill(db_session)
+    record.upload.pieces = record.received_total = 98
+    db_session.commit()
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = shipment("NOT_ARRIVED", clearance=None, packages=1, shipper_ref="RM(98)", vendors=[{
+        "code": "RM", "packages": 97, "handed_over_at": None, "pod_documents": [],
+    }], orphan_pod_documents=[])
+    # An old blocking incident must resolve once channel quantities are corrected.
+    service.process(binding_for(db_session, record), NOW, result)
+    incident = db_session.scalars(select(DownstreamIncident)).one()
+    result["vendors"][0]["packages"] = 98
+    service.process(binding_for(db_session, record), NOW + timedelta(minutes=5), result)
+    binding = binding_for(db_session, record)
+    assert binding.last_error is None and incident.resolved_at is not None
+    assert binding.sync_report["quantity_check"]["state"] == "warning"
+    assert "顶层 packages 为 1" in binding.sync_report["quantity_check"]["detail"]
+    assert "渠道件数合计为 98（RM: 98），本地提单件数为 98" in binding.sync_report["quantity_check"]["detail"]
+    assert binding.sync_report["received_total"] == {"state": "synced", "source": "vendors[].packages", "value": 98}
+    assert record.received_total == 98 and record.outbound_count == 0 and record.outbound_at is None
+    assert record.status == "created" and record.received_count == record.in_warehouse_count == 0
+    result["vendors"][0].update({"packages": 60, "handed_over_at": "2026-11-16T10:00:00+00:00"})
+    result["vendors"].append({"code": "EVRI", "packages": 38, "handed_over_at": None, "pod_documents": []})
+    service.process(binding, NOW + timedelta(minutes=10), result)
+    assert record.outbound_count == 60 and record.outbound_at is None
+    result["vendors"][1]["handed_over_at"] = "2026-11-16T11:45:00+00:00"
+    service.process(binding, NOW + timedelta(minutes=15), result)
+    assert record.outbound_count == 98
+    assert record.outbound_at.replace(tzinfo=timezone.utc) == NOW - timedelta(minutes=15)
+    assert record.upload.pieces == 98 and binding.snapshot["packages"] == 1
+    assert binding.last_error is None
+
+
+def test_matching_top_level_does_not_bypass_a_vendor_total_that_differs_from_local(db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = completed_shipment()
+    service.process(binding_for(db_session, record), NOW, result)
+    previous_outbound_at = record.outbound_at
+    result["vendors"][0]["packages"] = 98
+    service.process(binding_for(db_session, record), NOW + timedelta(minutes=5), result)
+    binding = binding_for(db_session, record)
+    assert "本地提单件数为 12，渠道件数合计为 98" in binding.last_error
+    assert record.upload.pieces == record.received_total == record.outbound_count == 12
+    assert record.outbound_at == previous_outbound_at
+    assert "quantity_check" not in binding.sync_report
+    for field in ("received_total", "outbound_count", "outbound_at"):
+        assert binding.sync_report[field]["state"] == "error"
 
 
 def test_partial_handover_counts_channels_and_waits_for_all_times(db_session):

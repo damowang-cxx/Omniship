@@ -34,6 +34,7 @@
 .reportRow p { grid-column:1 / -1; color:#61756b; margin:0; overflow-wrap:anywhere; }
 .reportRow span { color:#52675c; }
 .reportRow span[data-state="error"] { color:#a53827; }
+.reportRow span[data-state="warning"] { color:#996020; }
 .reportRow span[data-state="synced"] { color:#176b50; }
 .hint { margin:15px 0; color:#5d7064; font-size:12px; }
 .raw { border-top:1px solid #dce5dd; padding-top:13px; font-size:12px; }

@@ -126,11 +126,16 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
     public_code = item["publicCode"]
     original_status_changed_at = item["statusChangedAt"]
 
+    # A charged AMS waybill keeps its billing destination; progress remains editable.
+    blocked = client.patch(f"/api/v1/waybills/{public_code}", json={"airportOfArrival": "cdg"})
+    assert blocked.status_code == 409
+    assert "AMS fees" in blocked.json()["detail"]
+
     progress_response = client.patch(
         f"/api/v1/waybills/{public_code}",
         json={
             "airportOfDeparture": "fra",
-            "airportOfArrival": "cdg",
+            "airportOfArrival": "ams",
             "receivedCount": 3,
             "receivedTotal": 10,
             "inWarehouseCount": 2,
@@ -146,7 +151,7 @@ def test_admin_filters_and_updates_waybill_tracking(client, db_session):
     progress_body = progress_response.json()
     assert progress_body["receivedCount"] == 3
     assert progress_body["airportOfDeparture"] == "FRA"
-    assert progress_body["airportOfArrival"] == "CDG"
+    assert progress_body["airportOfArrival"] == "AMS"
     assert progress_body["inWarehouseCount"] == 2
     assert progress_body["palletCount"] == 4
     assert progress_body["fycoStatus"] == "fyco"

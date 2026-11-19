@@ -133,6 +133,8 @@ class SupplierService:
     ) -> BillingSettingsItem:
         settings = self.suppliers.get_settings()
         settings.unit_tax_eur = payload.unit_tax_eur
+        if payload.amsTaxHandlingFeeEur is not None:
+            settings.ams_tax_handling_fee_eur = payload.amsTaxHandlingFeeEur
         settings.taxable_airports = payload.taxable_airports
         if payload.tax_effective_date is not None:
             settings.tax_effective_date = payload.tax_effective_date
@@ -146,6 +148,7 @@ class SupplierService:
             user_agent=get_request_user_agent(request),
             metadata={
                 "unitTaxEur": str(payload.unit_tax_eur),
+                "amsTaxHandlingFeeEur": str(settings.ams_tax_handling_fee_eur),
                 "taxableAirports": payload.taxable_airports,
                 "taxEffectiveDate": settings.tax_effective_date.isoformat(),
             },

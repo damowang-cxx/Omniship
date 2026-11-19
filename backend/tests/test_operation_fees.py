@@ -74,23 +74,24 @@ def test_xls_rows_include_empty_formula_and_skip_formatted_blank():
     ) == 5
 
 
-def test_estimate_and_upload_match_two_fees(client, db_session):
-    user = create_test_user(db_session, email="fee@example.com", balance="26.00")
+def test_estimate_and_upload_match_tax_operation_and_global_ams_fees(client, db_session):
+    user = create_test_user(db_session, email="fee@example.com", balance="34.00")
     login(client, email=user.email)
     content = workbook_bytes(["P1"] * 5 + ["P2"] * 5)
     estimate = client.post("/api/v1/billing/estimate", data={"supplierId": str(QLS_SUPPLIER_ID), "airportOfArrival": "AMS"},
                            files={"preAlertFile": ("data.xlsx", content)})
     assert estimate.status_code == 200
     assert {key: estimate.json()[key] for key in ("estimatedTax", "estimatedOperationFee", "estimatedTotal")} == {
-        "estimatedTax": "6.00", "estimatedOperationFee": "20.00", "estimatedTotal": "26.00",
+        "estimatedTax": "6.00", "estimatedOperationFee": "20.00", "estimatedTotal": "34.00",
     }
     response = client.post("/api/v1/waybill-uploads/file", data=upload_data(), files=upload_files(content))
     assert response.status_code == 201
     assert response.json()["balanceAfter"] == "0.00"
     entries = {entry.fee_type: entry for entry in db_session.scalars(select(BillingEntry)).all()}
-    assert entries["customs_tax"].balance_after == Decimal("20.00")
+    assert entries["customs_tax"].balance_after == Decimal("28.00")
     assert entries[OPERATION_FEE_TYPE].amount == Decimal("20.00")
-    assert entries[OPERATION_FEE_TYPE].balance_after == Decimal("0.00")
+    assert entries[OPERATION_FEE_TYPE].balance_after == Decimal("8.00")
+    assert entries["ams_tax_handling"].balance_after == Decimal("0.00")
 
 
 def test_upload_rolls_back_both_fees_and_files(client, db_session, monkeypatch, tmp_path):
@@ -206,13 +207,13 @@ def test_invoice_keeps_operation_fee_separate_and_extra_fees_once(client, db_ses
     created = client.post("/api/v1/billing/me/invoices", json={"deductionIds": [entry["id"] for entry in eligible], "issuedDate": "2026-11-04"})
     assert created.status_code == 201
     invoice = created.json()["invoices"][0]
-    assert invoice["totalAmount"] == "19.50"
-    assert {line["feeName"] for line in invoice["lines"]} == {"Customs tax", "申报行操作费"}
+    assert invoice["totalAmount"] == "27.50"
+    assert {line["feeName"] for line in invoice["lines"]} == {"Customs tax", "申报行操作费", "AMS 税金手续费"}
     assert client.get("/api/v1/billing/me/invoices/eligible").json() == []
     assert client.post("/api/v1/billing/me/invoices", json={"deductionIds": [entry["id"] for entry in eligible], "issuedDate": "2026-11-04"}).status_code == 409
     exported = client.get(f"/api/v1/billing/me/invoices/download?invoiceIds={invoice['id']}")
     workbook = load_workbook(BytesIO(exported.content))
-    assert "申报行操作费" in " ".join(str(workbook.active.cell(row, 1).value) for row in (13, 14))
+    assert "申报行操作费" in " ".join(str(workbook.active.cell(row, 1).value) for row in (13, 14, 15))
     workbook.close()
     login(client, email=admin.email)
     balance = db_session.get(type(user), user.id).balance

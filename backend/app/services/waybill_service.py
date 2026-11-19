@@ -435,7 +435,7 @@ class WaybillService:
                 entry.entry_type == "deduction" and entry.fee_type in {"ams_weight_handling", "ams_tax_handling"}
                 for entry in record.upload.billing_entries
             ):
-                raise WaybillBillingConflictError("Cannot change the arrival airport of a waybill with an AMS weight fee")
+                raise WaybillBillingConflictError("Cannot change the arrival airport of a waybill with AMS fees")
             record.upload.airport_of_arrival = arrival
             airport_fields_changed.append("airportOfArrival")
 

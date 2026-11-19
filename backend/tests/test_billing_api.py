@@ -401,7 +401,7 @@ def test_estimates_three_euros_for_each_eu_shipment(client, db_session):
         "operationRowCount": 3,
         "operationUnitRate": "2.00",
         "estimatedOperationFee": "6.00",
-        "estimatedTotal": "15.00",
+        "estimatedTotal": "23.00",
         "warningCount": 0,
         "warnings": [],
         "currency": "EUR",
@@ -414,6 +414,6 @@ def test_estimates_three_euros_for_each_eu_shipment(client, db_session):
         "lhrWeightKg": "0.00",
         "amsWeightRateEur": "0.00",
         "amsWeightFeeEur": "0.00",
-        "amsTaxHandlingFeeEur": "0.00",
+        "amsTaxHandlingFeeEur": "8.00",
         "amsCharges": [],
     }

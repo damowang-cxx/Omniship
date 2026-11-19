@@ -281,7 +281,7 @@ def update_ams_billing_settings(
 ) -> None:
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
-        detail="AMS 扣费配置已移入 Supplier 模板，请编辑对应模板并发布新版本",
+        detail="AMS 重量附加费请在 Supplier 模板中配置；每票税金手续费请在全局计费设置中配置",
     )
 
 

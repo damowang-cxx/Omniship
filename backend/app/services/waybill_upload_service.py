@@ -246,7 +246,7 @@ class WaybillUploadService:
             raise WaybillUploadValidationError(str(exc)) from exc
         ams_weight_fee_eur = sum((charge.amount for charge in ams_charges), Decimal("0.00"))
         ams_weight_rate_eur = ams_charges[0].unit_rate if len(ams_charges) == 1 else Decimal("0.00")
-        ams_tax_handling_fee_eur = ams_config.tax_handling_fee_eur if ams_config else Decimal("0.00")
+        ams_tax_handling_fee_eur = Decimal(settings.ams_tax_handling_fee_eur) if airport_of_arrival == "AMS" else Decimal("0.00")
         deducted_total = deducted_tax + deducted_operation_fee + lhr_clearance_eur + ams_weight_fee_eur + ams_tax_handling_fee_eur
 
         locked_user = self.billing.get_user_for_update(target_user.id)
