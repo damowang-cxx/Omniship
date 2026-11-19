@@ -127,6 +127,7 @@ export interface InvoiceItem {
 }
 
 export interface BillingTaxEstimateResponse {
+  amsCharges?: AmsChargeItem[];
   amsTaxHandlingFeeEur?: string;
   amsWeightRateEur?: string;
   amsWeightFeeEur?: string;
@@ -185,6 +186,7 @@ export interface SupplierFieldRule {
 }
 
 export interface SupplierVersionConfig {
+  amsBilling?: AmsTemplateBillingConfig | null;
   lhrBilling?: LhrBillingConfig | null;
   workbook: {
     sheetMode: "first" | "named";
@@ -235,6 +237,27 @@ export interface AmsCustomerRate {
   userId: string;
   rateEurPerKg: string;
   feeDescription?: string | null;
+}
+
+export interface AmsTemplateFee {
+  matchValue: string;
+  rateEurPerKg: string;
+}
+
+export interface AmsTemplateBillingConfig {
+  taxHandlingFeeEur: string;
+  matchColumn: string | null;
+  matchHeader: string | null;
+  weightColumn: string | null;
+  matchValues: string[];
+  customerRates: { userId: string; fees: AmsTemplateFee[] }[];
+}
+
+export interface AmsChargeItem {
+  feeDescription: string;
+  quantity: string;
+  unitRate: string;
+  amount: string;
 }
 
 export interface AmsBillingConfig {
@@ -353,6 +376,7 @@ export interface WaybillPreAlertUploadPayload {
 }
 
 export interface WaybillPreAlertUploadResponse {
+  amsCharges?: AmsChargeItem[];
   amsTaxHandlingFeeEur?: string;
   amsWeightRateEur?: string;
   amsWeightFeeEur?: string;

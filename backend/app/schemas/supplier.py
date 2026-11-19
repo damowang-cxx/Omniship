@@ -241,6 +241,77 @@ class AmsBillingSettingsUpdateRequest(BaseModel):
     config: AmsBillingConfig | None = None
 
 
+class AmsTemplateFee(BaseModel):
+    match_value: AmsFeeDescription = Field(alias="matchValue")
+    rate_eur_per_kg: Decimal = Field(gt=0, max_digits=10, decimal_places=2, alias="rateEurPerKg")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AmsTemplateCustomerRate(BaseModel):
+    user_id: UUID = Field(alias="userId")
+    fees: list[AmsTemplateFee] = Field(min_length=1, max_length=1000)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def validate_unique_fees(self):
+        values = [fee.match_value for fee in self.fees]
+        if len(values) != len(set(values)):
+            raise ValueError("Each customer may have only one price for each AMS match value")
+        return self
+
+
+class AmsTemplateBillingConfig(BaseModel):
+    tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2, alias="taxHandlingFeeEur")
+    match_column: str | None = Field(default=None, alias="matchColumn")
+    match_header: str | None = Field(default=None, max_length=255, alias="matchHeader")
+    weight_column: str | None = Field(default=None, alias="weightColumn")
+    match_values: list[AmsFeeDescription] = Field(default_factory=list, max_length=1000, alias="matchValues")
+    customer_rates: list[AmsTemplateCustomerRate] = Field(default_factory=list, max_length=1000, alias="customerRates")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("match_column", "weight_column")
+    @classmethod
+    def normalize_column(cls, value: str | None):
+        if value is None:
+            return None
+        column = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{1,3}", column):
+            raise ValueError("AMS column must contain one to three letters")
+        from openpyxl.utils.cell import column_index_from_string
+        if column_index_from_string(column) > 16384:
+            raise ValueError("AMS column exceeds the Excel column limit")
+        return column
+
+    @field_validator("match_header")
+    @classmethod
+    def normalize_header(cls, value: str | None):
+        return (value.strip() or None) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_rates(self):
+        if self.customer_rates and (not self.match_column or not self.weight_column):
+            raise ValueError("AMS customer prices require matching and weight columns")
+        user_ids = [rate.user_id for rate in self.customer_rates]
+        if len(user_ids) != len(set(user_ids)):
+            raise ValueError("Each AMS customer may be configured only once per template")
+        self.match_values = list(dict.fromkeys(
+            self.match_values + [fee.match_value for rate in self.customer_rates for fee in rate.fees]
+        ))
+        return self
+
+
+class AmsChargeItem(BaseModel):
+    fee_description: str = Field(alias="feeDescription")
+    quantity: Decimal
+    unit_rate: Decimal = Field(alias="unitRate")
+    amount: Decimal
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class SupplierVersionConfig(BaseModel):
     workbook: SupplierWorkbookConfig = Field(default_factory=SupplierWorkbookConfig)
     fields: list[SupplierFieldRule] = Field(min_length=1, max_length=100)
@@ -249,6 +320,7 @@ class SupplierVersionConfig(BaseModel):
         default=None, alias="billingDistinctColumn"
     )
     lhr_billing: LhrBillingConfig | None = Field(default=None, alias="lhrBilling")
+    ams_billing: AmsTemplateBillingConfig | None = Field(default=None, alias="amsBilling")
     # Retained only so historical supplier versions continue to parse. New versions
     # use the independent Excel columns above and do not need field-rule references.
     row_key_field_key: str | None = Field(default=None, alias="rowKeyFieldKey")

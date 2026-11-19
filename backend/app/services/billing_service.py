@@ -26,13 +26,13 @@ from app.schemas.billing import (
     RetroactiveBillingResponse,
     RetroactiveBillingSuccessItem,
 )
-from app.schemas.supplier import AmsBillingConfig, LhrBillingConfig, SupplierVersionConfig
+from app.schemas.supplier import LhrBillingConfig, SupplierVersionConfig
 from app.schemas.user import UserPublic
 from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
 from app.services.lhr_billing import calculate_lhr_charges
-from app.services.ams_billing import calculate_ams_tax_handling_fee, calculate_ams_weight_fee
+from app.services.ams_billing import calculate_ams_charges
 from app.services.billing_export_service import build_billing_workbook
 
 
@@ -400,10 +400,10 @@ class BillingService:
         except ValueError as exc:
             raise BillingValidationError(str(exc)) from exc
         operation_fee = row_count * OPERATION_UNIT_RATE
-        ams_config = AmsBillingConfig.model_validate(settings.ams_billing) if settings.ams_billing is not None else None
-        ams_tax_handling_fee_eur = calculate_ams_tax_handling_fee(ams_config) if airport == "AMS" else Decimal("0.00")
-        ams_weight_rate_eur = Decimal("0.00")
-        ams_weight_fee_eur = Decimal("0.00")
+        template_config = SupplierVersionConfig.model_validate(version.config)
+        ams_config = template_config.ams_billing if airport == "AMS" else None
+        ams_tax_handling_fee_eur = ams_config.tax_handling_fee_eur if ams_config else Decimal("0.00")
+        ams_charges = []
         if airport == "AMS" and (target_user_id is not None or actor.role == "user"):
             customer_id = target_user_id or actor.id
             if customer_id != actor.id and actor.role != "admin":
@@ -411,14 +411,15 @@ class BillingService:
             customer = self.users.get_by_id(customer_id)
             if customer is None or customer.status != "active":
                 raise BillingValidationError("AMS customer was not found or is inactive")
-            if ams_config is not None and any(rate.user_id == customer_id for rate in ams_config.customer_rates):
-                try:
-                    weight = Decimal((gross_weight_kg or "").strip())
-                except InvalidOperation as exc:
-                    raise BillingValidationError("Air Waybill Gross Weight (KG) must be a number") from exc
-                if not weight.is_finite() or weight <= 0 or weight.as_tuple().exponent < -3 or weight >= Decimal("1000000000"):
-                    raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
-                ams_weight_rate_eur, ams_weight_fee_eur, _ = calculate_ams_weight_fee(ams_config, customer_id, weight)
+            try:
+                ams_charges = calculate_ams_charges(
+                    filename=pre_alert_file.filename, content=content,
+                    config=template_config, user_id=customer_id,
+                )
+            except SupplierStructureError as exc:
+                raise BillingValidationError(str(exc)) from exc
+        ams_weight_fee_eur = sum((charge.amount for charge in ams_charges), Decimal("0.00"))
+        ams_weight_rate_eur = ams_charges[0].unit_rate if len(ams_charges) == 1 else Decimal("0.00")
         return BillingTaxEstimateResponse(
             operation_row_count=row_count,
             operation_unit_rate=OPERATION_UNIT_RATE,
@@ -426,6 +427,7 @@ class BillingService:
             estimated_total=estimated_tax + operation_fee + ams_weight_fee_eur + ams_tax_handling_fee_eur,
             ams_weight_rate_eur=ams_weight_rate_eur,
             ams_weight_fee_eur=ams_weight_fee_eur,
+            ams_charges=ams_charges,
             ams_tax_handling_fee_eur=ams_tax_handling_fee_eur,
             supplier_id=supplier.id,
             supplier_name=supplier.name,

@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Index,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
@@ -559,7 +560,12 @@ class User(Base):
 class BillingEntry(Base):
     __tablename__ = "billing_entries"
     __table_args__ = (
-        Index("uq_upload_fee_type", "waybill_upload_id", "fee_type", unique=True),
+        Index("uq_upload_fee_type", "waybill_upload_id", "fee_type", unique=True,
+              postgresql_where=text("fee_type <> 'ams_weight_handling'"),
+              sqlite_where=text("fee_type <> 'ams_weight_handling'")),
+        Index("uq_upload_ams_detail", "waybill_upload_id", "fee_description", unique=True,
+              postgresql_where=text("fee_type = 'ams_weight_handling'"),
+              sqlite_where=text("fee_type = 'ams_weight_handling'")),
         CheckConstraint("entry_type NOT IN ('deduction', 'deduction_reversal') OR (fee_type IS NOT NULL AND fee_type IN ('customs_tax', 'declaration_operation_fee', 'lhr_weight_handling', 'lhr_clearance', 'lhr_terminal_surcharge', 'ams_weight_handling', 'ams_tax_handling'))", name="ck_billing_fee_type"),
     )
 

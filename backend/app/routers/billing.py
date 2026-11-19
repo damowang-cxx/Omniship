@@ -13,7 +13,7 @@ from app.schemas.billing import (
     RetroactiveBillingRequest,
     RetroactiveBillingResponse,
 )
-from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest, LhrBillingSettingsItem, LhrBillingSettingsUpdateRequest, AmsBillingSettingsItem, AmsBillingSettingsUpdateRequest
+from app.schemas.supplier import BillingSettingsItem, BillingSettingsUpdateRequest, LhrBillingSettingsItem, LhrBillingSettingsUpdateRequest, AmsBillingSettingsItem
 from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceCreateResponse,
@@ -37,7 +37,7 @@ from app.services.billing_service import (
 )
 from app.services.supplier_service import SupplierService
 from app.services.lhr_settings_service import LhrSettingsService, LhrSettingsValidationError
-from app.services.ams_settings_service import AmsSettingsService, AmsSettingsValidationError
+from app.services.ams_settings_service import AmsSettingsService
 
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
@@ -275,17 +275,14 @@ def get_ams_billing_settings(
     return AmsSettingsService(db).get()
 
 
-@router.put("/ams-settings", response_model=AmsBillingSettingsItem)
+@router.put("/ams-settings", deprecated=True)
 def update_ams_billing_settings(
-    payload: AmsBillingSettingsUpdateRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AmsBillingSettingsItem:
-    try:
-        return AmsSettingsService(db).update(actor=current_user, config=payload.config, request=request)
-    except AmsSettingsValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    _: User = Depends(require_admin),
+) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="AMS 扣费配置已移入 Supplier 模板，请编辑对应模板并发布新版本",
+    )
 
 
 @router.put("/lhr-settings", response_model=LhrBillingSettingsItem)

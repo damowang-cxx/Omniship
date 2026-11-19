@@ -148,20 +148,33 @@ describe("WaybillDetailPage", () => {
       ...waybillItem,
       airportOfArrival: "AMS",
       billingFees: [{
+        entryId: "ams-de-dhl",
         feeType: "ams_weight_handling",
         feeName: "AMS 重量附加费",
-        feeDescription: "到港处理及分拣",
+        feeDescription: "DE-DHL",
         status: "paid",
         amount: "9.38",
         quantity: "12.5",
         unitRate: "0.75",
         currency: "EUR"
+      }, {
+        entryId: "ams-colissimo",
+        feeType: "ams_weight_handling",
+        feeName: "AMS 重量附加费",
+        feeDescription: "Colissimo",
+        status: "paid",
+        amount: "3.60",
+        quantity: "3",
+        unitRate: "1.20",
+        currency: "EUR"
       }]
     });
     render(<WaybillDetailPage />);
 
-    expect(await screen.findByText("到港处理及分拣")).toBeInTheDocument();
+    expect(await screen.findByText("DE-DHL")).toBeInTheDocument();
     expect(screen.getByText("12.5 kg × €0.75")).toBeInTheDocument();
+    expect(screen.getByText("Colissimo")).toBeInTheDocument();
+    expect(screen.getByText("3 kg × €1.20")).toBeInTheDocument();
   });
 
   it("shows that an LHR waybill with no fee entries was not charged", async () => {

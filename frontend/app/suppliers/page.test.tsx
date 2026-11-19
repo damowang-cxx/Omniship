@@ -119,48 +119,41 @@ describe("SuppliersPage", () => {
     expect(screen.getByDisplayValue("3.00")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Supplier" })).toHaveAttribute("href", "/suppliers");
     expect(screen.getByRole("heading", { name: "LHR 扣费配置" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "AMS 扣费配置" })).toBeInTheDocument();
+    expect(screen.getByText("AMS 扣费未配置")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建 LHR 扣费配置" })).toBeInTheDocument();
     expect(screen.getByText("LHR 专用收费")).toBeInTheDocument();
   });
 
-  it("adds and edits a customer quote with a fee description in the AMS container", async () => {
+  it("publishes template-specific AMS columns and multiple customer prices", async () => {
     render(<SuppliersPage />);
-    const ams = await screen.findByRole("region", { name: "AMS 扣费配置" });
-    fireEvent.click(within(ams).getByRole("button", { name: "创建 AMS 扣费配置" }));
-    fireEvent.change(within(ams).getByLabelText("AMS 税金手续费 (EUR / 票)"), { target: { value: "4.25" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit & publish" }));
+    const ams = screen.getByRole("region", { name: "模板 AMS 扣费配置" });
+    fireEvent.click(within(ams).getByRole("checkbox", { name: "启用本模板 AMS 扣费" }));
+    fireEvent.change(within(ams).getByLabelText("模板 AMS 每票税金手续费"), { target: { value: "4.25" } });
+    fireEvent.change(within(ams).getByLabelText("AMS 指定匹配列"), { target: { value: "e" } });
+    fireEvent.change(within(ams).getByLabelText("AMS 匹配列标题"), { target: { value: "NETWORK" } });
+    fireEvent.change(within(ams).getByLabelText("AMS 重量列"), { target: { value: "v" } });
+    for (const value of ["DE-DHL", "Colissimo"]) {
+      fireEvent.change(within(ams).getByLabelText("新增 AMS 明细值"), { target: { value } });
+      fireEvent.click(within(ams).getByRole("button", { name: "添加明细选项" }));
+    }
+    fireEvent.change(within(ams).getByLabelText("AMS 添加客户"), { target: { value: "customer-id" } });
     fireEvent.click(within(ams).getByRole("button", { name: "添加客户" }));
-    fireEvent.change(within(ams).getByLabelText("AMS 客户"), { target: { value: "customer-id" } });
-    fireEvent.change(within(ams).getByLabelText("AMS 收费明细"), { target: { value: "到港处理及分拣" } });
-    fireEvent.change(within(ams).getByLabelText("AMS 每公斤报价"), { target: { value: "0.75" } });
-    fireEvent.click(within(ams).getByRole("button", { name: "添加" }));
-    fireEvent.click(within(ams).getByRole("button", { name: "保存 AMS 扣费" }));
-    await waitFor(() => expect(apiMock.updateAmsBillingSettings).toHaveBeenCalledWith({
-      taxHandlingFeeEur: "4.25",
-      customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75", feeDescription: "到港处理及分拣" }]
-    }));
-    fireEvent.click(await within(ams).findByRole("button", { name: "管理 AMS 扣费" }));
-    const details = within(ams).getByLabelText("LHR Customer AMS 收费明细") as HTMLInputElement;
-    expect(details).toHaveValue("到港处理及分拣");
-    expect(Array.from(details.list?.options ?? [], (option) => option.value)).toEqual(["到港处理及分拣"]);
-    fireEvent.change(details, { target: { value: "到港处理" } });
-    fireEvent.click(within(ams).getByRole("button", { name: "保存 AMS 扣费" }));
-    await waitFor(() => expect(apiMock.updateAmsBillingSettings).toHaveBeenLastCalledWith({
-      taxHandlingFeeEur: "4.25",
-      customerRates: [{ userId: "customer-id", rateEurPerKg: "0.75", feeDescription: "到港处理" }]
-    }));
-    expect(apiMock.publishSupplierVersion).not.toHaveBeenCalled();
-  });
-
-  it("does not repeat AMS suppliers inside the global LHR container", async () => {
-    apiMock.listSuppliers.mockResolvedValue({ items: [qls, { ...qls, id: "ed-id", name: "ED" }, { ...qls, id: "rpl-id", name: "RPL" }] });
-    render(<SuppliersPage />);
-    const lhrContainer = await screen.findByRole("region", { name: "LHR 扣费配置" });
-    expect(within(lhrContainer).getByText("LHR 专用收费")).toBeInTheDocument();
-    expect(within(lhrContainer).queryByText("ED")).not.toBeInTheDocument();
-    expect(within(lhrContainer).queryByText("QLS")).not.toBeInTheDocument();
-    expect(within(lhrContainer).queryByText("RPL")).not.toBeInTheDocument();
-    expect(within(lhrContainer).getAllByRole("button", { name: "创建 LHR 扣费配置" })).toHaveLength(1);
+    for (const [value, price] of [["DE-DHL", "0.75"], ["Colissimo", "1.20"]]) {
+      fireEvent.click(within(ams).getByRole("checkbox", { name: `LHR Customer 收取 ${value}` }));
+      fireEvent.change(within(ams).getByLabelText(`LHR Customer ${value} 每公斤报价`), { target: { value: price } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Publish new version" }));
+    await waitFor(() => expect(apiMock.publishSupplierVersion).toHaveBeenCalledWith("supplier-id", expect.objectContaining({
+      amsBilling: {
+        taxHandlingFeeEur: "4.25", matchColumn: "E", matchHeader: "NETWORK", weightColumn: "V",
+        matchValues: ["DE-DHL", "Colissimo"],
+        customerRates: [{ userId: "customer-id", fees: [
+          { matchValue: "DE-DHL", rateEurPerKg: "0.75" }, { matchValue: "Colissimo", rateEurPerKg: "1.20" }
+        ] }]
+      }
+    })));
+    expect(apiMock.updateAmsBillingSettings).not.toHaveBeenCalled();
   });
 
   it("creates a supplier with the visual rule builder", async () => {

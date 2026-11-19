@@ -699,7 +699,16 @@ export default function WaybillUploadsPage() {
                     <div className={styles.feeEstimateLine}><span>申报行操作费</span>
                     <strong>{formatEuro(taxEstimate.estimatedOperationFee)}</strong>
                     <small>{taxEstimate.operationRowCount} rows × {formatEuro(taxEstimate.operationUnitRate)}</small></div>
-                    {form.airportOfArrival === "AMS" && <><div className={styles.feeEstimateLine}><span>AMS 重量附加费</span><strong>{formatEuro(taxEstimate.amsWeightFeeEur || "0.00")}</strong><small>{Number(taxEstimate.amsWeightRateEur || 0) > 0 ? `${form.grossWeightKg} kg × ${formatEuro(taxEstimate.amsWeightRateEur)}` : "该客户未加入 AMS 重量收费名单，不收重量附加费"}</small></div><div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>所有 AMS 提单 · 每票固定金额</small></div></>}
+                    {form.airportOfArrival === "AMS" && <>
+                      <div className={styles.feeEstimateLine}><span>AMS 重量附加费</span><strong>{formatEuro(taxEstimate.amsWeightFeeEur || "0.00")}</strong>
+                        {!taxEstimate.amsCharges?.length && <small>本模板未匹配到该客户的收费明细</small>}
+                      </div>
+                      {taxEstimate.amsCharges?.map((charge) => <div className={styles.feeEstimateLine} key={charge.feeDescription}>
+                        <span>{charge.feeDescription}</span><strong>{formatEuro(charge.amount)}</strong>
+                        <small>{charge.quantity} kg × {formatEuro(charge.unitRate)} / kg</small>
+                      </div>)}
+                      <div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>按所选模板设置的每票金额收取</small></div>
+                    </>}
                     <div className={styles.feeEstimateTotal}><span>合计预扣 / Total estimated deduction</span>
                     <strong>{formatEuro(taxEstimate.estimatedTotal)}</strong></div>
                   </>}

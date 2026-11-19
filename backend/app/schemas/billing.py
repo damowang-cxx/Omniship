@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.user import UserPublic
+from app.schemas.supplier import AmsChargeItem
 
 
 class BillingReceiptItem(BaseModel):
@@ -55,6 +56,7 @@ class BillingAccountResponse(BaseModel):
 
 
 class BillingTaxEstimateResponse(BaseModel):
+    ams_charges: list[AmsChargeItem] = Field(default_factory=list, alias="amsCharges")
     ams_weight_rate_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightRateEur")
     ams_weight_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightFeeEur")
     ams_tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsTaxHandlingFeeEur")

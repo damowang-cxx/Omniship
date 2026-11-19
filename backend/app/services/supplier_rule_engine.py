@@ -62,7 +62,7 @@ class SupplierRuleEngine:
         content: bytes,
         config: SupplierVersionConfig,
     ) -> SupplierEvaluationResult:
-        header, rows = self._read_workbook(filename=filename, content=content, config=config)
+        header, rows = self.read_workbook(filename=filename, content=content, config=config)
         indexes = self._resolve_indexes(header=header, config=config)
         if config.billing_group_column and config.billing_distinct_column:
             group_index = self._column_index(config.billing_group_column)
@@ -172,7 +172,7 @@ class SupplierRuleEngine:
             parcels=parcels,
         )
 
-    def _read_workbook(
+    def read_workbook(
         self,
         *,
         filename: str,
@@ -295,8 +295,8 @@ class SupplierRuleEngine:
         parsed: Any = text
         numeric: Decimal | None = None
         if field.value_type in {"number", "integer"}:
-            numeric = self._decimal(raw_value)
-            if numeric is None:
+            numeric = self.parse_decimal(raw_value)
+            if numeric is None or not numeric.is_finite():
                 return None, [
                     "must be an integer" if field.value_type == "integer" else "must be a number"
                 ]
@@ -350,7 +350,7 @@ class SupplierRuleEngine:
         text = self._text(value)
         return text.casefold() if case_insensitive else text
 
-    def _decimal(self, value: object) -> Decimal | None:
+    def parse_decimal(self, value: object) -> Decimal | None:
         if value is None or isinstance(value, bool):
             return None
         if isinstance(value, (int, float, Decimal)):

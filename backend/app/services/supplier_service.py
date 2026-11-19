@@ -29,7 +29,13 @@ class SupplierService:
     def list_suppliers(self, *, actor: User) -> list[SupplierItem]:
         self.suppliers.ensure_defaults()
         suppliers = self.suppliers.list(include_inactive=actor.role == "admin")
-        return [self._build_item(supplier) for supplier in suppliers]
+        items = [self._build_item(supplier) for supplier in suppliers]
+        if actor.role != "admin":
+            for item in items:
+                config = item.current_version.config.ams_billing
+                if config is not None:
+                    config.customer_rates = [rate for rate in config.customer_rates if rate.user_id == actor.id]
+        return items
 
     def create_supplier(
         self,
@@ -40,6 +46,7 @@ class SupplierService:
         request: Request,
     ) -> SupplierItem:
         self._reject_lhr_config(config)
+        self._validate_ams_customers(config)
         if self.suppliers.get_by_name(name) is not None:
             raise SupplierValidationError("Supplier name already exists")
         supplier, _ = self.suppliers.create(
@@ -67,6 +74,7 @@ class SupplierService:
         request: Request,
     ) -> SupplierItem:
         self._reject_lhr_config(config)
+        self._validate_ams_customers(config)
         supplier = self._get_supplier(supplier_id)
         version = self.suppliers.publish_version(
             supplier=supplier,
@@ -155,6 +163,14 @@ class SupplierService:
     def _reject_lhr_config(self, config: SupplierVersionConfig) -> None:
         if config.lhr_billing is not None:
             raise SupplierValidationError("LHR fees must be configured in the separate LHR billing settings")
+
+    def _validate_ams_customers(self, config: SupplierVersionConfig) -> None:
+        if config.ams_billing is None:
+            return
+        for rate in config.ams_billing.customer_rates:
+            customer = self.db.get(User, rate.user_id)
+            if customer is None or customer.role != "user":
+                raise SupplierValidationError("AMS customer was not found")
 
     def _build_item(self, supplier: Supplier) -> SupplierItem:
         version = self.suppliers.get_current_version(supplier)

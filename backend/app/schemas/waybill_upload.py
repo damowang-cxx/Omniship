@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.supplier import AmsChargeItem
 
 
 class WaybillUploadFileItem(BaseModel):
@@ -26,6 +27,7 @@ class WaybillUploadUserItem(BaseModel):
 
 
 class WaybillPreAlertUploadResponse(BaseModel):
+    ams_charges: list[AmsChargeItem] = Field(default_factory=list, alias="amsCharges")
     ams_weight_rate_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightRateEur")
     ams_weight_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightFeeEur")
     ams_tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsTaxHandlingFeeEur")

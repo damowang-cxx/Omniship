@@ -244,14 +244,18 @@ describe("WaybillUploadsPage", () => {
     expect(screen.getByText("1 票 × €45.00")).toBeInTheDocument();
   });
 
-  it("shows the AMS customer weight charge in the estimate", async () => {
+  it("shows each matched AMS channel and its Excel weight in the estimate", async () => {
     apiMock.getCurrentUser.mockResolvedValue({ user: adminUser });
     apiMock.estimatePreAlertTax.mockResolvedValue({
       supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
       supplierVersionNumber: 1, taxableAirport: true, billableUnitCount: 2,
       unitRate: "3.00", estimatedTax: "6.00", operationRowCount: 2,
       operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "23.63",
-      amsWeightRateEur: "0.75", amsWeightFeeEur: "9.38", amsTaxHandlingFeeEur: "4.25",
+      amsWeightRateEur: "0.00", amsWeightFeeEur: "9.38", amsTaxHandlingFeeEur: "4.25",
+      amsCharges: [
+        { feeDescription: "DE-DHL", quantity: "4", unitRate: "0.75", amount: "3.00" },
+        { feeDescription: "Colissimo", quantity: "6.38", unitRate: "1.00", amount: "6.38" }
+      ],
       warningCount: 0, warnings: [], currency: "EUR"
     });
     render(<WaybillUploadsPage />);
@@ -261,7 +265,10 @@ describe("WaybillUploadsPage", () => {
     await waitFor(() => expect(apiMock.estimatePreAlertTax).toHaveBeenCalledWith(
       expect.any(File), "supplier-id", "AMS", "12.5", undefined, "user-id"
     ));
-    expect(await screen.findByText("12.5 kg × €0.75")).toBeInTheDocument();
+    expect(await screen.findByText("4 kg × €0.75 / kg")).toBeInTheDocument();
+    expect(screen.getByText("6.38 kg × €1.00 / kg")).toBeInTheDocument();
+    expect(screen.getByText("DE-DHL")).toBeInTheDocument();
+    expect(screen.getByText("Colissimo")).toBeInTheDocument();
     expect(screen.getByText("€9.38")).toBeInTheDocument();
     expect(screen.getByText("AMS 税金手续费")).toBeInTheDocument();
     expect(screen.getByText("€4.25")).toBeInTheDocument();
