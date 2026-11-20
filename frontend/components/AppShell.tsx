@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArchiveX, ClipboardList, Factory, FileText, LogOut, Package, UploadCloud, Users, WalletCards } from "lucide-react";
 import type { AppUser } from "@/lib/types";
 import type { DownstreamIncident } from "@/lib/types";
-import { listDownstreamIncidents, markDownstreamIncidentsRead } from "@/lib/api";
+import { listDownstreamIncidents, markDownstreamIncidentsRead, returnToAdmin } from "@/lib/api";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
 
@@ -31,6 +32,22 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const isAdmin = user.role === "admin";
+  const router = useRouter();
+  const [isReturning, setIsReturning] = useState(false);
+  const [returnError, setReturnError] = useState<string | null>(null);
+  const handleReturnToAdmin = async () => {
+    if (isReturning) return;
+    setIsReturning(true);
+    setReturnError(null);
+    try {
+      await returnToAdmin();
+      router.replace("/users");
+      router.refresh();
+    } catch (error) {
+      setReturnError(error instanceof Error ? error.message : "无法返回管理员，请重试");
+      setIsReturning(false);
+    }
+  };
   const [incidents, setIncidents] = useState<DownstreamIncident[]>([]);
   const refreshIncidents = useCallback(async () => {
     if (!isAdmin) return;
@@ -191,7 +208,16 @@ export function AppShell({
           </nav>
         </aside>
 
-        <main className={styles.main}>{children}</main>
+        <main className={styles.main}>
+          {user.impersonating && <section aria-label="客户登录状态" className={styles.customerSession}>
+            <div><strong>正在以客户身份登录</strong><span>{user.username} · {user.email}</span></div>
+            <button disabled={isReturning} onClick={() => void handleReturnToAdmin()} type="button">
+              {isReturning ? "正在返回..." : "返回管理员"}
+            </button>
+            {returnError && <p role="alert">{returnError}</p>}
+          </section>}
+          {children}
+        </main>
       </div>
     </div>
   );

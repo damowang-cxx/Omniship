@@ -100,6 +100,50 @@
   min-width: 0;
 }
 
+.customerSession {
+  align-items: center;
+  background: #fff7e6;
+  border-bottom: 1px solid #f2d39b;
+  color: #784b0b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 28px;
+}
+
+.customerSession strong,
+.customerSession span {
+  display: block;
+}
+
+.customerSession span {
+  font-size: 13px;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.customerSession button {
+  background: #ffffff;
+  border: 1px solid #d6ad63;
+  border-radius: 8px;
+  color: #784b0b;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.customerSession button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.customerSession p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .topbar {
   align-items: center;
   background: rgba(255, 255, 255, 0.92);

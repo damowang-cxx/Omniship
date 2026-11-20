@@ -384,9 +384,10 @@ describe("WaybillDetailPage", () => {
   it("shows AJ POD provenance and keeps manual upload available with multiple synced files", async () => {
     apiMock.getWaybill.mockResolvedValueOnce({
       ...waybillItem,
+      airportOfArrival: "LHR",
       airlineRecordCreatedAt: "2026-11-15T19:07:00+00:00",
       airlineArrivedAt: "2026-11-16T09:24:00+00:00",
-      ajWarehouseArrivedAt: "2026-11-17T07:40:00+00:00",
+      warehouseArrivedAt: "2026-11-17T07:40:00+00:00",
       podFiles: [1, 2, 3].map((id) => ({
         id: `aj-${id}`, originalFilename: `proof-${id}.pdf`, sizeBytes: 1024,
         contentType: "application/pdf", createdAt: "2026-11-18T00:00:00Z",
@@ -398,8 +399,56 @@ describe("WaybillDetailPage", () => {
     expect(await screen.findByText("3 files · 0/2 manual")).toBeInTheDocument();
     expect(screen.getByLabelText("POD file")).toBeEnabled();
     expect(screen.getByLabelText("Airline Arrival Time")).not.toHaveValue("");
-    expect(screen.getByLabelText("AJ Warehouse Arrival Time")).not.toHaveValue("");
+    expect(screen.getByLabelText("Warehouse Arrival Time")).not.toHaveValue("");
     expect(screen.getByText(/待补全：Missing signature/)).toBeInTheDocument();
+  });
+
+  it.each(["admin", "user"])("only shows warehouse arrival on LHR waybills for %s", async (role) => {
+    apiMock.getCurrentUser.mockResolvedValue({ user: { ...adminUser, role } });
+    apiMock.getWaybill.mockResolvedValue({
+      ...waybillItem, airportOfArrival: "AMS", warehouseArrivedAt: "2026-11-17T07:40:00Z"
+    });
+    const view = render(<WaybillDetailPage />);
+    await screen.findByText("Details", { selector: "h3" });
+    expect(screen.queryByText("到仓时间")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Warehouse Arrival Time")).not.toBeInTheDocument();
+    view.unmount();
+
+    apiMock.getWaybill.mockResolvedValue({
+      ...waybillItem, airportOfArrival: "LHR", warehouseArrivedAt: "2026-11-17T07:40:00Z"
+    });
+    render(<WaybillDetailPage />);
+    expect(await screen.findByText("到仓时间")).toBeInTheDocument();
+    expect(screen.getByText("Warehouse Arrival")).toBeInTheDocument();
+    expect(screen.queryByText(/AJ/)).not.toBeInTheDocument();
+    if (role === "user") {
+      expect(screen.queryByLabelText("Warehouse Arrival Time")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Save milestone times" })).not.toBeInTheDocument();
+    } else {
+      apiMock.updateWaybill.mockResolvedValue({ ...waybillItem, airportOfArrival: "LHR" });
+      fireEvent.change(screen.getByLabelText("Warehouse Arrival Time"), { target: { value: "2026-11-18T09:30" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save milestone times" }));
+      await waitFor(() => expect(apiMock.updateWaybill).toHaveBeenCalledWith("A7K2P9QX", {
+        warehouseArrivedAt: new Date("2026-11-18T09:30").toISOString()
+      }));
+    }
+  });
+
+  it("hides imported POD provenance from customers while keeping downloads", async () => {
+    apiMock.getCurrentUser.mockResolvedValueOnce({ user: { ...adminUser, role: "user" } });
+    apiMock.getWaybill.mockResolvedValueOnce({
+      ...waybillItem, airportOfArrival: "LHR",
+      podFiles: [{
+        id: "pod-1", originalFilename: "proof.pdf", sizeBytes: 1024,
+        contentType: "application/pdf", createdAt: "2026-11-18T00:00:00Z",
+        providerCode: "AJ", providerVendorCode: "INTERNAL-VENDOR", providerDocumentVersion: 2,
+        providerUploadedAt: "2026-11-17T15:45:00Z", providerNote: "Internal sync note"
+      }]
+    });
+    render(<WaybillDetailPage />);
+    expect(await screen.findByText("proof.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download File" })).toHaveAttribute("href", "/backend/v1/waybills/A7K2P9QX/pod/pod-1/download");
+    expect(screen.queryByText(/AJ|INTERNAL-VENDOR|Internal sync note|manual/)).not.toBeInTheDocument();
   });
 
   it("redirects unauthenticated users to the public page", async () => {

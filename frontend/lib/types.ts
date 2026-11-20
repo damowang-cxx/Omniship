@@ -14,6 +14,7 @@ export interface AppUser {
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  impersonating?: boolean;
 }
 
 export interface AuthUserResponse {
@@ -633,7 +634,7 @@ export interface WaybillItem {
   scannedAt?: string | null;
   airlineRecordCreatedAt?: string | null;
   airlineArrivedAt?: string | null;
-  ajWarehouseArrivedAt?: string | null;
+  warehouseArrivedAt?: string | null;
   customsClearanceAt?: string | null;
   outboundAt?: string | null;
   createdAt: string;
@@ -708,7 +709,7 @@ export interface WaybillUpdatePayload {
   scannedAt?: string | null;
   airlineRecordCreatedAt?: string | null;
   airlineArrivedAt?: string | null;
-  ajWarehouseArrivedAt?: string | null;
+  warehouseArrivedAt?: string | null;
   customsClearanceAt?: string | null;
   outboundAt?: string | null;
 }

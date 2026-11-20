@@ -9,6 +9,7 @@ import {
   FileDown,
   Eye,
   ImageIcon,
+  LogIn,
   Plus,
   ReceiptText,
   WalletCards,
@@ -28,6 +29,7 @@ import {
   getUserBillingAccount,
   isUnauthorizedError,
   listUsers,
+  loginAsCustomer,
   logout,
   rechargeUser,
   resetUserPassword,
@@ -88,6 +90,8 @@ export default function UsersPage() {
   const [payerCompany, setPayerCompany] = useState("");
   const [payerAddress, setPayerAddress] = useState("");
   const [isPayerSaving, setIsPayerSaving] = useState(false);
+  const [enteringCustomerId, setEnteringCustomerId] = useState<string | null>(null);
+  const [clientLoginError, setClientLoginError] = useState<string | null>(null);
 
   const addMessage = useCallback((title: string, body: string) => {
     setMessages((current) => [
@@ -186,6 +190,20 @@ export default function UsersPage() {
       await refreshUsers();
     } catch (error) {
       addMessage("Unable to create user", error instanceof Error ? error.message : "Request failed");
+    }
+  }
+
+  async function handleLoginAsCustomer(user: AppUser) {
+    if (enteringCustomerId || user.role !== "user" || user.status !== "active") return;
+    setEnteringCustomerId(user.id);
+    setClientLoginError(null);
+    try {
+      await loginAsCustomer(user.id);
+      router.replace("/waybills");
+      router.refresh();
+    } catch (error) {
+      setClientLoginError(error instanceof Error ? error.message : "无法登录客户端，请重试");
+      setEnteringCustomerId(null);
     }
   }
 
@@ -388,6 +406,7 @@ export default function UsersPage() {
               </form>
             )}
 
+            {clientLoginError && <p className={styles.clientLoginError} role="alert">{clientLoginError}</p>}
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
@@ -414,6 +433,12 @@ export default function UsersPage() {
                       <td><span className={styles.statusPill} data-status={user.status}>{user.status === "active" ? "Active" : "Disabled"}</span></td>
                       <td>
                         <div className={styles.actions}>
+                          {user.role === "user" && <button
+                            className={styles.clientLoginButton}
+                            disabled={user.status !== "active" || enteringCustomerId !== null}
+                            onClick={() => void handleLoginAsCustomer(user)}
+                            type="button"
+                          ><LogIn aria-hidden="true" size={16} />{enteringCustomerId === user.id ? "正在进入..." : "登录客户端"}</button>}
                           <button onClick={() => void handleToggleStatus(user)} type="button">{user.status === "active" ? "Disable" : "Enable"}</button>
                           <button onClick={() => setResetTarget(user)} type="button">Reset password</button>
                           <button className={styles.dangerButton} disabled={user.id === currentUser.id} onClick={() => void handleDeleteUser(user)} type="button">Delete</button>

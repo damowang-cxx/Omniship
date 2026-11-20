@@ -41,7 +41,7 @@ type MilestoneKey =
   | "scannedAt"
   | "airlineRecordCreatedAt"
   | "airlineArrivedAt"
-  | "ajWarehouseArrivedAt"
+  | "warehouseArrivedAt"
   | "customsClearanceAt"
   | "outboundAt";
 
@@ -53,7 +53,7 @@ const milestoneFields: {
 }[] = [
   { key: "airlineRecordCreatedAt", label: "Airline Record Created", helper: "航司建档时间", inputLabel: "Airline Record Created Time" },
   { key: "airlineArrivedAt", label: "Airline Arrival", helper: "航司到达时间", inputLabel: "Airline Arrival Time" },
-  { key: "ajWarehouseArrivedAt", label: "AJ Warehouse Arrival", helper: "AJ 到仓时间", inputLabel: "AJ Warehouse Arrival Time" },
+  { key: "warehouseArrivedAt", label: "Warehouse Arrival", helper: "到仓时间", inputLabel: "Warehouse Arrival Time" },
   { key: "noaAt", label: "NOA", helper: "NOA时间", inputLabel: "NOA Time" },
   {
     key: "collectionAt",
@@ -74,7 +74,7 @@ const milestoneFields: {
 const emptyMilestoneForm: Record<MilestoneKey, string> = {
   airlineRecordCreatedAt: "",
   airlineArrivedAt: "",
-  ajWarehouseArrivedAt: "",
+  warehouseArrivedAt: "",
   noaAt: "",
   collectionAt: "",
   scannedAt: "",
@@ -191,7 +191,7 @@ function buildMilestoneForm(waybill: WaybillItem): Record<MilestoneKey, string> 
   return {
     airlineRecordCreatedAt: toDateTimeLocalValue(waybill.airlineRecordCreatedAt),
     airlineArrivedAt: toDateTimeLocalValue(waybill.airlineArrivedAt),
-    ajWarehouseArrivedAt: toDateTimeLocalValue(waybill.ajWarehouseArrivedAt),
+    warehouseArrivedAt: toDateTimeLocalValue(waybill.warehouseArrivedAt),
     noaAt: toDateTimeLocalValue(waybill.noaAt),
     collectionAt: toDateTimeLocalValue(waybill.collectionAt),
     scannedAt: toDateTimeLocalValue(waybill.scannedAt),
@@ -264,6 +264,10 @@ export default function WaybillDetailPage() {
   }
 
   const isAdmin = currentUser?.role === "admin";
+  const visibleMilestoneFields = useMemo(
+    () => milestoneFields.filter((field) => field.key !== "warehouseArrivedAt" || waybill?.airportOfArrival === "LHR"),
+    [waybill?.airportOfArrival]
+  );
   const podFiles = waybill?.podFiles ?? [];
   const manualPodCount = podFiles.filter((file) => !file.providerCode).length;
   const canUploadPod = isAdmin && manualPodCount < 2;
@@ -368,7 +372,7 @@ export default function WaybillDetailPage() {
       try {
         const original = buildMilestoneForm(waybill);
         const updates: Partial<Record<MilestoneKey, string | null>> = {};
-        for (const { key } of milestoneFields) {
+        for (const { key } of visibleMilestoneFields) {
           if (milestoneForm[key] !== original[key]) updates[key] = fromDateTimeLocalValue(milestoneForm[key]);
         }
         const updated = await updateWaybill(waybill.publicCode, updates);
@@ -389,7 +393,7 @@ export default function WaybillDetailPage() {
         setIsSavingMilestones(false);
       }
     },
-    [addMessage, isAdmin, milestoneForm, waybill]
+    [addMessage, isAdmin, milestoneForm, visibleMilestoneFields, waybill]
   );
 
   const handleUploadPod = useCallback(
@@ -784,7 +788,7 @@ export default function WaybillDetailPage() {
 
             <form className={styles.milestoneForm} onSubmit={handleSaveMilestones}>
             <div className={styles.milestoneGrid}>
-              {milestoneFields.map((field) => (
+              {visibleMilestoneFields.map((field) => (
                 <label className={styles.milestoneItem} key={field.key}>
                   <span className={styles.milestoneLabel}>
                     {field.label}
@@ -1003,7 +1007,7 @@ export default function WaybillDetailPage() {
                 <p className={styles.eyebrow}>POD</p>
                 <h3>签收证明</h3>
               </div>
-              <span className={styles.podLimit}>{podFiles.length} files · {manualPodCount}/2 manual</span>
+              <span className={styles.podLimit}>{podFiles.length} files{isAdmin && ` · ${manualPodCount}/2 manual`}</span>
             </div>
 
             {podFiles.length > 0 ? (
@@ -1013,10 +1017,10 @@ export default function WaybillDetailPage() {
                     <div>
                       <strong>{file.originalFilename}</strong>
                       <span className={styles.podMeta}>
-                        {formatFileSize(file.sizeBytes)} - {file.providerCode ? "AJ uploaded" : "Uploaded"}{" "}
+                        {formatFileSize(file.sizeBytes)} - {isAdmin && file.providerCode ? "AJ uploaded" : "Uploaded"}{" "}
                         {formatMilestoneTime(file.providerUploadedAt || file.createdAt)}
-                        {file.providerCode && ` · ${file.providerCode} · ${file.providerVendorCode || "未分配渠道"} · v${file.providerDocumentVersion ?? 1}`}
-                        {file.providerNote && ` · 待补全：${file.providerNote}`}
+                        {isAdmin && file.providerCode && ` · ${file.providerCode} · ${file.providerVendorCode || "未分配渠道"} · v${file.providerDocumentVersion ?? 1}`}
+                        {isAdmin && file.providerNote && ` · 待补全：${file.providerNote}`}
                       </span>
                     </div>
                     <div className={styles.podActions}>

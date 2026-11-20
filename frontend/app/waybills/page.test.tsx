@@ -184,7 +184,7 @@ describe("WaybillsPage", () => {
 
     expect(await screen.findByRole("link", { name: "784-84063276" })).toBeInTheDocument();
     expect(screen.getByText("AMS")).toBeInTheDocument();
-    expect(screen.getByText("Updating")).toBeInTheDocument();
+    expect(await screen.findByText("Updating")).toBeInTheDocument();
     resolveWaybills?.({
       items: [{ ...waybillItem, airportOfArrival: "CDG" }]
     });
@@ -337,6 +337,7 @@ describe("WaybillsPage", () => {
   });
 
   it("lets an administrator assign AJ from the waybill list", async () => {
+    apiMock.listWaybills.mockResolvedValue({ items: [{ ...waybillItem, airportOfArrival: "LHR" }] });
     render(<WaybillsPage />);
     const trigger = await screen.findByRole("button", { name: "未归属" });
     fireEvent.click(trigger);
@@ -344,6 +345,12 @@ describe("WaybillsPage", () => {
     fireEvent.change(screen.getByLabelText("归属系统"), { target: { value: "AJ" } });
     fireEvent.click(screen.getByRole("button", { name: "保存归属" }));
     await waitFor(() => expect(apiMock.assignDownstream).toHaveBeenCalledWith("A7K2P9QX", "AJ"));
+  });
+
+  it("does not offer downstream assignment for AMS waybills", async () => {
+    render(<WaybillsPage />);
+    await screen.findByRole("link", { name: waybillItem.number });
+    expect(screen.queryByRole("button", { name: "未归属" })).not.toBeInTheDocument();
   });
 
   it("redirects unauthenticated users to the public page", async () => {

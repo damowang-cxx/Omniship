@@ -24,7 +24,7 @@
 | --- | --- |
 | `milestones.record_created_airline_at` | 航司建档时间 |
 | `milestones.status_1_at` | 航司到达时间 |
-| `milestones.pick_up_at` | AJ 到仓时间 |
+| `milestones.pick_up_at` | 到仓时间（仅 LHR，客户接口字段 `warehouseArrivedAt`） |
 | `milestones.customs_clearance_at` | 清关时间 |
 | `vendors[].handed_over_at` | 渠道交接时间，用于计算整票出库完成时间 |
 

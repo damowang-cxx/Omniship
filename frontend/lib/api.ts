@@ -211,6 +211,25 @@ export async function getCurrentUser(): Promise<AuthUserResponse> {
   return response;
 }
 
+export async function loginAsCustomer(userId: string): Promise<AuthUserResponse> {
+  const response = await requestJson<AuthUserResponse>("/api/v1/auth/impersonation", {
+    method: "POST",
+    body: JSON.stringify({ userId })
+  });
+  clearClientCache();
+  writeAccountCache(response.user);
+  return response;
+}
+
+export async function returnToAdmin(): Promise<AuthUserResponse> {
+  const response = await requestJson<AuthUserResponse>("/api/v1/auth/impersonation", {
+    method: "DELETE"
+  });
+  clearClientCache();
+  writeAccountCache(response.user);
+  return response;
+}
+
 export function listUsers(): Promise<UserListResponse> {
   return requestJson<UserListResponse>("/api/v1/users");
 }

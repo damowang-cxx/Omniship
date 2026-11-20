@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { InvoicePanel } from "@/components/InvoicePanel";
 import {
   exportBillingAccount,
+  getCurrentUser,
   getMyBillingAccount,
   isUnauthorizedError,
   logout
@@ -47,12 +48,14 @@ export default function BillingPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const account = await getMyBillingAccount();
-      if (account.user.role === "admin") {
+      const session = await getCurrentUser();
+      if (session.user.role === "admin") {
         router.replace("/users");
         return;
       }
-      setUser(account.user);
+      setUser(session.user);
+      const account = await getMyBillingAccount();
+      setUser({ ...account.user, impersonating: session.user.impersonating });
       setDeductions(account.deductions);
     } catch (loadError) {
       if (isUnauthorizedError(loadError)) {

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import UsersPage from "./page";
 
-const routerMock = vi.hoisted(() => ({ replace: vi.fn() }));
+const routerMock = vi.hoisted(() => ({ replace: vi.fn(), refresh: vi.fn() }));
 
 const apiMock = vi.hoisted(() => ({
   cancelDeduction: vi.fn(),
@@ -19,6 +19,7 @@ const apiMock = vi.hoisted(() => ({
     error instanceof Error && error.message.includes("401")
   ),
   listUsers: vi.fn(),
+  loginAsCustomer: vi.fn(),
   logout: vi.fn(),
   rechargeUser: vi.fn(),
   resetUserPassword: vi.fn(),
@@ -142,6 +143,7 @@ describe("UsersPage", () => {
     apiMock.deleteUser.mockResolvedValue({ status: "deleted" });
     apiMock.updateUserStatus.mockResolvedValue({ id: "user-id" });
     apiMock.resetUserPassword.mockResolvedValue({ id: "user-id" });
+    apiMock.loginAsCustomer.mockResolvedValue({ user: { ...operatorUser, impersonating: true } });
   });
 
   it("renders the balance column and linked email for admin", async () => {
@@ -173,6 +175,35 @@ describe("UsersPage", () => {
         password: "password123"
       });
     });
+  });
+
+  it("enters the selected customer's client and refreshes the account view", async () => {
+    render(<UsersPage />);
+    const userRow = (await screen.findByRole("button", { name: operatorUser.email })).closest("tr")!;
+    const adminRow = screen.getByRole("button", { name: adminUser.email }).closest("tr")!;
+    expect(within(adminRow).queryByRole("button", { name: "登录客户端" })).not.toBeInTheDocument();
+    fireEvent.click(within(userRow).getByRole("button", { name: "登录客户端" }));
+    await waitFor(() => {
+      expect(apiMock.loginAsCustomer).toHaveBeenCalledWith(operatorUser.id);
+      expect(routerMock.replace).toHaveBeenCalledWith("/waybills");
+      expect(routerMock.refresh).toHaveBeenCalled();
+    });
+  });
+
+  it("disables client login for disabled customers", async () => {
+    apiMock.listUsers.mockResolvedValue({ items: [adminUser, { ...operatorUser, status: "disabled" }] });
+    render(<UsersPage />);
+    expect(await screen.findByRole("button", { name: "登录客户端" })).toBeDisabled();
+    expect(apiMock.loginAsCustomer).not.toHaveBeenCalled();
+  });
+
+  it("shows a client login failure and allows retry", async () => {
+    apiMock.loginAsCustomer.mockRejectedValueOnce(new Error("Customer account is unavailable"));
+    render(<UsersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "登录客户端" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Customer account is unavailable");
+    expect(screen.getByRole("button", { name: "登录客户端" })).toBeEnabled();
+    expect(routerMock.replace).not.toHaveBeenCalled();
   });
 
   it("deletes a user after confirmation", async () => {

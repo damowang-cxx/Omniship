@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.user import UserPublic
@@ -8,8 +10,16 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class AuthenticatedUser(UserPublic):
+    impersonating: bool = False
+
+
 class AuthUserResponse(BaseModel):
-    user: UserPublic
+    user: AuthenticatedUser
+
+
+class ImpersonationRequest(BaseModel):
+    userId: UUID
 
 
 class LogoutResponse(BaseModel):

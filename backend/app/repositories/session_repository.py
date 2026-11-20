@@ -31,7 +31,7 @@ class UserSessionRepository:
         now = datetime.now(timezone.utc)
         statement = (
             select(UserSession)
-            .options(joinedload(UserSession.user))
+            .options(joinedload(UserSession.user), joinedload(UserSession.impersonated_user))
             .where(
                 UserSession.session_token_hash == session_token_hash,
                 UserSession.revoked_at.is_(None),

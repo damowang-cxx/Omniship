@@ -141,7 +141,7 @@ class WaybillItem(BaseModel):
     scanned_at: datetime | None = Field(default=None, alias="scannedAt")
     airline_record_created_at: datetime | None = Field(default=None, alias="airlineRecordCreatedAt")
     airline_arrived_at: datetime | None = Field(default=None, alias="airlineArrivedAt")
-    aj_warehouse_arrived_at: datetime | None = Field(default=None, alias="ajWarehouseArrivedAt")
+    warehouse_arrived_at: datetime | None = Field(default=None, alias="warehouseArrivedAt")
     customs_clearance_at: datetime | None = Field(
         default=None, alias="customsClearanceAt"
     )
@@ -219,6 +219,6 @@ class WaybillUpdateRequest(BaseModel):
     scannedAt: datetime | None = None
     airlineRecordCreatedAt: datetime | None = None
     airlineArrivedAt: datetime | None = None
-    ajWarehouseArrivedAt: datetime | None = None
+    warehouseArrivedAt: datetime | None = None
     customsClearanceAt: datetime | None = None
     outboundAt: datetime | None = None

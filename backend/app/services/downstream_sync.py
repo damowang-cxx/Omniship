@@ -428,6 +428,8 @@ class DownstreamService:
         record = self._record(public_code)
         if provider_code is not None and provider_code not in PROVIDERS:
             raise DownstreamError("未知的下游系统")
+        if provider_code == "AJ" and record.upload.airport_of_arrival != "LHR":
+            raise DownstreamError("仅 LHR 提单可归属 AJ")
         binding = self._binding(record.id)
         now = datetime.now(timezone.utc)
         if binding and binding.provider_code == provider_code:
@@ -550,6 +552,8 @@ class DownstreamService:
 
     def process(self, binding: DownstreamBinding, now: datetime, shipment: dict | None = None,
                 error: ProviderError | None = None, prepared_pods: dict | None = None) -> None:
+        if binding.provider_code == "AJ" and binding.tracking_record.upload.airport_of_arrival != "LHR":
+            return
         awb = binding.tracking_record.upload.air_waybill_number
         binding.last_checked_at = now
         if error:
@@ -709,6 +713,7 @@ class DownstreamService:
             joinedload(DownstreamBinding.tracking_record).joinedload(WaybillTrackingRecord.upload)
         )).all()
         due = [item for item in bindings if item.tracking_record.upload.status == "approved" and
+               (item.provider_code != "AJ" or item.tracking_record.upload.airport_of_arrival == "LHR") and
                (item.last_checked_at is None or now - aware(item.last_checked_at) >= POLL_INTERVAL)]
         minimum_interval = max(0.0, float(os.getenv("AJ_MIN_REQUEST_INTERVAL_SECONDS", "0.5")))
         previous_request_at: float | None = None
@@ -755,7 +760,8 @@ class DownstreamService:
                 continue
             self.db.refresh(current.tracking_record)
             self.db.refresh(current.tracking_record.upload)
-            if current.tracking_record.upload.status != "approved":
+            if (current.tracking_record.upload.status != "approved"
+                    or (current.provider_code == "AJ" and current.tracking_record.upload.airport_of_arrival != "LHR")):
                 self.db.rollback()
                 continue
             self.process(current, provided_now or datetime.now(timezone.utc),

@@ -6,7 +6,7 @@ import type { DownstreamBindingSummary, DownstreamDetail } from "@/lib/types";
 import styles from "./DownstreamControl.module.css";
 
 const MILESTONE_LABELS: Record<string, string> = {
-  airline_record_created_at: "航司建档时间", airline_arrived_at: "航司到达时间", aj_warehouse_arrived_at: "AJ 到仓时间",
+  airline_record_created_at: "航司建档时间", airline_arrived_at: "航司到达时间", aj_warehouse_arrived_at: "到仓时间",
   noa_at: "NOA 时间", collection_at: "提货时间", scanned_at: "扫描入仓时间",
   customs_clearance_at: "清关时间", outbound_at: "出库完成时间"
 };

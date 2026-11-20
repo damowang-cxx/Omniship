@@ -558,7 +558,7 @@ class User(Base):
 
     created_by: Mapped["User | None"] = relationship(remote_side=[id])
     sessions: Mapped[list["UserSession"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", cascade="all, delete-orphan", foreign_keys="UserSession.user_id"
     )
     waybill_uploads: Mapped[list["WaybillUpload"]] = relationship(
         back_populates="user",
@@ -755,6 +755,9 @@ class UserSession(Base):
         nullable=False,
         index=True,
     )
+    impersonated_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
     session_token_hash: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, index=True
     )
@@ -769,7 +772,8 @@ class UserSession(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    user: Mapped[User] = relationship(back_populates="sessions")
+    user: Mapped[User] = relationship(back_populates="sessions", foreign_keys=[user_id])
+    impersonated_user: Mapped[User | None] = relationship(foreign_keys=[impersonated_user_id])
 
 
 class AuditLog(Base):

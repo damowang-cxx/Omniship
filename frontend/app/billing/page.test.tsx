@@ -5,6 +5,7 @@ import BillingPage from "./page";
 const routerMock = vi.hoisted(() => ({ replace: vi.fn() }));
 const apiMock = vi.hoisted(() => ({
   exportBillingAccount: vi.fn(),
+  getCurrentUser: vi.fn(),
   getMyBillingAccount: vi.fn(),
   isUnauthorizedError: vi.fn((error: unknown) =>
     error instanceof Error && error.message.includes("401")
@@ -29,6 +30,7 @@ const user = {
 describe("BillingPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMock.getCurrentUser.mockResolvedValue({ user });
     apiMock.getMyBillingAccount.mockResolvedValue({
       user,
       deductions: [
@@ -78,6 +80,13 @@ describe("BillingPage", () => {
     render(<BillingPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(apiMock.getMyBillingAccount).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the return-to-admin banner when viewing customer billing", async () => {
+    apiMock.getCurrentUser.mockResolvedValue({ user: { ...user, impersonating: true } });
+    render(<BillingPage />);
+    expect(await screen.findByRole("heading", { name: "Billing" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回管理员" })).toBeInTheDocument();
   });
 
   it("exports the signed-in customer's billing workbook", async () => {

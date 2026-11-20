@@ -68,7 +68,7 @@ Open [http://localhost:3000/](http://localhost:3000/). Unauthenticated users see
 - `/waybills/{publicCode}` shows the waybill detail shell for one approved record.
 - `/waybill-uploads` lets admins and users upload Pre Alert data.
 - `/waybill-upload-management` is admin-only and shows all submitted waybills.
-- `/users` is admin-only account management.
+- `/users` is admin-only account management. Each active customer's row offers `登录客户端`, which enters that customer's client with customer permissions and no password reset. The client displays the current customer and `返回管理员`, which restores the administrator session and returns to Users. Disabled customers cannot be entered. Switching affects the current browser session (including its other tabs), clears account/data caches in the active tab, and leaves the customer's own sessions unchanged. Entry, return, and audited customer actions retain the administrator's identity.
 - Regular users can upload and view only their own upload records.
 - Admins can upload for a selected Target User, review all submissions, download attachments, approve/reject records, and delete local records.
 
@@ -111,6 +111,8 @@ Successful uploads are stored with review status `pending_review`. Admins can la
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
+- `POST /api/v1/auth/impersonation`, admin only, accepts `{ "userId": "..." }`
+- `DELETE /api/v1/auth/impersonation`, restores the administrator who owns the session
 - `GET /api/v1/users`, admin only
 - `POST /api/v1/users`, admin only
 - `PATCH /api/v1/users/{userId}`, admin only
@@ -165,11 +167,11 @@ npm run build
 npm run start -- --host 0.0.0.0 --port 3000
 ```
 
-Set `AUTH_COOKIE_SECURE=true` when serving over HTTPS in production.
+Set `AUTH_COOKIE_SECURE=true` when serving over HTTPS in production. Before deploying customer client login, run `python -m alembic upgrade head` from `backend` to apply the `202611200001` session migration.
 
 ## AJ downstream tracking sync
 
-Only administrators can assign an approved waybill to `AJ` from the Waybills list. AJ is queried by AWB. Status, airline record creation, airline arrival, AJ warehouse arrival, customs clearance, channel handover totals, final handover time, and POD files synchronize automatically. Each counter and milestone has an independent manual lock. Manual parcel edits lock parcel synchronization. Deleting an imported POD locks POD synchronization until an administrator unlocks it from the downstream dialog. Existing manual counters are protected by the migration.
+Only administrators can assign an approved LHR waybill to `AJ` from the Waybills list. Non-LHR waybills cannot be assigned to AJ and are excluded from polling, including existing bindings. AJ is queried by AWB. Status, airline record creation, airline arrival, warehouse arrival, customs clearance, channel handover totals, final handover time, and POD files synchronize automatically. Warehouse arrival is displayed only for LHR waybills as `Warehouse Arrival / 到仓时间`, with the public API field `warehouseArrivedAt`. Customer responses hide POD provider metadata; administrators retain synchronization provenance. Each counter and milestone has an independent manual lock. Manual parcel edits lock parcel synchronization. Deleting an imported POD locks POD synchronization until an administrator unlocks it from the downstream dialog. Existing manual counters are protected by the migration.
 
 Run `python -m alembic upgrade head` from `backend` before starting the updated backend and sync worker. Pause `epix-downstream-sync.timer` while deploying the migration, then enable it again. The downstream dialog shows the last result for every field. NOA, collection, scanning time, scanned/inbound/released quantities, and individual parcel states await additional AJ API data. See [the AJ field requirements](backend/AJ_SYNC_FIELD_REQUIREMENTS.md) for the agreed meanings and upstream data request.
 

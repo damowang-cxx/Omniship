@@ -39,6 +39,7 @@ from app.schemas.waybill import (
     WaybillParcelItem,
     WaybillParcelListResponse,
     WaybillPodDeleteResponse,
+    WaybillPodFileItem,
     WaybillUpdateRequest,
 )
 from app.schemas.supplier import SupplierVersionConfig
@@ -83,7 +84,7 @@ MILESTONE_PAYLOAD_TO_MODEL = {
     "scannedAt": "scanned_at",
     "airlineRecordCreatedAt": "airline_record_created_at",
     "airlineArrivedAt": "airline_arrived_at",
-    "ajWarehouseArrivedAt": "aj_warehouse_arrived_at",
+    "warehouseArrivedAt": "aj_warehouse_arrived_at",
     "customsClearanceAt": "customs_clearance_at",
     "outboundAt": "outbound_at",
 }
@@ -439,6 +440,8 @@ class WaybillService:
             record.upload.airport_of_arrival = arrival
             airport_fields_changed.append("airportOfArrival")
 
+        if payload.warehouseArrivedAt is not None and record.upload.airport_of_arrival != "LHR":
+            raise WaybillValidationError("Warehouse arrival time is only available for LHR waybills")
         self._validate_counts(record, payload)
         milestone_updates = {
             model_field: getattr(payload, payload_field)
@@ -830,6 +833,11 @@ class WaybillService:
         operation_entry = next((entry for entry in entries if entry.fee_type == OPERATION_FEE_TYPE), None)
         if reversed_ids is None:
             reversed_ids = self._reversed_fee_ids([entry.id for entry in entries])
+        pod_files = [WaybillPodFileItem.model_validate(file) for file in record.pod_files]
+        if actor.role != "admin":
+            pod_files = [file.model_copy(update={
+                field: None for field in WaybillPodFileItem.model_fields if field.startswith("provider_")
+            }) for file in pod_files]
         return WaybillItem(
             billingBalance=record.user.balance if record.user else None,
             gbpBalance=record.user.gbp_balance if record.user else None,
@@ -865,7 +873,7 @@ class WaybillService:
             scannedAt=record.scanned_at,
             airlineRecordCreatedAt=record.airline_record_created_at,
             airlineArrivedAt=record.airline_arrived_at,
-            ajWarehouseArrivedAt=record.aj_warehouse_arrived_at,
+            warehouseArrivedAt=record.aj_warehouse_arrived_at if upload.airport_of_arrival == "LHR" else None,
             customsClearanceAt=record.customs_clearance_at,
             outboundAt=record.outbound_at,
             createdAt=record.created_at,
@@ -873,7 +881,7 @@ class WaybillService:
             user=WaybillUploadUserItem.model_validate(record.user)
             if record.user is not None
             else None,
-            podFiles=record.pod_files,
+            podFiles=pod_files,
             extraFees=[WaybillExtraFeeItem.model_validate(fee) for fee in record.extra_fees],
         )
 

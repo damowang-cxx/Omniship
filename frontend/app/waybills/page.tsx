@@ -774,12 +774,12 @@ export default function WaybillsPage() {
                             </span>
                           )}
                         </td>
-                        {isAdmin && <td><DownstreamControl
+                        {isAdmin && <td>{waybill.airportOfArrival === "LHR" ? <DownstreamControl
                           awb={waybill.number}
                           binding={bindingByCode.get(waybill.publicCode)}
                           onChanged={refreshBindings}
                           publicCode={waybill.publicCode}
-                        /></td>}
+                        /> : "—"}</td>}
                         <td>{waybill.airportOfDeparture || "-"}</td>
                         <td>{waybill.airportOfArrival || "-"}</td>
                         <td>{formatStatusAge(waybill.statusChangedAt)}</td>

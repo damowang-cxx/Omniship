@@ -20,6 +20,10 @@ class AuditLogRepository:
         user_agent: str | None = None,
         metadata: dict | None = None,
     ) -> AuditLog:
+        impersonation = self.db.info.get("impersonation")
+        if impersonation and actor_user_id == impersonation["user_id"]:
+            actor_user_id = impersonation["admin_id"]
+            metadata = {**(metadata or {}), "impersonatedUserId": str(impersonation["user_id"])}
         log = AuditLog(
             actor_user_id=actor_user_id,
             action=action,

@@ -113,6 +113,28 @@
   gap: 8px;
 }
 
+.actions .clientLoginButton {
+  align-items: center;
+  background: #eef8f6;
+  border-color: #b9ded8;
+  color: var(--accent-strong);
+  display: inline-flex;
+  gap: 6px;
+}
+
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.clientLoginError {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  padding: 12px 14px;
+}
+
 .actions .dangerButton {
   border-color: #fecaca;
   color: #b91c1c;

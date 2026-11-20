@@ -58,6 +58,87 @@ def binding_for(db, record):
     return db.scalar(select(DownstreamBinding).where(DownstreamBinding.tracking_record_id == record.id))
 
 
+@pytest.mark.parametrize("airport", ["AMS", "CDG"])
+def test_only_lhr_waybills_can_be_assigned_to_aj(client, db_session, airport):
+    admin, _, record = create_waybill(db_session)
+    record.upload.airport_of_arrival = airport
+    db_session.commit()
+    login(client, email=admin.email)
+    response = client.put(f"/api/v1/admin/downstream/waybills/{record.public_code}", json={"providerCode": "AJ"})
+    assert response.status_code == 400
+    assert "仅 LHR" in response.json()["detail"]
+    assert binding_for(db_session, record) is None
+
+
+def test_existing_non_lhr_binding_is_never_polled_or_applied_and_can_be_removed(db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    record.upload.airport_of_arrival = "AMS"
+    db_session.commit()
+
+    class UnexpectedClient:
+        def fetch(self, awb):
+            pytest.fail("Non-LHR waybills must not call AJ")
+
+    assert service.run_due(UnexpectedClient(), NOW) == 0
+    binding = binding_for(db_session, record)
+    service.process(binding, NOW, shipment("HANDED_OVER"))
+    db_session.refresh(record)
+    assert record.status == "created"
+    assert binding.last_checked_at is None
+    service.assign(admin, record.public_code, None)
+    assert binding_for(db_session, record) is None
+
+
+def test_airport_change_during_fetch_discards_aj_response(db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+
+    class AirportChangingClient:
+        def fetch(self, awb):
+            record.upload.airport_of_arrival = "AMS"
+            db_session.commit()
+            return shipment("HANDED_OVER")
+
+    service.run_due(AirportChangingClient(), NOW)
+    db_session.refresh(record)
+    assert record.status == "created"
+    assert record.customs_clearance_at is None
+
+
+def test_warehouse_arrival_is_lhr_only_and_customer_response_hides_provider(client, db_session):
+    admin, user, record = create_waybill(db_session)
+    record.aj_warehouse_arrived_at = NOW
+    db_session.add(WaybillPodFile(
+        tracking_record_id=record.id, original_filename="proof.pdf", content_type="application/pdf",
+        size_bytes=5, storage_path="proof.pdf", sha256="0" * 64,
+        provider_code="AJ", provider_document_id="41", provider_document_version=2,
+        provider_vendor_code="INTERNAL", provider_uploaded_at=NOW, provider_note="AJ internal note",
+    ))
+    db_session.commit()
+    login(client, email=user.email)
+    body = client.get(f"/api/v1/waybills/{record.public_code}").json()
+    assert body["warehouseArrivedAt"] is not None
+    assert "ajWarehouseArrivedAt" not in body
+    assert all(value is None for field, value in body["podFiles"][0].items() if field.startswith("provider"))
+    assert "AJ internal note" not in str(body)
+    login(client, email=admin.email)
+    body = client.get(f"/api/v1/waybills/{record.public_code}").json()
+    assert body["podFiles"][0]["providerCode"] == "AJ"
+    record.upload.airport_of_arrival = "AMS"
+    db_session.commit()
+    assert client.get(f"/api/v1/waybills/{record.public_code}").json()["warehouseArrivedAt"] is None
+    response = client.patch(f"/api/v1/waybills/{record.public_code}", json={"warehouseArrivedAt": NOW.isoformat()})
+    assert response.status_code == 400
+    record.upload.airport_of_arrival = "LHR"
+    db_session.commit()
+    response = client.patch(f"/api/v1/waybills/{record.public_code}", json={"warehouseArrivedAt": (NOW + timedelta(hours=1)).isoformat()})
+    assert response.status_code == 200
+    assert response.json()["warehouseArrivedAt"].startswith("2026-11-16T13:00:00")
+
+
 @pytest.mark.parametrize("stage,expected", AJ_STATUS_MAP.items())
 def test_each_aj_stage_maps_to_local_status(db_session, stage, expected):
     admin, _, record = create_waybill(db_session)
