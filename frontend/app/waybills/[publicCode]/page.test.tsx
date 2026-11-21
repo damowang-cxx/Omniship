@@ -398,8 +398,10 @@ describe("WaybillDetailPage", () => {
     render(<WaybillDetailPage />);
     expect(await screen.findByText("3 files · 0/2 manual")).toBeInTheDocument();
     expect(screen.getByLabelText("POD file")).toBeEnabled();
-    expect(screen.getByLabelText("Airline Arrival Time")).not.toHaveValue("");
-    expect(screen.getByLabelText("Warehouse Arrival Time")).not.toHaveValue("");
+    expect(screen.getByLabelText("Airline Arrival Time")).toHaveValue("2026-11-16T09:24");
+    expect(screen.getByLabelText("Warehouse Arrival Time")).toHaveValue("2026-11-17T07:40");
+    expect(screen.getByLabelText("Airline Record Created Time")).toHaveValue("2026-11-15T19:07");
+    expect(screen.getAllByText(/15:45:00 GMT/)).toHaveLength(3);
     expect(screen.getByText(/待补全：Missing signature/)).toBeInTheDocument();
   });
 
@@ -429,7 +431,7 @@ describe("WaybillDetailPage", () => {
       fireEvent.change(screen.getByLabelText("Warehouse Arrival Time"), { target: { value: "2026-11-18T09:30" } });
       fireEvent.click(screen.getByRole("button", { name: "Save milestone times" }));
       await waitFor(() => expect(apiMock.updateWaybill).toHaveBeenCalledWith("A7K2P9QX", {
-        warehouseArrivedAt: new Date("2026-11-18T09:30").toISOString()
+        warehouseArrivedAt: "2026-11-18T09:30:00.000Z"
       }));
     }
   });

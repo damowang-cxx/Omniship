@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 import styles from "./InfoCenter.module.css";
+import { formatUkClock } from "@/lib/uk-time";
 
 export interface AppMessage {
   id: string;
@@ -11,15 +12,7 @@ export interface AppMessage {
 }
 
 function formatTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
+  return formatUkClock(value);
 }
 
 export function InfoCenter({

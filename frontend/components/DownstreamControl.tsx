@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { assignDownstream, getDownstreamDetail, listDownstreamProviders, setDownstreamLocks } from "@/lib/api";
 import type { DownstreamBindingSummary, DownstreamDetail } from "@/lib/types";
+import { formatUkDateTime } from "@/lib/uk-time";
 import styles from "./DownstreamControl.module.css";
 
 const MILESTONE_LABELS: Record<string, string> = {
@@ -19,11 +20,7 @@ const SYNC_STATE_LABELS: Record<string, string> = {
 };
 
 function displayTime(value: string | null | undefined) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "short", timeStyle: "short", timeZone: "Asia/Shanghai"
-  }).format(date);
+  return formatUkDateTime(value);
 }
 
 export function DownstreamControl({ publicCode, awb, binding, onChanged }: {

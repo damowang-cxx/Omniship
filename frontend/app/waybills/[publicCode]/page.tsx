@@ -34,6 +34,7 @@ import type {
   WaybillPodFileItem
 } from "@/lib/types";
 import styles from "../page.module.css";
+import { formatUkDateTime, fromUkDateTimeLocalValue, toUkDateTimeLocalValue } from "@/lib/uk-time";
 
 type MilestoneKey =
   | "noaAt"
@@ -119,36 +120,15 @@ const parcelFlagLabels = {
 } as const;
 
 function formatMilestoneTime(value?: string | null) {
-  if (!value) {
-    return "Not set";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    year: "numeric"
-  }).format(date);
+  return formatUkDateTime(value, "Not set");
 }
 
 function toDateTimeLocalValue(value?: string | null) {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 16);
+  return toUkDateTimeLocalValue(value);
 }
 
 function fromDateTimeLocalValue(value: string) {
-  return value ? new Date(value).toISOString() : null;
+  return fromUkDateTimeLocalValue(value);
 }
 
 function formatFileSize(sizeBytes: number) {
@@ -787,7 +767,8 @@ export default function WaybillDetailPage() {
             </div>
 
             <form className={styles.milestoneForm} onSubmit={handleSaveMilestones}>
-            <div className={styles.milestoneGrid}>
+              <p className={styles.milestoneTimezone}>以下时间均按英国当地时间显示和填写（GMT / BST）。</p>
+              <div className={styles.milestoneGrid}>
               {visibleMilestoneFields.map((field) => (
                 <label className={styles.milestoneItem} key={field.key}>
                   <span className={styles.milestoneLabel}>

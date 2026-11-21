@@ -525,6 +525,12 @@
   gap: 16px;
 }
 
+.milestoneTimezone {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
 .milestoneGrid {
   border: 1px solid var(--border);
   border-radius: 8px;

@@ -7,6 +7,7 @@ import { ArchiveX, ClipboardList, Factory, FileText, LogOut, Package, UploadClou
 import type { AppUser } from "@/lib/types";
 import type { DownstreamIncident } from "@/lib/types";
 import { listDownstreamIncidents, markDownstreamIncidentsRead, returnToAdmin } from "@/lib/api";
+import { formatUkDateTime } from "@/lib/uk-time";
 import { AppMessage, InfoCenter } from "./InfoCenter";
 import styles from "./AppShell.module.css";
 
@@ -69,7 +70,7 @@ export function AppShell({
   const incidentMessages = useMemo<AppMessage[]>(() => incidents.map((incident) => ({
     id: incident.id,
     title: incident.resolvedAt ? `${incident.providerCode} 同步异常已恢复` : `${incident.providerCode} 同步异常`,
-    body: `提单号：${incident.awb}；时间：${new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Shanghai" }).format(new Date(incident.openedAt))}；具体错误：${incident.detail}${incident.resolvedAt ? `；恢复时间：${new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Shanghai" }).format(new Date(incident.resolvedAt))}` : ""}`,
+    body: `提单号：${incident.awb}；时间：${formatUkDateTime(incident.openedAt)}；具体错误：${incident.detail}${incident.resolvedAt ? `；恢复时间：${formatUkDateTime(incident.resolvedAt)}` : ""}`,
     createdAt: incident.openedAt,
     tone: incident.resolvedAt ? "info" : "error",
     read: incident.read
