@@ -373,8 +373,13 @@ def test_documented_times_handover_and_pods_sync_without_inventing_missing_field
     assert record.outbound_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
     assert record.airline_record_created_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1, hours=3)
     assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1)
+    assert record.noa_at.replace(tzinfo=timezone.utc) == record.airline_arrived_at.replace(tzinfo=timezone.utc)
     assert record.aj_warehouse_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=4)
-    assert record.noa_at is record.collection_at is record.scanned_at is None
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
+    assert record.collection_at is None
+    assert binding.sync_report["noa_at"]["state"] == "synced"
+    assert binding.sync_report["noa_at"]["source"] == "milestones.status_1_at"
+    assert binding.sync_report["scanned_at"]["source"] == "min(vendors[].handed_over_at)"
     assert record.received_count == record.in_warehouse_count == 0
     assert binding.sync_report["received_count"]["state"] == "unavailable"
     assert binding.sync_report["parcels"]["state"] == "unavailable"
@@ -384,6 +389,37 @@ def test_documented_times_handover_and_pods_sync_without_inventing_missing_field
     assert service.run_due(provider, NOW + timedelta(minutes=5)) == 1
     assert provider.downloads == ["41"]
     assert len(db_session.scalars(select(WaybillPodFile)).all()) == 1
+
+
+def test_noa_uses_airline_arrival_when_available_but_keeps_its_own_manual_lock(client, db_session):
+    admin, _, record = create_waybill(db_session)
+    service = DownstreamService(db_session)
+    service.assign(admin, record.public_code, "AJ")
+    result = shipment()
+    binding = binding_for(db_session, record)
+
+    service.process(binding, NOW, result)
+    assert record.airline_arrived_at is record.noa_at is None
+    assert binding.sync_report["noa_at"]["state"] == "unavailable"
+
+    result["milestones"]["status_1_at"] = "2026-11-15T12:00:00+00:00"
+    service.process(binding, NOW + timedelta(minutes=5), result)
+    assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1)
+    assert record.noa_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1)
+
+    login(client, email=admin.email)
+    response = client.patch(f"/api/v1/waybills/{record.public_code}", json={
+        "noaAt": "2026-11-15T10:00:00Z",
+    })
+    assert response.status_code == 200, response.text
+    assert "noa_at" in binding.milestone_locks
+    assert "airline_arrived_at" not in binding.milestone_locks
+
+    result["milestones"]["status_1_at"] = "2026-11-15T13:00:00+00:00"
+    service.process(binding, NOW + timedelta(minutes=10), result)
+    assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1) + timedelta(hours=1)
+    assert record.noa_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1, hours=2)
+    assert binding.sync_report["noa_at"]["state"] == "locked"
 
 
 @pytest.mark.parametrize("extension,media_type", [
@@ -524,6 +560,7 @@ def test_vendor_quantities_matching_local_pieces_override_top_level_with_nonbloc
     result["vendors"].append({"code": "EVRI", "packages": 38, "handed_over_at": None, "pod_documents": []})
     service.process(binding, NOW + timedelta(minutes=10), result)
     assert record.outbound_count == 60 and record.outbound_at is None
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=2)
     result["vendors"][1]["handed_over_at"] = "2026-11-16T11:45:00+00:00"
     service.process(binding, NOW + timedelta(minutes=15), result)
     assert record.outbound_count == 98
@@ -545,8 +582,9 @@ def test_matching_top_level_does_not_bypass_a_vendor_total_that_differs_from_loc
     assert "本地提单件数为 12，渠道件数合计为 98" in binding.last_error
     assert record.upload.pieces == record.received_total == record.outbound_count == 12
     assert record.outbound_at == previous_outbound_at
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
     assert "quantity_check" not in binding.sync_report
-    for field in ("received_total", "outbound_count", "outbound_at"):
+    for field in ("received_total", "outbound_count", "outbound_at", "scanned_at"):
         assert binding.sync_report[field]["state"] == "error"
 
 
@@ -560,10 +598,12 @@ def test_partial_handover_counts_channels_and_waits_for_all_times(db_session):
     service.process(binding_for(db_session, record), NOW, result)
     assert record.outbound_count == 4
     assert record.outbound_at is None
-    result["vendors"][1]["handed_over_at"] = "2026-11-16T11:45:00+00:00"
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
+    result["vendors"][1]["handed_over_at"] = "2026-11-16T10:45:00+00:00"
     service.process(binding_for(db_session, record), NOW + timedelta(minutes=5), result)
     assert record.outbound_count == 12
-    assert record.outbound_at.replace(tzinfo=timezone.utc) == NOW - timedelta(minutes=15)
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1, minutes=15)
+    assert record.outbound_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
 
 
 def test_pod_completion_does_not_infer_handover_count_and_mismatch_is_reported(db_session):
@@ -575,6 +615,8 @@ def test_pod_completion_does_not_infer_handover_count_and_mismatch_is_reported(d
     result["vendors"][0]["handed_over_at"] = None
     service.process(binding_for(db_session, record), NOW, result)
     assert record.outbound_count == 0 and record.outbound_at is None
+    assert record.scanned_at is None
+    assert binding_for(db_session, record).sync_report["scanned_at"]["state"] == "unavailable"
     result["vendors"][0]["packages"] = 13
     service.process(binding_for(db_session, record), NOW + timedelta(minutes=5), result)
     assert record.outbound_count == 0 and record.outbound_at is None
@@ -589,19 +631,23 @@ def test_manual_counts_and_all_documented_times_lock_until_explicitly_unlocked(c
     login(client, email=admin.email)
     response = client.patch(f"/api/v1/waybills/{record.public_code}", json={
         "outboundCount": 5, "airlineArrivedAt": "2026-11-15T10:00:00Z",
+        "scannedAt": "2026-11-16T09:00:00Z",
     })
     assert response.status_code == 200, response.text
     binding = binding_for(db_session, record)
     assert "outbound_count" in binding.data_locks
     assert "airline_arrived_at" in binding.milestone_locks
+    assert "scanned_at" in binding.milestone_locks
     service.process(binding, NOW + timedelta(minutes=5), completed_shipment())
     assert record.outbound_count == 5
     assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1, hours=2)
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=3)
     response = client.patch(f"/api/v1/admin/downstream/waybills/{record.public_code}/locks", json={"dataLocks": [], "milestoneLocks": []})
     assert response.status_code == 200, response.text
     service.process(binding, NOW + timedelta(minutes=10), completed_shipment())
     assert record.outbound_count == 12
     assert record.airline_arrived_at.replace(tzinfo=timezone.utc) == NOW - timedelta(days=1)
+    assert record.scanned_at.replace(tzinfo=timezone.utc) == NOW - timedelta(hours=1)
 
 
 def test_pod_new_version_replaces_synced_file_preserves_manual_file_and_retries_errors(db_session, tmp_path, monkeypatch):

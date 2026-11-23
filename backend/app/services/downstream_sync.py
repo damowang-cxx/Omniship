@@ -244,7 +244,7 @@ def aj_quantity_summary(shipment: dict, pieces: int) -> AJQuantitySummary:
     return AJQuantitySummary(total, None, "packages")
 
 
-def aj_handover(quantities: AJQuantitySummary) -> tuple[int, datetime | None] | None:
+def aj_handover(quantities: AJQuantitySummary) -> tuple[int, datetime | None, datetime | None] | None:
     if quantities.vendors is None:
         return None
     outbound = 0
@@ -259,7 +259,9 @@ def aj_handover(quantities: AJQuantitySummary) -> tuple[int, datetime | None] | 
         if handed_over is not None and count > 0:
             outbound += count
             times.append(handed_over)
-    return outbound, max(times) if quantities.total > 0 and outbound == quantities.total else None
+    first_handover = min(times) if times else None
+    final_handover = max(times) if quantities.total > 0 and outbound == quantities.total else None
+    return outbound, first_handover, final_handover
 
 
 def normalize_aj(shipment: dict) -> dict:
@@ -628,12 +630,16 @@ class DownstreamService:
                 self._event(binding, awb, "status_changed", {"from": old, "to": mapped, "stage": code})
             milestones = shipment.get("milestones") or {}
             milestone_sources = {"airline_record_created_at": "record_created_airline_at", "airline_arrived_at": "status_1_at",
+                                 "noa_at": "status_1_at",
                                  "aj_warehouse_arrived_at": "pick_up_at", "customs_clearance_at": "customs_clearance_at"}
             try:
                 quantities = aj_quantity_summary(shipment, record.upload.pieces)
             except ValueError as exc:
                 quantities = None
-                for field in ("received_total", "outbound_count", "outbound_at"):
+                affected_fields = ["received_total", "outbound_count", "outbound_at"]
+                if shipment.get("vendors"):
+                    affected_fields.append("scanned_at")
+                for field in affected_fields:
                     report[field] = {"state": "error", "detail": str(exc)}
             if quantities is not None:
                 if quantities.warning:
@@ -649,13 +655,17 @@ class DownstreamService:
                 handover = None
                 report["outbound_count"] = {"state": "error", "detail": str(exc)}
                 report["outbound_at"] = {"state": "error", "detail": str(exc)}
+                report["scanned_at"] = {"state": "error", "detail": str(exc)}
             if handover is not None:
-                outbound_count, outbound_at = handover
+                outbound_count, first_handover_at, outbound_at = handover
                 if "outbound_count" not in binding.data_locks:
                     if record.outbound_count != outbound_count:
                         record.outbound_count = outbound_count
                         self._event(binding, awb, "count_changed", {"field": "outbound_count", "to": outbound_count})
                     report["outbound_count"] = {"state": "synced", "source": "vendors[].handed_over_at / packages", "value": outbound_count}
+                if first_handover_at is not None:
+                    milestones = {**milestones, "first_handover_at": first_handover_at.isoformat()}
+                    milestone_sources["scanned_at"] = "first_handover_at"
                 if outbound_at is not None:
                     milestones = {**milestones, "handover_complete_at": outbound_at.isoformat()}
                     milestone_sources["outbound_at"] = "handover_complete_at"
@@ -668,14 +678,18 @@ class DownstreamService:
                     continue
                 milestone = milestones.get(source) if source else None
                 if milestone is None or milestone == "":
-                    report[field] = {"state": "unavailable", "detail": "待 AJ 补充对应时间字段" if field in {"noa_at", "collection_at", "scanned_at"} else "AJ 尚未提供对应时间"}
+                    report[field] = {"state": "unavailable", "detail": "AJ 尚未提供渠道交接时间" if field == "scanned_at" else "待 AJ 补充对应时间字段" if field == "collection_at" else "AJ 尚未提供对应时间"}
                     continue
                 try:
                     parsed = parse_time(milestone)
                 except (TypeError, ValueError):
                     report[field] = {"state": "error", "detail": f"AJ {source} 时间格式无效"}
                 else:
-                    report[field] = {"state": "synced", "source": "max(vendors[].handed_over_at)" if field == "outbound_at" else f"milestones.{source}", "value": milestone}
+                    report[field] = {"state": "synced", "source": "min(vendors[].handed_over_at)" if field == "scanned_at" else "max(vendors[].handed_over_at)" if field == "outbound_at" else f"milestones.{source}", "value": milestone}
+                    if field == "noa_at":
+                        report[field]["detail"] = "AJ 未提供独立 NOA 时间，按航司到达时间代填"
+                    if field == "scanned_at":
+                        report[field]["detail"] = "AJ 未提供独立扫描时间，按最早渠道交接时间代填"
                     if aware(getattr(record, field)) != parsed:
                         setattr(record, field, parsed)
                         self._event(binding, awb, "milestone_changed", {"field": field, "to": milestone})
