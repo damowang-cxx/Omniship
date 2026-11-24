@@ -1,6 +1,6 @@
 """Template-specific AMS charges matched to Excel channels and row weights."""
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from uuid import UUID
 
 from openpyxl.utils.cell import column_index_from_string
@@ -22,18 +22,24 @@ class AmsWeightDifference:
 def calculate_ams_weight_difference(charges: list[AmsChargeItem], gross_weight_kg: Decimal) -> AmsWeightDifference:
     if not charges:
         return AmsWeightDifference(Decimal("0.000"), Decimal("0.00"), [])
-    difference = gross_weight_kg - sum((charge.quantity for charge in charges), Decimal("0.000"))
+    excel_weight = sum((charge.quantity for charge in charges), Decimal("0.000"))
+    difference = gross_weight_kg - excel_weight
     if difference <= 0:
         return AmsWeightDifference(Decimal("0.000"), Decimal("0.00"), [])
     if any(charge.fee_description == AMS_WEIGHT_DIFFERENCE_NAME for charge in charges):
         raise SupplierStructureError("AMS 收费明细名称不能与清关费重量差异补收相同")
-    # Both gross and Excel weights have at most three decimals. Allocate each 0.001 kg
-    # remainder to a configured detail in order so the displayed shares sum exactly.
-    milli_kg = int(difference * 1000)
-    shared, remainder = divmod(milli_kg, len(charges))
+    # Apportion the positive difference by each detail's share of Excel weight.
+    # Assign any 0.001 kg remainder to the largest fractional shares so the
+    # displayed adjusted weights add back to the air waybill gross weight.
+    unit = Decimal("0.001")
+    exact_shares = [difference * charge.quantity / excel_weight for charge in charges]
+    quantities = [share.quantize(unit, rounding=ROUND_DOWN) for share in exact_shares]
+    remainder = int((difference - sum(quantities, Decimal("0.000"))) / unit)
+    for index in sorted(range(len(charges)), key=lambda i: exact_shares[i] - quantities[i], reverse=True)[:remainder]:
+        quantities[index] += unit
     allocations = []
     for index, charge in enumerate(charges):
-        quantity = Decimal(shared + (index < remainder)) / 1000
+        quantity = quantities[index]
         amount = (quantity * charge.unit_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         allocations.append(AmsChargeItem(
             fee_description=charge.fee_description, quantity=quantity,

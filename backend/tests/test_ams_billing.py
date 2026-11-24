@@ -8,6 +8,8 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.db.models import BillingEntry, BillingSettings, WaybillUpload
+from app.schemas.supplier import AmsChargeItem
+from app.services.ams_billing import calculate_ams_weight_difference
 from app.services.supplier_defaults import QLS_CONFIG, QLS_SUPPLIER_ID
 from tests.auth_helpers import create_test_user, login
 from tests.test_supplier_billing_flow import upload_data, upload_files
@@ -119,16 +121,22 @@ def test_template_ams_matches_multiple_channels_and_keeps_charge_snapshots(clien
     assert customer.balance == Decimal("100.00")
 
 
-def test_gross_weight_difference_is_split_across_three_ams_details_and_refunded(client, db_session):
+def test_gross_weight_difference_is_apportioned_by_excel_weight_and_refunded(client, db_session):
     admin = create_test_user(db_session, email="admin@example.com", role="admin")
     customer = create_test_user(db_session, email="customer@example.com", balance="2000.00")
-    config = ams_config(customer.id)
-    config["matchValues"].append("DHL-NL")
-    config["customerRates"][0]["fees"].insert(1, {"matchValue": "DHL-NL", "rateEurPerKg": "1.50"})
+    config = ams_config(customer.id, weight_column="Q")
+    config["matchValues"] = ["DHL PAKET", "COLISSIMO", "NL DHL"]
+    config["customerRates"][0]["fees"] = [
+        {"matchValue": "DHL PAKET", "rateEurPerKg": "0.75"},
+        {"matchValue": "COLISSIMO", "rateEurPerKg": "1.20"},
+        {"matchValue": "NL DHL", "rateEurPerKg": "1.50"},
+    ]
     login(client, email=admin.email)
     publish(client, config)
     login(client, email=customer.email)
-    content = workbook([("DE-DHL", 300), ("DHL-NL", 300), ("Colissimo", "266.976")])
+    content = workbook([
+        ("DHL PAKET", "817.808"), ("COLISSIMO", "23.533"), ("NL DHL", "25.635"),
+    ], weight_index=16)
     estimate = client.post("/api/v1/billing/estimate", data={
         "supplierId": str(QLS_SUPPLIER_ID), "airportOfArrival": "AMS", "grossWeightKg": "905",
     }, files={"preAlertFile": ("data.xlsx", content)})
@@ -136,11 +144,13 @@ def test_gross_weight_difference_is_split_across_three_ams_details_and_refunded(
     estimated = estimate.json()
     assert estimated["amsWeightDifferenceKg"] == "38.024"
     assert estimated["amsWeightDifferenceCharges"] == [
-        {"feeDescription": "DE-DHL", "quantity": "12.675", "unitRate": "0.75", "amount": "9.51"},
-        {"feeDescription": "DHL-NL", "quantity": "12.675", "unitRate": "1.50", "amount": "19.01"},
-        {"feeDescription": "Colissimo", "quantity": "12.674", "unitRate": "1.20", "amount": "15.21"},
+        {"feeDescription": "DHL PAKET", "quantity": "35.868", "unitRate": "0.75", "amount": "26.90"},
+        {"feeDescription": "COLISSIMO", "quantity": "1.032", "unitRate": "1.20", "amount": "1.24"},
+        {"feeDescription": "NL DHL", "quantity": "1.124", "unitRate": "1.50", "amount": "1.69"},
     ]
-    assert estimated["amsWeightDifferenceFeeEur"] == "43.73"
+    assert estimated["amsWeightDifferenceFeeEur"] == "29.83"
+    assert Decimal(estimated["amsCharges"][1]["quantity"]) + Decimal(estimated["amsWeightDifferenceCharges"][1]["quantity"]) == Decimal("24.565")
+    assert sum((Decimal(item["quantity"]) for item in estimated["amsCharges"] + estimated["amsWeightDifferenceCharges"]), Decimal("0")) == Decimal("905.000")
 
     upload_payload = upload_data()
     upload_payload["grossWeightKg"] = "905"
@@ -148,26 +158,36 @@ def test_gross_weight_difference_is_split_across_three_ams_details_and_refunded(
     assert uploaded.status_code == 201, uploaded.text
     assert uploaded.json()["amsWeightDifferenceKg"] == estimated["amsWeightDifferenceKg"]
     assert uploaded.json()["amsWeightDifferenceCharges"] == estimated["amsWeightDifferenceCharges"]
-    assert uploaded.json()["amsWeightDifferenceFeeEur"] == "43.73"
+    assert uploaded.json()["amsWeightDifferenceFeeEur"] == "29.83"
     assert uploaded.json()["deductedTotal"] == estimated["estimatedTotal"]
     entries = db_session.scalars(select(BillingEntry).where(
         BillingEntry.waybill_upload_id == UUID(uploaded.json()["uploadId"]),
         BillingEntry.fee_description == "清关费重量差异补收",
     )).all()
     assert len(entries) == 1
-    assert entries[0].amount == Decimal("43.73")
+    assert entries[0].amount == Decimal("29.83")
     assert entries[0].fee_type == "ams_weight_handling"
-    assert entries[0].quantity == Decimal("1") and entries[0].unit_rate == Decimal("43.73")
+    assert entries[0].quantity == Decimal("1") and entries[0].unit_rate == Decimal("29.83")
     eligible = client.get("/api/v1/billing/me/invoices/eligible").json()
-    assert any(item["feeName"] == "清关费重量差异补收" and item["amount"] == "43.73" for item in eligible)
+    assert any(item["feeName"] == "清关费重量差异补收" and item["amount"] == "29.83" for item in eligible)
 
     login(client, email=admin.email)
     cancelled = client.post(f"/api/v1/waybill-uploads/{uploaded.json()['uploadId']}/cancel", json={"reason": "test"})
     assert cancelled.status_code == 200, cancelled.text
     assert cancelled.json()["refundedAmount"] == uploaded.json()["deductedTotal"]
-    assert cancelled.json()["record"]["amsWeightFeeAmountDeleted"] == "1039.10"
+    assert cancelled.json()["record"]["amsWeightFeeAmountDeleted"] == "709.88"
     db_session.refresh(customer)
     assert customer.balance == Decimal("2000.00")
+
+
+def test_weighted_difference_rounding_preserves_gross_weight():
+    charges = [
+        AmsChargeItem(feeDescription="A", quantity=Decimal("1.000"), unitRate=Decimal("1.00"), amount=Decimal("1.00")),
+        AmsChargeItem(feeDescription="B", quantity=Decimal("1.000"), unitRate=Decimal("2.00"), amount=Decimal("2.00")),
+    ]
+    result = calculate_ams_weight_difference(charges, Decimal("2.001"))
+    assert [item.quantity for item in result.charges] == [Decimal("0.001"), Decimal("0.000")]
+    assert sum((item.quantity for item in charges + result.charges), Decimal("0")) == Decimal("2.001")
 
 
 def test_same_template_and_details_use_each_customers_prices_for_estimate_and_deduction(client, db_session):

@@ -70,6 +70,12 @@ function formatEuro(value: string | undefined) {
   }).format(Number(value || 0));
 }
 
+function formatAdjustedKg(original: string | undefined, extra: string) {
+  if (!original) return "—";
+  const totalMilliKg = Math.round(Number(original) * 1000) + Math.round(Number(extra) * 1000);
+  return (totalMilliKg / 1000).toFixed(3);
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) {
     return "-";
@@ -709,11 +715,11 @@ export default function WaybillUploadsPage() {
                       </div>)}
                       {Number(taxEstimate.amsWeightDifferenceKg || 0) > 0 && <>
                         <div className={styles.feeEstimateLine}><span>清关费重量差异补收</span><strong>{formatEuro(taxEstimate.amsWeightDifferenceFeeEur || "0.00")}</strong>
-                          <small>提单毛重超过收费明细总重 {taxEstimate.amsWeightDifferenceKg} kg，按收费明细均摊</small>
+                          <small>提单毛重超过收费明细总重 {taxEstimate.amsWeightDifferenceKg} kg，按各明细原重量占比分摊</small>
                         </div>
                         {taxEstimate.amsWeightDifferenceCharges?.map((charge) => <div className={styles.feeEstimateLine} key={`difference-${charge.feeDescription}`}>
                           <span>{charge.feeDescription} · 差异分摊</span><strong>{formatEuro(charge.amount)}</strong>
-                          <small>{charge.quantity} kg × {formatEuro(charge.unitRate)} / kg</small>
+                          <small>调整后 {formatAdjustedKg(taxEstimate.amsCharges?.find((item) => item.feeDescription === charge.feeDescription)?.quantity, charge.quantity)} kg；补差 {charge.quantity} kg × {formatEuro(charge.unitRate)} / kg</small>
                         </div>)}
                       </>}
                       <div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>按全局设置，所有 AMS 客户每票收取一次</small></div>

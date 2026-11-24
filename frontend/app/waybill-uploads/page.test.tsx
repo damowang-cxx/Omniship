@@ -250,12 +250,12 @@ describe("WaybillUploadsPage", () => {
       supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
       supplierVersionNumber: 1, taxableAirport: true, billableUnitCount: 2,
       unitRate: "3.00", estimatedTax: "6.00", operationRowCount: 2,
-      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "25.49",
+      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "25.54",
       amsWeightRateEur: "0.00", amsWeightFeeEur: "9.38", amsTaxHandlingFeeEur: "4.25",
-      amsWeightDifferenceKg: "2.120", amsWeightDifferenceFeeEur: "1.86",
+      amsWeightDifferenceKg: "2.120", amsWeightDifferenceFeeEur: "1.91",
       amsWeightDifferenceCharges: [
-        { feeDescription: "DE-DHL", quantity: "1.060", unitRate: "0.75", amount: "0.80" },
-        { feeDescription: "Colissimo", quantity: "1.060", unitRate: "1.00", amount: "1.06" }
+        { feeDescription: "DE-DHL", quantity: "0.817", unitRate: "0.75", amount: "0.61" },
+        { feeDescription: "Colissimo", quantity: "1.303", unitRate: "1.00", amount: "1.30" }
       ],
       amsCharges: [
         { feeDescription: "DE-DHL", quantity: "4", unitRate: "0.75", amount: "3.00" },
@@ -278,10 +278,12 @@ describe("WaybillUploadsPage", () => {
     expect(screen.getByText("AMS 税金手续费")).toBeInTheDocument();
     expect(screen.getByText("€4.25")).toBeInTheDocument();
     expect(screen.getByText("清关费重量差异补收")).toBeInTheDocument();
-    expect(screen.getByText("提单毛重超过收费明细总重 2.120 kg，按收费明细均摊")).toBeInTheDocument();
+    expect(screen.getByText("提单毛重超过收费明细总重 2.120 kg，按各明细原重量占比分摊")).toBeInTheDocument();
     expect(screen.getByText("DE-DHL · 差异分摊")).toBeInTheDocument();
     expect(screen.getByText("Colissimo · 差异分摊")).toBeInTheDocument();
-    expect(screen.getByText("€25.49")).toBeInTheDocument();
+    expect(screen.getByText("调整后 4.817 kg；补差 0.817 kg × €0.75 / kg")).toBeInTheDocument();
+    expect(screen.getByText("调整后 7.683 kg；补差 1.303 kg × €1.00 / kg")).toBeInTheDocument();
+    expect(screen.getByText("€25.54")).toBeInTheDocument();
   });
 
   it("allows an unlisted LHR customer to upload without a deduction", async () => {
