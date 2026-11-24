@@ -17,7 +17,7 @@ from app.db.models import InvoiceLine, User, WaybillUpload, WaybillUploadFile
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, LHR_WEIGHT_FEE_TYPE, LHR_CLEARANCE_FEE_TYPE, LHR_TERMINAL_SURCHARGE_FEE_TYPE, AMS_WEIGHT_FEE_TYPE, AMS_TAX_HANDLING_FEE_TYPE
 from app.services.lhr_billing import calculate_lhr_charges
-from app.services.ams_billing import calculate_ams_charges
+from app.services.ams_billing import AMS_WEIGHT_DIFFERENCE_NAME, calculate_ams_charges, calculate_ams_weight_difference
 from app.repositories.billing_repository import BillingRepository
 from app.repositories.cancelled_waybill_repository import CancelledWaybillRepository
 from app.repositories.supplier_repository import SupplierRepository
@@ -242,12 +242,13 @@ class WaybillUploadService:
                 filename=pre_alert[0]["original_filename"], content=pre_alert[0]["content"],
                 config=template_config, user_id=target_user.id,
             ) if ams_config else []
+            ams_difference = calculate_ams_weight_difference(ams_charges, gross_weight)
         except SupplierStructureError as exc:
             raise WaybillUploadValidationError(str(exc)) from exc
         ams_weight_fee_eur = sum((charge.amount for charge in ams_charges), Decimal("0.00"))
         ams_weight_rate_eur = ams_charges[0].unit_rate if len(ams_charges) == 1 else Decimal("0.00")
         ams_tax_handling_fee_eur = Decimal(settings.ams_tax_handling_fee_eur) if airport_of_arrival == "AMS" else Decimal("0.00")
-        deducted_total = deducted_tax + deducted_operation_fee + lhr_clearance_eur + ams_weight_fee_eur + ams_tax_handling_fee_eur
+        deducted_total = deducted_tax + deducted_operation_fee + lhr_clearance_eur + ams_weight_fee_eur + ams_difference.amount + ams_tax_handling_fee_eur
 
         locked_user = self.billing.get_user_for_update(target_user.id)
         if locked_user is None:
@@ -338,6 +339,19 @@ class WaybillUploadService:
                     created_by_user_id=actor.id,
                 )
 
+            if ams_difference.amount > 0:
+                locked_user.balance = (Decimal(locked_user.balance) - ams_difference.amount).quantize(Decimal("0.01"))
+                self.billing.create_deduction(
+                    user_id=locked_user.id, amount=ams_difference.amount,
+                    balance_after=locked_user.balance, waybill_upload_id=upload.id,
+                    waybill_number=air_waybill_number, supplier_id=supplier.id,
+                    supplier_name=supplier.name, supplier_version_number=supplier_version.version_number,
+                    arrival_airport=airport_of_arrival, billable_unit_count=None,
+                    unit_rate=ams_difference.amount, quantity=Decimal("1"),
+                    fee_type=AMS_WEIGHT_FEE_TYPE, fee_description=AMS_WEIGHT_DIFFERENCE_NAME,
+                    created_by_user_id=actor.id,
+                )
+
             if ams_tax_handling_fee_eur > 0:
                 locked_user.balance = (current_balance - deducted_total).quantize(Decimal("0.01"))
                 self.billing.create_deduction(
@@ -401,6 +415,9 @@ class WaybillUploadService:
                     "deductedOperationFee": str(deducted_operation_fee),
                     "amsWeightRateEur": str(ams_weight_rate_eur),
                     "amsWeightFeeEur": str(ams_weight_fee_eur),
+                    "amsWeightDifferenceKg": str(ams_difference.weight_kg),
+                    "amsWeightDifferenceFeeEur": str(ams_difference.amount),
+                    "amsWeightDifferenceCharges": [item.model_dump(by_alias=True, mode="json") for item in ams_difference.charges],
                     "amsTaxHandlingFeeEur": str(ams_tax_handling_fee_eur),
                     "amsBillingVersion": supplier_version.version_number if ams_config else None,
                     "amsCharges": [charge.model_dump(mode="json", by_alias=True) for charge in ams_charges],
@@ -434,6 +451,9 @@ class WaybillUploadService:
             deducted_operation_fee=deducted_operation_fee,
             ams_weight_rate_eur=ams_weight_rate_eur,
             ams_weight_fee_eur=ams_weight_fee_eur,
+            ams_weight_difference_kg=ams_difference.weight_kg,
+            ams_weight_difference_fee_eur=ams_difference.amount,
+            ams_weight_difference_charges=ams_difference.charges,
             ams_charges=ams_charges,
             ams_tax_handling_fee_eur=ams_tax_handling_fee_eur,
             balance_after=Decimal(locked_user.balance),
@@ -701,6 +721,9 @@ class WaybillUploadService:
         deducted_operation_fee: Decimal,
         ams_weight_rate_eur: Decimal,
         ams_weight_fee_eur: Decimal,
+        ams_weight_difference_kg: Decimal,
+        ams_weight_difference_fee_eur: Decimal,
+        ams_weight_difference_charges: list[AmsChargeItem],
         ams_tax_handling_fee_eur: Decimal,
         ams_charges: list[AmsChargeItem],
         balance_after: Decimal,
@@ -714,8 +737,11 @@ class WaybillUploadService:
     ) -> WaybillPreAlertUploadResponse:
         return WaybillPreAlertUploadResponse(
             ams_charges=ams_charges,
+            ams_weight_difference_kg=ams_weight_difference_kg,
+            ams_weight_difference_fee_eur=ams_weight_difference_fee_eur,
+            ams_weight_difference_charges=ams_weight_difference_charges,
             operation_unit_rate=OPERATION_UNIT_RATE,
-            deducted_total=deducted_tax + deducted_operation_fee + lhr_clearance_eur + ams_weight_fee_eur + ams_tax_handling_fee_eur,
+            deducted_total=deducted_tax + deducted_operation_fee + lhr_clearance_eur + ams_weight_fee_eur + ams_weight_difference_fee_eur + ams_tax_handling_fee_eur,
             ams_weight_rate_eur=ams_weight_rate_eur,
             ams_weight_fee_eur=ams_weight_fee_eur,
             ams_tax_handling_fee_eur=ams_tax_handling_fee_eur,

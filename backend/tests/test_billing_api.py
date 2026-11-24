@@ -414,6 +414,9 @@ def test_estimates_three_euros_for_each_eu_shipment(client, db_session):
         "lhrWeightKg": "0.00",
         "amsWeightRateEur": "0.00",
         "amsWeightFeeEur": "0.00",
+            "amsWeightDifferenceCharges": [],
+            "amsWeightDifferenceKg": "0.000",
+            "amsWeightDifferenceFeeEur": "0.00",
         "amsTaxHandlingFeeEur": "8.00",
         "amsCharges": [],
     }

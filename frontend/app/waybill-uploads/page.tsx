@@ -351,7 +351,7 @@ export default function WaybillUploadsPage() {
             ? Number(response.lhrWeightRateGbp || 0) > 0
               ? `Upload saved for ${response.airWaybillNumber}. 清关费 ${formatEuro(response.lhrClearanceEur)} · 操作费 £${response.lhrWeightFeeGbp} · 货站附加费 £${response.lhrTerminalSurchargeGbp || "0.00"}。EUR 和 GBP 已分别扣款。`
               : `Upload saved for ${response.airWaybillNumber}. 该客户未加入 LHR 扣费名单，本票未扣费。`
-            : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)}${response.airportOfArrival === "AMS" ? ` · AMS 重量附加费: ${formatEuro(response.amsWeightFeeEur || "0.00")} · 税金手续费: ${formatEuro(response.amsTaxHandlingFeeEur || "0.00")}` : ""} · Total deducted: ${formatEuro(response.deductedTotal)}`
+            : `Upload saved for ${response.airWaybillNumber}. Tax deducted: ${formatEuro(response.deductedTax)} · 申报行操作费: ${formatEuro(response.deductedOperationFee)}${response.airportOfArrival === "AMS" ? ` · AMS 重量附加费: ${formatEuro(response.amsWeightFeeEur || "0.00")}${Number(response.amsWeightDifferenceKg || 0) > 0 ? ` · 清关费重量差异补收: ${formatEuro(response.amsWeightDifferenceFeeEur || "0.00")}` : ""} · 税金手续费: ${formatEuro(response.amsTaxHandlingFeeEur || "0.00")}` : ""} · Total deducted: ${formatEuro(response.deductedTotal)}`
         });
         if (isAdmin) {
           setUsers((current) => current.map((user) =>
@@ -707,6 +707,15 @@ export default function WaybillUploadsPage() {
                         <span>{charge.feeDescription}</span><strong>{formatEuro(charge.amount)}</strong>
                         <small>{charge.quantity} kg × {formatEuro(charge.unitRate)} / kg</small>
                       </div>)}
+                      {Number(taxEstimate.amsWeightDifferenceKg || 0) > 0 && <>
+                        <div className={styles.feeEstimateLine}><span>清关费重量差异补收</span><strong>{formatEuro(taxEstimate.amsWeightDifferenceFeeEur || "0.00")}</strong>
+                          <small>提单毛重超过收费明细总重 {taxEstimate.amsWeightDifferenceKg} kg，按收费明细均摊</small>
+                        </div>
+                        {taxEstimate.amsWeightDifferenceCharges?.map((charge) => <div className={styles.feeEstimateLine} key={`difference-${charge.feeDescription}`}>
+                          <span>{charge.feeDescription} · 差异分摊</span><strong>{formatEuro(charge.amount)}</strong>
+                          <small>{charge.quantity} kg × {formatEuro(charge.unitRate)} / kg</small>
+                        </div>)}
+                      </>}
                       <div className={styles.feeEstimateLine}><span>AMS 税金手续费</span><strong>{formatEuro(taxEstimate.amsTaxHandlingFeeEur || "0.00")}</strong><small>按全局设置，所有 AMS 客户每票收取一次</small></div>
                     </>}
                     <div className={styles.feeEstimateTotal}><span>合计预扣 / Total estimated deduction</span>

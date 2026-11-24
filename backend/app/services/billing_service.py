@@ -32,7 +32,7 @@ from app.services.request_context import get_request_ip, get_request_user_agent
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
 from app.services.operation_fee import count_operation_rows, OPERATION_UNIT_RATE, OPERATION_FEE_TYPE, fee_name
 from app.services.lhr_billing import calculate_lhr_charges
-from app.services.ams_billing import calculate_ams_charges
+from app.services.ams_billing import calculate_ams_charges, calculate_ams_weight_difference
 from app.services.billing_export_service import build_billing_workbook
 
 
@@ -419,11 +419,27 @@ class BillingService:
                 raise BillingValidationError(str(exc)) from exc
         ams_weight_fee_eur = sum((charge.amount for charge in ams_charges), Decimal("0.00"))
         ams_weight_rate_eur = ams_charges[0].unit_rate if len(ams_charges) == 1 else Decimal("0.00")
+        ams_difference = calculate_ams_weight_difference([], Decimal("0"))
+        if ams_charges:
+            try:
+                ams_gross_weight = Decimal((gross_weight_kg or "").strip())
+            except InvalidOperation as exc:
+                raise BillingValidationError("Air Waybill Gross Weight (KG) must be a number") from exc
+            if (not ams_gross_weight.is_finite() or ams_gross_weight <= 0
+                    or ams_gross_weight.as_tuple().exponent < -3 or ams_gross_weight >= Decimal("1000000000")):
+                raise BillingValidationError("Air Waybill Gross Weight (KG) must be a positive value with at most 3 decimal places")
+            try:
+                ams_difference = calculate_ams_weight_difference(ams_charges, ams_gross_weight)
+            except SupplierStructureError as exc:
+                raise BillingValidationError(str(exc)) from exc
         return BillingTaxEstimateResponse(
             operation_row_count=row_count,
             operation_unit_rate=OPERATION_UNIT_RATE,
             estimated_operation_fee=operation_fee,
-            estimated_total=estimated_tax + operation_fee + ams_weight_fee_eur + ams_tax_handling_fee_eur,
+            estimated_total=estimated_tax + operation_fee + ams_weight_fee_eur + ams_difference.amount + ams_tax_handling_fee_eur,
+            ams_weight_difference_charges=ams_difference.charges,
+            ams_weight_difference_kg=ams_difference.weight_kg,
+            ams_weight_difference_fee_eur=ams_difference.amount,
             ams_weight_rate_eur=ams_weight_rate_eur,
             ams_weight_fee_eur=ams_weight_fee_eur,
             ams_charges=ams_charges,

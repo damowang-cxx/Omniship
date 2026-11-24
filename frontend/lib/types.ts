@@ -129,6 +129,9 @@ export interface InvoiceItem {
 
 export interface BillingTaxEstimateResponse {
   amsCharges?: AmsChargeItem[];
+  amsWeightDifferenceCharges?: AmsChargeItem[];
+  amsWeightDifferenceKg?: string;
+  amsWeightDifferenceFeeEur?: string;
   amsTaxHandlingFeeEur?: string;
   amsWeightRateEur?: string;
   amsWeightFeeEur?: string;
@@ -378,6 +381,9 @@ export interface WaybillPreAlertUploadPayload {
 
 export interface WaybillPreAlertUploadResponse {
   amsCharges?: AmsChargeItem[];
+  amsWeightDifferenceCharges?: AmsChargeItem[];
+  amsWeightDifferenceKg?: string;
+  amsWeightDifferenceFeeEur?: string;
   amsTaxHandlingFeeEur?: string;
   amsWeightRateEur?: string;
   amsWeightFeeEur?: string;

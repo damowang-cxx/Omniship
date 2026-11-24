@@ -1,4 +1,5 @@
 """Template-specific AMS charges matched to Excel channels and row weights."""
+from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
@@ -6,6 +7,42 @@ from openpyxl.utils.cell import column_index_from_string
 
 from app.schemas.supplier import AmsChargeItem, SupplierVersionConfig
 from app.services.supplier_rule_engine import SupplierRuleEngine, SupplierStructureError
+
+
+AMS_WEIGHT_DIFFERENCE_NAME = "清关费重量差异补收"
+
+
+@dataclass(frozen=True)
+class AmsWeightDifference:
+    weight_kg: Decimal
+    amount: Decimal
+    charges: list[AmsChargeItem]
+
+
+def calculate_ams_weight_difference(charges: list[AmsChargeItem], gross_weight_kg: Decimal) -> AmsWeightDifference:
+    if not charges:
+        return AmsWeightDifference(Decimal("0.000"), Decimal("0.00"), [])
+    difference = gross_weight_kg - sum((charge.quantity for charge in charges), Decimal("0.000"))
+    if difference <= 0:
+        return AmsWeightDifference(Decimal("0.000"), Decimal("0.00"), [])
+    if any(charge.fee_description == AMS_WEIGHT_DIFFERENCE_NAME for charge in charges):
+        raise SupplierStructureError("AMS 收费明细名称不能与清关费重量差异补收相同")
+    # Both gross and Excel weights have at most three decimals. Allocate each 0.001 kg
+    # remainder to a configured detail in order so the displayed shares sum exactly.
+    milli_kg = int(difference * 1000)
+    shared, remainder = divmod(milli_kg, len(charges))
+    allocations = []
+    for index, charge in enumerate(charges):
+        quantity = Decimal(shared + (index < remainder)) / 1000
+        amount = (quantity * charge.unit_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        allocations.append(AmsChargeItem(
+            fee_description=charge.fee_description, quantity=quantity,
+            unit_rate=charge.unit_rate, amount=amount,
+        ))
+    total = sum((allocation.amount for allocation in allocations), Decimal("0.00"))
+    if total >= Decimal("10000000000"):
+        raise SupplierStructureError("AMS 重量差异补收金额超过支持范围")
+    return AmsWeightDifference(difference, total, allocations)
 
 
 def calculate_ams_charges(

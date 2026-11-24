@@ -250,8 +250,13 @@ describe("WaybillUploadsPage", () => {
       supplierId: "supplier-id", supplierName: "QLS", supplierVersionId: "supplier-version-id",
       supplierVersionNumber: 1, taxableAirport: true, billableUnitCount: 2,
       unitRate: "3.00", estimatedTax: "6.00", operationRowCount: 2,
-      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "23.63",
+      operationUnitRate: "2.00", estimatedOperationFee: "4.00", estimatedTotal: "25.49",
       amsWeightRateEur: "0.00", amsWeightFeeEur: "9.38", amsTaxHandlingFeeEur: "4.25",
+      amsWeightDifferenceKg: "2.120", amsWeightDifferenceFeeEur: "1.86",
+      amsWeightDifferenceCharges: [
+        { feeDescription: "DE-DHL", quantity: "1.060", unitRate: "0.75", amount: "0.80" },
+        { feeDescription: "Colissimo", quantity: "1.060", unitRate: "1.00", amount: "1.06" }
+      ],
       amsCharges: [
         { feeDescription: "DE-DHL", quantity: "4", unitRate: "0.75", amount: "3.00" },
         { feeDescription: "Colissimo", quantity: "6.38", unitRate: "1.00", amount: "6.38" }
@@ -272,6 +277,11 @@ describe("WaybillUploadsPage", () => {
     expect(screen.getByText("€9.38")).toBeInTheDocument();
     expect(screen.getByText("AMS 税金手续费")).toBeInTheDocument();
     expect(screen.getByText("€4.25")).toBeInTheDocument();
+    expect(screen.getByText("清关费重量差异补收")).toBeInTheDocument();
+    expect(screen.getByText("提单毛重超过收费明细总重 2.120 kg，按收费明细均摊")).toBeInTheDocument();
+    expect(screen.getByText("DE-DHL · 差异分摊")).toBeInTheDocument();
+    expect(screen.getByText("Colissimo · 差异分摊")).toBeInTheDocument();
+    expect(screen.getByText("€25.49")).toBeInTheDocument();
   });
 
   it("allows an unlisted LHR customer to upload without a deduction", async () => {

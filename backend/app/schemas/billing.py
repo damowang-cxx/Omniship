@@ -57,6 +57,9 @@ class BillingAccountResponse(BaseModel):
 
 class BillingTaxEstimateResponse(BaseModel):
     ams_charges: list[AmsChargeItem] = Field(default_factory=list, alias="amsCharges")
+    ams_weight_difference_charges: list[AmsChargeItem] = Field(default_factory=list, alias="amsWeightDifferenceCharges")
+    ams_weight_difference_kg: Decimal = Field(default=Decimal("0.000"), alias="amsWeightDifferenceKg")
+    ams_weight_difference_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightDifferenceFeeEur")
     ams_weight_rate_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightRateEur")
     ams_weight_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsWeightFeeEur")
     ams_tax_handling_fee_eur: Decimal = Field(default=Decimal("0.00"), alias="amsTaxHandlingFeeEur")

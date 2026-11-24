@@ -105,6 +105,10 @@ Excel validation is temporarily bypassed. When re-enabled, it uses the new Pre A
 
 Successful uploads are stored with review status `pending_review`. Admins can later mark them `approved` or `rejected`. Only `approved` uploads appear in `/waybills`.
 
+## AMS weight difference charge
+
+For an AMS waybill whose supplier template configures weight fees for the customer, the system compares `Air Waybill Gross Weight (KG)` with the sum of the matched, billable Excel detail weights. A positive difference is divided equally among the charged details in 0.001 kg units; any remainder goes to the first configured details. Each allocated weight is multiplied by that detail's EUR/kg rate and rounded to cents, then the amounts are summed into one additional deduction named `清关费重量差异补收`. The estimate shows the difference, each allocation, and the total. A zero or negative difference, or no matched billable details, creates no additional charge. The extra amount participates in the upload balance check, has its own ledger and invoice line, and is included in cancellation refunds. It does not change the existing detail weights or their original charge lines.
+
 ## API
 
 - `GET /health`
