@@ -52,10 +52,12 @@ const statusOptions: { value: WaybillTrackingStatus; label: string }[] = [
 const initialFilters: {
   userId: string;
   status: WaybillTrackingStatus | "";
+  airportOfArrival: string;
   q: string;
 } = {
   userId: "",
   status: "",
+  airportOfArrival: "",
   q: ""
 };
 
@@ -158,6 +160,7 @@ function toWaybillFilters(
     requestFilters.userId = filterValues.userId;
   }
   if (filterValues.status) requestFilters.status = filterValues.status;
+  if (filterValues.airportOfArrival.trim()) requestFilters.airportOfArrival = filterValues.airportOfArrival.trim().toUpperCase();
   if (filterValues.q.trim()) requestFilters.q = filterValues.q.trim();
   return requestFilters;
 }
@@ -680,6 +683,18 @@ export default function WaybillsPage() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className={styles.filterField}>
+              Airport of Arrival
+              <input
+                aria-label="Filter Airport of Arrival"
+                maxLength={3}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, airportOfArrival: event.target.value.toUpperCase() }))
+                }
+                placeholder="AMS"
+                value={filters.airportOfArrival}
+              />
             </label>
             <label className={styles.filterField}>
               Number

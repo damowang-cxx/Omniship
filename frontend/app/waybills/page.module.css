@@ -131,12 +131,12 @@
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 1.1fr 1fr 1.2fr auto;
+  grid-template-columns: 1.1fr 1fr 0.9fr 1.2fr auto;
   padding: 12px;
 }
 
 .filterBarUser {
-  grid-template-columns: 1fr 1.25fr auto;
+  grid-template-columns: 1fr 0.9fr 1.25fr auto;
 }
 
 .filterField {

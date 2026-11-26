@@ -75,6 +75,7 @@ class WaybillRepository:
         *,
         user_id: UUID | None = None,
         status: str | None = None,
+        airport_of_arrival: str | None = None,
         query: str | None = None,
         page: int | None = None,
         page_size: int | None = None,
@@ -101,6 +102,8 @@ class WaybillRepository:
             statement = statement.where(WaybillTrackingRecord.user_id == user_id)
         if status:
             statement = statement.where(WaybillTrackingRecord.status == status)
+        if airport_of_arrival:
+            statement = statement.where(WaybillUpload.airport_of_arrival == airport_of_arrival)
         if query:
             normalized_query = normalize_waybill_number(query)
             pattern = f"%{query.strip()}%"
@@ -124,6 +127,7 @@ class WaybillRepository:
         *,
         user_id: UUID | None = None,
         status: str | None = None,
+        airport_of_arrival: str | None = None,
         query: str | None = None,
     ) -> int:
         statement = select(func.count(WaybillTrackingRecord.id)).join(WaybillTrackingRecord.upload).where(
@@ -133,6 +137,8 @@ class WaybillRepository:
             statement = statement.where(WaybillTrackingRecord.user_id == user_id)
         if status:
             statement = statement.where(WaybillTrackingRecord.status == status)
+        if airport_of_arrival:
+            statement = statement.where(WaybillUpload.airport_of_arrival == airport_of_arrival)
         if query:
             normalized_query = normalize_waybill_number(query)
             statement = statement.where(

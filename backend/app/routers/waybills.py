@@ -49,6 +49,7 @@ def _pod_media_type(original_filename: str, content_type: str | None) -> str:
 def list_waybills(
     user_id: UUID | None = Query(default=None, alias="userId"),
     waybill_status: str | None = Query(default=None, alias="status"),
+    airport_of_arrival: str | None = Query(default=None, alias="airportOfArrival"),
     query: str | None = Query(default=None, alias="q"),
     page: int | None = Query(default=None, ge=1),
     page_size: int | None = Query(default=None, alias="pageSize"),
@@ -60,6 +61,7 @@ def list_waybills(
             current_user,
             user_id=user_id,
             status=waybill_status,
+            airport_of_arrival=airport_of_arrival,
             query=query,
             page=page,
             page_size=page_size,

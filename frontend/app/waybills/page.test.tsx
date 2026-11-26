@@ -262,6 +262,9 @@ describe("WaybillsPage", () => {
     fireEvent.change(screen.getByLabelText("Filter Status"), {
       target: { value: "noa_received" }
     });
+    fireEvent.change(screen.getByLabelText("Filter Airport of Arrival"), {
+      target: { value: "ams" }
+    });
     fireEvent.change(screen.getByLabelText("Filter Number"), {
       target: { value: "78484063276" }
     });
@@ -271,6 +274,7 @@ describe("WaybillsPage", () => {
       expect(apiMock.listWaybills).toHaveBeenLastCalledWith({
         userId: "user-id",
         status: "noa_received",
+        airportOfArrival: "AMS",
         q: "78484063276",
         page: 1,
         pageSize: 50

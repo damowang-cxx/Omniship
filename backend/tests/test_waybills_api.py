@@ -22,12 +22,13 @@ def _upload_pre_alert(
     client,
     *,
     number: str = "784-84063276",
+    airport: str = "AMS",
     pieces: str = "8",
     excel_content: bytes | None = None,
 ):
     return client.post(
         "/api/v1/waybill-uploads/file",
-        data=pre_alert_data(airWaybillNumber=number, pieces=pieces),
+        data=pre_alert_data(airWaybillNumber=number, airportOfArrival=airport, pieces=pieces),
         files=pre_alert_files(excel_content=excel_content),
     )
 
@@ -103,6 +104,39 @@ def test_approved_upload_creates_waybill_tracking_record(client, db_session):
     other_list_response = client.get("/api/v1/waybills")
     assert other_list_response.status_code == 200
     assert other_list_response.json()["items"] == []
+
+
+def test_approved_waybills_filter_by_airport_of_arrival_with_pagination_and_user_scope(client, db_session):
+    create_test_user(db_session, email="admin@example.com", role="admin")
+    owner = create_test_user(db_session, email="owner@example.com")
+    create_test_user(db_session, email="other@example.com")
+
+    assert login(client, email="owner@example.com").status_code == 200
+    ams = _upload_pre_alert(client, number="784-84063276", airport="AMS")
+    assert ams.status_code == 201, ams.text
+    assert login(client, email="other@example.com").status_code == 200
+    fra = _upload_pre_alert(client, number="176-28780776", airport="FRA")
+    assert fra.status_code == 201, fra.text
+
+    assert login(client, email="admin@example.com").status_code == 200
+    assert _approve_upload(client, ams.json()["uploadId"]).status_code == 200
+    assert _approve_upload(client, fra.json()["uploadId"]).status_code == 200
+    assert client.get("/api/v1/waybills?page=1&pageSize=50").json()["total"] == 2
+
+    ams_result = client.get("/api/v1/waybills?airportOfArrival=ams&status=created&page=1&pageSize=50")
+    assert ams_result.status_code == 200
+    assert ams_result.json()["total"] == 1
+    assert [item["number"] for item in ams_result.json()["items"]] == ["784-84063276"]
+    fra_result = client.get("/api/v1/waybills?airportOfArrival=FRA&page=1&pageSize=50")
+    assert fra_result.status_code == 200
+    assert fra_result.json()["total"] == 1
+    assert [item["number"] for item in fra_result.json()["items"]] == ["176-28780776"]
+    assert client.get("/api/v1/waybills?airportOfArrival=LONDON").status_code == 400
+
+    assert login(client, email="owner@example.com").status_code == 200
+    scoped = client.get(f"/api/v1/waybills?airportOfArrival=FRA&userId={owner.id}&page=1&pageSize=50")
+    assert scoped.status_code == 200
+    assert scoped.json() == {"items": [], "total": 0}
 
 
 def test_admin_filters_and_updates_waybill_tracking(client, db_session):

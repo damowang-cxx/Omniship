@@ -687,6 +687,9 @@ export function listWaybills(filters?: WaybillFilters): Promise<WaybillListRespo
   if (filters?.status) {
     params.set("status", filters.status);
   }
+  if (filters?.airportOfArrival) {
+    params.set("airportOfArrival", filters.airportOfArrival);
+  }
   if (filters?.q?.trim()) {
     params.set("q", filters.q.trim());
   }

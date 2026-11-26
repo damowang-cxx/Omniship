@@ -135,12 +135,16 @@ class WaybillService:
         *,
         user_id: UUID | None = None,
         status: str | None = None,
+        airport_of_arrival: str | None = None,
         query: str | None = None,
         page: int | None = None,
         page_size: int | None = None,
     ) -> WaybillListResponse:
         if status and status not in WAYBILL_STATUSES:
             raise WaybillValidationError("Waybill status is invalid")
+        airport = (airport_of_arrival or "").strip().upper()
+        if airport and (len(airport) != 3 or not airport.isascii() or not airport.isalpha()):
+            raise WaybillValidationError("Airport of Arrival must be a three-letter IATA code")
         if page_size is not None and page_size not in (50, 100):
             raise WaybillValidationError("Page size must be 50 or 100")
         if page is not None and page < 1:
@@ -151,10 +155,11 @@ class WaybillService:
         if paginated:
             page = page or 1
             page_size = page_size or 50
-            total = self.waybills.count(user_id=scoped_user_id, status=status, query=query)
+            total = self.waybills.count(user_id=scoped_user_id, status=status, airport_of_arrival=airport, query=query)
         records = self.waybills.list(
             user_id=scoped_user_id,
             status=status,
+            airport_of_arrival=airport,
             query=query,
             page=page,
             page_size=page_size,

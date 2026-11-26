@@ -694,6 +694,7 @@ export interface WaybillListResponse {
 export interface WaybillFilters {
   userId?: string;
   status?: WaybillTrackingStatus | "";
+  airportOfArrival?: string;
   q?: string;
   page?: number;
   pageSize?: 50 | 100;
