@@ -70,6 +70,7 @@ function normalizeFilters(filters?: WaybillFilters) {
   return {
     userId: filters?.userId || "",
     status: filters?.status || "",
+    airportOfArrival: filters?.airportOfArrival?.trim().toUpperCase() || "",
     q: filters?.q?.trim().toLocaleLowerCase() || "",
     ...(filters?.page ? { page: filters.page } : {}),
     ...(filters?.pageSize ? { pageSize: filters.pageSize } : {})

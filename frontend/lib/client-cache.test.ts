@@ -62,6 +62,17 @@ describe("client cache", () => {
     expect(readAccountCache()?.data.id).toBe("other-id");
   });
 
+  it("keeps airport-filtered waybill lists separate", () => {
+    const amsWaybill = { ...waybill, airportOfArrival: "AMS" };
+    const lhrWaybill = { ...waybill, id: "lhr-id", airportOfArrival: "LHR" };
+    writeWaybillCache(admin, { airportOfArrival: "AMS", page: 1, pageSize: 50 }, [amsWaybill], Date.now(), 1);
+    expect(readWaybillCache(admin, { airportOfArrival: "LHR", page: 1, pageSize: 50 })).toBeNull();
+
+    writeWaybillCache(admin, { airportOfArrival: "LHR", page: 1, pageSize: 50 }, [lhrWaybill], Date.now(), 1);
+    expect(readWaybillCache(admin, { airportOfArrival: "AMS", page: 1, pageSize: 50 })?.data[0].airportOfArrival).toBe("AMS");
+    expect(readWaybillCache(admin, { airportOfArrival: "LHR", page: 1, pageSize: 50 })?.data[0].airportOfArrival).toBe("LHR");
+  });
+
   it("tracks the five-minute freshness window", () => {
     writeWaybillCache(admin, {}, [waybill], 1_000);
     const snapshot = readWaybillCache(admin, {});

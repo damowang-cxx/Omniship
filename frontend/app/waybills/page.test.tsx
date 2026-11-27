@@ -252,6 +252,34 @@ describe("WaybillsPage", () => {
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
   });
 
+  it("loads the correct waybills when switching from AMS to LHR", async () => {
+    const lhrWaybill = {
+      ...waybillItem, id: "lhr-id", publicCode: "LHR12345", number: "131-81324806", airportOfArrival: "LHR"
+    };
+    apiMock.listWaybills.mockImplementation(async (filters: { airportOfArrival?: string }) => {
+      const items = filters.airportOfArrival === "AMS" ? [waybillItem]
+        : filters.airportOfArrival === "LHR" ? [lhrWaybill] : [waybillItem, lhrWaybill];
+      return { items, total: items.length };
+    });
+    render(<WaybillsPage />);
+    await screen.findByRole("link", { name: waybillItem.number });
+
+    fireEvent.change(screen.getByLabelText("Filter Airport of Arrival"), { target: { value: "AMS" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(apiMock.listWaybills).toHaveBeenLastCalledWith({
+      airportOfArrival: "AMS", page: 1, pageSize: 50
+    }));
+    expect(screen.queryByRole("link", { name: lhrWaybill.number })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter Airport of Arrival"), { target: { value: "LHR" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(apiMock.listWaybills).toHaveBeenLastCalledWith({
+      airportOfArrival: "LHR", page: 1, pageSize: 50
+    }));
+    expect(await screen.findByRole("link", { name: lhrWaybill.number })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: waybillItem.number })).not.toBeInTheDocument();
+  });
+
   it("lets admins filter and edit waybill tracking fields", async () => {
     render(<WaybillsPage />);
 
